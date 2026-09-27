@@ -1549,3 +1549,68 @@ deleted, because reinstating either by reflex would quietly undo a migration:
    constraint is narrower: `jsx-a11y`'s stale peer cap still needs the
    `ESLINT_PEER_OVERRIDES` entry every generated root manifest carries, and that
    entry should go the moment jsx-a11y declares 10.
+
+### 31. `node-function-app` ESM option — P2
+
+A generated app is CJS (`format: ['cjs']`, no `"type": "module"`) while every
+`mnci add npm-lib` package is ESM-only (`"type": "module"`, `exports` carrying
+only `import`/`default`). Reported from a real Azure host as a possible broken
+default.
+
+**It is not broken.** Measured on Node 22.22 against a generated workspace: the
+built CJS emits `require("@demo/core")` for the workspace lib and it resolves —
+`require(esm)` is unflagged from Node 22.12, and with no `require` condition in
+the lib's `exports` the `default` condition matches. So this is the missing
+option, not a broken default, which is the reporter's own stated split.
+
+What an ESM app needs, from the hand-conversion that prompted the report:
+
+1. `"type": "module"` in the app manifest and `format: ['esm']` on `build`.
+2. `.js` on every relative import — with `bundle: false` esbuild keeps imports as
+   written, and `nodenext` resolution then fails with TS2835.
+3. A Jest mapper, because the specs run the `.ts` sources:
+   `moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' }`.
+
+The generated hello-world should use `.js` relative imports so the pattern is
+visible. Deliberately not bundled into the fix release that closed #32: it
+changes the generated source shape and wants its own e2e section.
+
+**Untested, and the reason:** whether the CJS app still loads an ESM-only lib
+**after `prune`**, where libs sit in `dist/workspace_modules` as `file:`
+dependencies. The check needs the app to declare the lib in its manifest;
+without that `copy-workspace-modules` produced an empty `workspace_modules`
+and there was nothing to resolve through.
+
+### 32. `node-function-app` fought its own build — ✅ done
+
+Four defects in the generated app, all reproduced on a stock workspace before
+being changed, all fixed in `project-scaffolding/node.use-case.ts`:
+
+- **Declaration output shared the folder the build empties.** `tsconfig.app.json`
+  had `outDir: 'dist'` while the esbuild `build` has `outputPath: apps/<name>/dist`
+  and cleans it, and Nx runs the two in parallel. Moved to `out-tsc/app`, which
+  `exclude` and `.gitignore` already cover.
+- **Assets never reached `dist`.** The generator's string form does not copy to
+  `dist/assets`; a real file placed in `src/assets` did not reach `dist` at all.
+  The object form (`input`/`glob`/`output`) puts it at `dist/assets/<file>`.
+- **The pruned manifest dropped the root `overrides`.** `@nx/js:prune-lockfile`
+  cuts the lockfile from the root one (overrides applied) but writes no
+  `overrides` into `dist/package.json`, so `npm ci` refuses when an override
+  moves a version inside the pruned tree. Nx's `nx:noop` `prune` is replaced by
+  one that carries them across, keeping the same `dependsOn`.
+- **Declarations shipped in the deploy zip.** Filtered out of the zip rather than
+  disabled on the build: `declaration: false` collides with the
+  `composite`/`declarationMap` the workspace's own `typecheck` needs and the
+  build dies on TS5069 (measured, with and without `declarationMap` beside it).
+
+**Closed without a change: the reported typecheck/build race.** The claim was
+that the app has no edge to its libraries' `build`. It does, transitively:
+`api:typecheck` carries `dependsOn: ['^typecheck']` and a lib's `typecheck`
+carries `['build', '^typecheck']`. From a clean tree with no `dist` anywhere,
+`nx run api:typecheck` ran `core:build`, then `core:typecheck`, then
+`api:typecheck`, and passed. An undeclared import still creates the graph edge,
+so a missing manifest entry is not the trigger either. `^build` appears nowhere
+in the CLI at any released version, so the "npm-lib writes it" premise does not
+hold. If it recurs, check whether the app's manifest has a `typecheck` **script**
+— per #24's write-up that shadows the inferred target with an `nx:run-script`
+one carrying no `dependsOn` at all.
