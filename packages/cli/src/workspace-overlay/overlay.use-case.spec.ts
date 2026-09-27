@@ -42,7 +42,7 @@ import {
   readMnciConfig,
   registryUrl,
   RETIRED_FORMATTER_FILES,
-  reactExpressPeerOverride,
+  NX_PEER_OVERRIDES,
   ROOT_LINT_TARGET,
   rootScripts,
   SHARED_GLOBAL_INPUTS,
@@ -674,31 +674,57 @@ describe('azurePipelinesYaml', () => {
     expect(pipeline).toContain('RELEASE_SPECIFIER: $(RELEASE_SPECIFIER)')
   })
 
-  it('overrides @nx/react\'s express peer ONLY when the workspace has express', () => {
+  it('overrides @nx/react\'s express peer with the range @nx/node itself declares', () => {
     // @nx/react@23.1.2 added `express: ^4.21.2` as an optional peer in a PATCH
     // release; 23.1.1 declares none. mnci's own `node-app --framework express`
     // installs express 5, so `npm install` fails outright with ERESOLVE. The
     // generated manifest pins `@nx/react: ^23.1.1`, which ADMITS 23.1.2 — so the
     // same manifest resolves differently depending on when npm runs, which is
     // why CI hit it and a local install with a warm cache did not.
-    expect(reactExpressPeerOverride({ dependencies: { express: '^5.1.0' } })).toEqual({
-      '@nx/react': { express: '$express' },
-    })
-    expect(reactExpressPeerOverride({ devDependencies: { express: '^4.21.2' } })).toEqual({
-      '@nx/react': { express: '$express' },
-    })
+    //
+    // The range is not invented here: it is @nx/node@23.2.1's own declared
+    // `peerOptional express`, and @nx/node is the package that scaffolds the
+    // express app. Both majors satisfy it, which is what lets this be static.
+    expect(NX_PEER_OVERRIDES).toEqual({ '@nx/react': { express: '>=4.0.0 <6.0.0' } })
   })
 
-  it('writes NOTHING for a workspace with no express, which is the load-bearing half', () => {
-    // Measured, not assumed: an unconditional `$express` override is WORSE than
-    // the bug. npm reports `Unable to resolve reference $express` when the root
-    // declares no express, so it would turn a conflict that only affects
-    // express+react workspaces into a hard install failure in every react-only
-    // one. The other two candidate values each break a different shape —
-    // `'*'` fails on express 5, `'^5.1.0'` fails on express 4.
-    expect(reactExpressPeerOverride({})).toEqual({})
-    expect(reactExpressPeerOverride({ dependencies: { react: '^19.0.0' } })).toEqual({})
-    expect(reactExpressPeerOverride({ devDependencies: { '@nx/react': '^23.1.2' } })).toEqual({})
+  it('is UNCONDITIONAL, because the conditional form could only be written too late', () => {
+    // This is the whole fix, so it is asserted rather than left to the comment.
+    // `nx g @nx/node:application --framework=express` adds express to the root
+    // manifest AND runs `npm install` in the same invocation, so the ERESOLVE
+    // fires inside that generator — before any post-generation step of mnci's
+    // can write an override that depends on express already being declared.
+    // A `$express` value cannot be written ahead of time either: npm reports
+    // `Unable to resolve reference $express` when no express is declared, which
+    // would break every react-only workspace. Measured, the four candidates:
+    //   '$express'       express5 ok  express4 ok  react-only FAILS
+    //   '*'              express5 FAILS
+    //   '^5.1.0'                      express4 FAILS
+    //   '>=4.0.0 <6.0.0' express5 ok  express4 ok  react-only ok
+    const values = Object.values(NX_PEER_OVERRIDES['@nx/react'])
+    expect(values.some(value => value.includes('$'))).toBe(false)
+
+    // And it reaches a real generated manifest that mentions neither express nor
+    // react — exactly the case the old conditional form wrote nothing for.
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'mnci-peer-'))
+    writeFileSync(join(workspaceRoot, 'nx.json'), JSON.stringify({ $schema: 's', namedInputs: {} }))
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: '@org/source', private: true, devDependencies: { nx: '23.0.0' } }),
+    )
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'github',
+      stack:         DEFAULT_STACK,
+    })
+    const written = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+      overrides: Record<string, unknown>
+    }
+    expect(written.overrides['@nx/react']).toEqual({ express: '>=4.0.0 <6.0.0' })
   })
 
   it('gates every release-only step on a CI push to main, never merely "not a PR"', () => {

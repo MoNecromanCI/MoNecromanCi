@@ -21,6 +21,7 @@ import { addReactApp } from './react-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
 import { syncProjectReferences } from '../dependency-management'
 import {
+  ensureNxPeerOverrides,
   markPrivate,
   registerProjectCommands,
   relocateRootRuntimeDependencies,
@@ -220,6 +221,11 @@ export async function runAdd (
   // into its own manifest. See relocateRootRuntimeDependencies for why the root
   // is the wrong place for one.
   const rootDependenciesBefore = rootRuntimeDependencies(workspaceRoot)
+
+  // Before the switch, because every generator below installs as it scaffolds
+  // and the override has to already be on disk when it does. See
+  // ensureNxPeerOverrides.
+  ensureNxPeerOverrides(workspaceRoot)
 
   switch (resolvedKind) {
     case 'react-app': {
