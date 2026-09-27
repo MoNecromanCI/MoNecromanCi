@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { readJson, toJson, writeFileEnsured } from '../file-system'
+import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 import {
   addNxTargets,
@@ -82,6 +82,99 @@ function runNodeApp (
     ],
     workspaceRoot,
   )
+  const appRoot = join(workspaceRoot, 'apps', name)
+  separateDeclarationOutput(appRoot)
+  repairAssetMapping(appRoot, name)
+}
+
+/**
+ * Moves the app's declaration output out of the folder its own build empties.
+ *
+ * @remarks
+ * `@nx/node:application --bundler=esbuild` writes `outDir: 'dist'` and
+ * `tsBuildInfoFile: 'dist/...'` into `tsconfig.app.json`, while the build it
+ * generates has `outputPath: 'apps/<name>/dist'` and empties that folder before
+ * writing. Nx runs `typecheck` and `build` in parallel, so the build's clean
+ * deletes the declarations `tsc --build` just wrote, and the spec project —
+ * which references `tsconfig.app.json` — then fails with TS6305, reporting that
+ * the output file in `dist` has not been built from its source file.
+ *
+ * Reproduced on a freshly generated workspace before changing anything: run the
+ * app's typecheck, delete the `.d.ts` files the build's clean removes, run it
+ * again, and TS6305 arrives every time. With the declarations in `out-tsc/app`
+ * the same sequence passes.
+ *
+ * `out-tsc` is already in `tsconfig.app.json`'s `exclude` and in the generated
+ * `.gitignore`, so nothing else has to move. The esbuild executor takes its
+ * output from `outputPath`, never from the tsconfig, so `dist` is unchanged
+ * apart from the tsbuildinfo no longer landing there.
+ *
+ * @param appRoot - Absolute path to the generated app's directory.
+ * @returns Nothing.
+ * @throws Propagates any `fs`/JSON error reading or writing the tsconfig.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function separateDeclarationOutput (appRoot: string): void {
+  const tsconfigPath = join(appRoot, 'tsconfig.app.json')
+  if (!fileExists(tsconfigPath)) {
+    return
+  }
+  const tsconfig = readJson<{ compilerOptions?: Record<string, unknown> }>(tsconfigPath)
+  const compilerOptions = tsconfig.compilerOptions ?? {}
+  if (compilerOptions.outDir !== 'dist') {
+    return
+  }
+  writeFileEnsured(
+    tsconfigPath,
+    toJson({
+      ...tsconfig,
+      compilerOptions: {
+        ...compilerOptions,
+        outDir:          'out-tsc/app',
+        tsBuildInfoFile: 'out-tsc/app/tsconfig.app.tsbuildinfo',
+      },
+    }),
+  )
+}
+
+/**
+ * Rewrites the generated asset mapping so assets land where the app reads them.
+ *
+ * @remarks
+ * The generator writes the **string** form, `assets: ['apps/<name>/src/assets']`.
+ * Under `@nx/esbuild` 23 that does not put the files at `dist/assets/`; measured
+ * on a real build, a file placed in `src/assets` does not reach `dist` **at
+ * all**. The generated `src/assets/.gitkeep` hides it until someone adds a real
+ * asset, and then code reading `new URL('../assets/...', import.meta.url)` from
+ * `dist/functions/*.js` simply finds nothing.
+ *
+ * The object form states input, glob and output explicitly, and with it the same
+ * file lands at `dist/assets/<file>` — verified on a generated workspace.
+ *
+ * @param appRoot - Absolute path to the generated app's directory.
+ * @param name - The app's project name, used to build the workspace-relative input.
+ * @returns Nothing.
+ * @throws Propagates any `fs`/JSON error reading or writing the manifest.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function repairAssetMapping (appRoot: string, name: string): void {
+  const manifestPath = join(appRoot, 'package.json')
+  if (!fileExists(manifestPath)) {
+    return
+  }
+  const manifest = readJson<{
+    nx?: { targets?: { build?: { options?: Record<string, unknown> } } }
+  }>(manifestPath)
+  const options = manifest.nx?.targets?.build?.options
+  if (!options || !Array.isArray(options.assets)) {
+    return
+  }
+  options.assets = options.assets.map(asset =>
+    (typeof asset === 'string'
+      ? { input: asset, glob: '**/*', output: asset.replace(`apps/${name}/src/`, '') }
+      : asset),
+  )
+  writeFileEnsured(manifestPath, toJson(manifest))
 }
 
 /**
@@ -339,12 +432,59 @@ function repairNodeFunctionAppManifest (nodeFunctionAppRoot: string, workspaceRo
 function nodeFunctionAppPackageTarget (name: string): Record<string, unknown> {
   const zip = `dist/drop/node-function-app-${name}.zip`
   const root = `apps/${name}`
-  const command = `node -e "const fs=require('node:fs');fs.mkdirSync('dist/drop',{recursive:true});const A=require('adm-zip');const z=new A();z.addLocalFolder('${root}/dist','dist');z.addLocalFile('${root}/host.json');z.addLocalFile('${root}/package.json');z.writeZip('${zip}')"`
+  // The third argument to addLocalFolder is a filter; declarations are dropped
+  // here rather than at build time. `declaration: false` on the esbuild target
+  // is not available: it collides with the `composite`/`declarationMap` the
+  // workspace's own `typecheck` needs, and the build then dies on TS5069
+  // (measured, both alone and with declarationMap turned off beside it). An app
+  // has no consumers for declarations, so the deploy artifact simply omits them.
+  const command = String.raw`node -e "const fs=require('node:fs');fs.mkdirSync('dist/drop',{recursive:true});const A=require('adm-zip');const z=new A();z.addLocalFolder('${root}/dist','dist',(e)=>!/\.d\.ts(\.map)?$/.test(e));z.addLocalFile('${root}/host.json');z.addLocalFile('${root}/package.json');z.writeZip('${zip}')"`
 
   return {
     executor:  'nx:run-commands',
     dependsOn: ['build'],
     outputs:   [`{workspaceRoot}/${zip}`],
+    options:   { command },
+  }
+}
+
+/**
+ * Replaces Nx's no-op `prune` with one that carries the root `overrides` across.
+ *
+ * @remarks
+ * `@nx/js:prune-lockfile` cuts `dist/package-lock.json` from the root lockfile,
+ * so the pruned lockfile already has every `overrides` entry applied — while the
+ * `dist/package.json` written beside it has no `overrides` key at all. When an
+ * override changes the version of a package **inside the pruned tree**, the two
+ * disagree and the container build's `npm ci --omit=dev` refuses:
+ * it reports that the manifest and the lock file are not in sync, naming the
+ * package whose version the override moved as missing from the lock file.
+ *
+ * Conditional, not universal: an override that misses the app's runtime tree
+ * changes nothing, which is why a generated workspace's own SECURITY_OVERRIDES
+ * (dev tooling — brace-expansion, smol-toml, nanoid) do not trigger it and a
+ * plain `npm ci` in `dist` succeeds. It bites the moment a workspace pins
+ * something the app actually ships.
+ *
+ * Copying every root entry rather than only the intersecting ones is deliberate:
+ * npm accepts `overrides` naming packages absent from the tree, and computing
+ * the intersection here would need the resolved tree this step does not have.
+ *
+ * Nx's own `prune` is `nx:noop` over `prune-lockfile` + `copy-workspace-modules`,
+ * so the same `dependsOn` is kept and only the body changes.
+ *
+ * @param name - The app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function nodeFunctionAppPruneTarget (name: string): Record<string, unknown> {
+  const pruned = `apps/${name}/dist/package.json`
+  const command = String.raw`node -e "const fs=require('node:fs');const root=JSON.parse(fs.readFileSync('package.json','utf8'));const o=root.overrides;if(!o||Object.keys(o).length===0){console.log('No root overrides - nothing to carry into the pruned manifest.');process.exit(0)}const p='${pruned}';if(!fs.existsSync(p)){console.error('Pruned manifest not found at '+p+' - run the prune-lockfile target first.');process.exit(1)}const m=JSON.parse(fs.readFileSync(p,'utf8'));m.overrides={...o,...m.overrides};fs.writeFileSync(p,JSON.stringify(m,null,2)+'\n');console.log('Carried '+Object.keys(o).length+' root override(s) into '+p)"`
+
+  return {
+    executor:  'nx:run-commands',
+    dependsOn: ['prune-lockfile', 'copy-workspace-modules'],
     options:   { command },
   }
 }
@@ -421,6 +561,7 @@ export function addNodeFunctionApp (
   ensureAdmZip(workspaceRoot)
   addNxTargets(join(nodeFunctionAppRoot, 'package.json'), {
     package: nodeFunctionAppPackageTarget(name),
+    prune:   nodeFunctionAppPruneTarget(name),
     start:   nodeFunctionAppStartTarget(name),
   })
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)

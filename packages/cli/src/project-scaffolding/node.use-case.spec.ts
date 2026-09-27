@@ -270,7 +270,7 @@ describe('runAdd node-function-app', () => {
     })
     const packageCommand = (manifest.nx.targets.package as { options: { command: string } }).options
       .command
-    expect(packageCommand).toContain('addLocalFolder(\'apps/api/dist\',\'dist\')')
+    expect(packageCommand).toContain('addLocalFolder(\'apps/api/dist\',\'dist\'')
     expect(packageCommand).toContain('addLocalFile(\'apps/api/host.json\')')
     expect(packageCommand).toContain('addLocalFile(\'apps/api/package.json\')')
     expect(packageCommand).toContain('writeZip(\'dist/drop/node-function-app-api.zip\')')
@@ -424,5 +424,166 @@ describeOnPosix("the generated pipeline's pack-apps guard, run against a real ad
 
     expect(result.stdout).toContain('No apps to pack')
     expect(result.status).toBe(0)
+  })
+})
+
+/** Seeds the tsconfig and manifest `@nx/node:application` writes, which runNx is mocked away from creating. */
+function seedNxGeneratorOutput (app: string): void {
+  const appRoot = join(workspaceRoot, 'apps', app)
+  mkdirSync(appRoot, { recursive: true })
+  writeFileSync(
+    join(appRoot, 'tsconfig.app.json'),
+    JSON.stringify({
+      extends:         '../../tsconfig.base.json',
+      compilerOptions: { outDir: 'dist', tsBuildInfoFile: 'dist/tsconfig.app.tsbuildinfo' },
+      exclude:         ['out-tsc', 'dist'],
+    }),
+  )
+  writeFileSync(
+    join(appRoot, 'package.json'),
+    JSON.stringify({
+      name: `@demo/${app}`,
+      nx:   {
+        targets: {
+          build: {
+            executor: '@nx/esbuild:esbuild',
+            options:  { outputPath: `apps/${app}/dist`, assets: [`apps/${app}/src/assets`] },
+          },
+        },
+      },
+    }),
+  )
+}
+
+describe('the generated app does not fight its own build', () => {
+  it('keeps the declaration output out of the folder the build empties', async () => {
+    // The build's outputPath IS apps/<name>/dist and the esbuild executor empties
+    // it, while Nx runs typecheck and build in parallel. Sharing the folder means
+    // the clean deletes declarations `tsc --build` just wrote and the spec project
+    // fails with TS6305 — reproduced on a real generated workspace before this fix,
+    // and passing after it.
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const tsconfig = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/tsconfig.app.json'), 'utf8'),
+    ) as { compilerOptions: { outDir: string, tsBuildInfoFile: string } }
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { build: { options: { outputPath: string } } } } }
+
+    expect(tsconfig.compilerOptions.outDir).toBe('out-tsc/app')
+    expect(tsconfig.compilerOptions.tsBuildInfoFile).toBe('out-tsc/app/tsconfig.app.tsbuildinfo')
+    // The invariant, stated directly rather than as two literals that could drift
+    // apart: these two must never name the same folder again.
+    expect(tsconfig.compilerOptions.outDir).not.toBe(manifest.nx.targets.build.options.outputPath)
+  })
+
+  it('maps assets by input/glob/output, the only form that reaches dist/assets', async () => {
+    // The generator's string form does not put the file at dist/assets — measured
+    // on a real build, it does not reach dist at all, and the generated
+    // src/assets/.gitkeep hides that until someone adds a real asset.
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { build: { options: { assets: unknown[] } } } } }
+
+    expect(manifest.nx.targets.build.options.assets).toEqual([
+      { input: 'apps/api/src/assets', glob: '**/*', output: 'assets' },
+    ])
+  })
+
+  it('carries the root overrides into the pruned manifest npm ci reads', async () => {
+    // @nx/js:prune-lockfile cuts dist/package-lock.json from the root lockfile, so
+    // the pruned lockfile has every override applied while dist/package.json has
+    // none. When an override moves a version inside the pruned tree the two
+    // disagree and `npm ci --omit=dev` refuses to install.
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { prune: { executor: string, dependsOn: string[], options: { command: string } } } } }
+    const prune = manifest.nx.targets.prune
+
+    // Nx's own prune is nx:noop over these two; only the body changes.
+    expect(prune.dependsOn).toEqual(['prune-lockfile', 'copy-workspace-modules'])
+    expect(prune.executor).toBe('nx:run-commands')
+    expect(prune.options.command).toContain('apps/api/dist/package.json')
+    expect(prune.options.command).toContain('m.overrides=')
+  })
+
+  it('excludes declarations from the deploy zip, which has no consumer for them', async () => {
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { package: { options: { command: string } } } } }
+
+    // Written with String.raw: a plain template literal silently eats the
+    // backslashes and the filter would then match nothing.
+    expect(manifest.nx.targets.package.options.command).toContain(String.raw`!/\.d\.ts(\.map)?$/.test(e)`)
+  })
+})
+
+describe('the prune command survives TypeScript, the shell and node', () => {
+  it('actually carries the overrides when executed, newline escape intact', async () => {
+    // Not a string assertion. The first version of this command was written in a
+    // plain template literal, so its `\n` became a REAL newline inside the JS
+    // one-liner - an unterminated string literal that failed at run time while
+    // reading perfectly in review. Only executing it caught that, so that is what
+    // this test does.
+    seedNxGeneratorOutput('api')
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { prune: { options: { command: string } } } } }
+    const command = manifest.nx.targets.prune.options.command
+
+    // A root manifest with an override, and the pruned manifest prune-lockfile
+    // would have written beside the lockfile - without any overrides of its own.
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: '@demo/source', overrides: { uuid: '^11.1.1' } }),
+    )
+    mkdirSync(join(workspaceRoot, 'apps/api/dist'), { recursive: true })
+    writeFileSync(
+      join(workspaceRoot, 'apps/api/dist/package.json'),
+      JSON.stringify({ name: '@demo/api', dependencies: { '@azure/functions': '^4.16.2' } }),
+    )
+
+    const result = spawnSync(command, { cwd: workspaceRoot, shell: true, encoding: 'utf8' })
+
+    expect(result.status).toBe(0)
+    const pruned = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/dist/package.json'), 'utf8'),
+    ) as { overrides?: Record<string, string>, dependencies?: Record<string, string> }
+
+    expect(pruned.overrides).toEqual({ uuid: '^11.1.1' })
+    // ...and it rewrote the manifest rather than replacing it.
+    expect(pruned.dependencies).toEqual({ '@azure/functions': '^4.16.2' })
+  })
+
+  it('says so and exits 0 when the root has no overrides at all', async () => {
+    seedNxGeneratorOutput('api')
+    await runAdd('node-function-app', 'api', {})
+    const command = (
+      JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8')) as {
+        nx: { targets: { prune: { options: { command: string } } } }
+      }
+    ).nx.targets.prune.options.command
+
+    const result = spawnSync(command, { cwd: workspaceRoot, shell: true, encoding: 'utf8' })
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('No root overrides')
   })
 })
