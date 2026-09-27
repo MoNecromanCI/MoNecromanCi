@@ -480,6 +480,23 @@ describe('the generated app does not fight its own build', () => {
     expect(tsconfig.compilerOptions.outDir).not.toBe(manifest.nx.targets.build.options.outputPath)
   })
 
+  it('maps assets by input/glob/output, the only form that reaches dist/assets', async () => {
+    // The generator's string form does not put the file at dist/assets — measured
+    // on a real build, it does not reach dist at all, and the generated
+    // src/assets/.gitkeep hides that until someone adds a real asset.
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { build: { options: { assets: unknown[] } } } } }
+
+    expect(manifest.nx.targets.build.options.assets).toEqual([
+      { input: 'apps/api/src/assets', glob: '**/*', output: 'assets' },
+    ])
+  })
+
   it('carries the root overrides into the pruned manifest npm ci reads', async () => {
     // @nx/js:prune-lockfile cuts dist/package-lock.json from the root lockfile, so
     // the pruned lockfile has every override applied while dist/package.json has

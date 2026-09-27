@@ -84,6 +84,7 @@ function runNodeApp (
   )
   const appRoot = join(workspaceRoot, 'apps', name)
   separateDeclarationOutput(appRoot)
+  repairAssetMapping(appRoot, name)
 }
 
 /**
@@ -134,6 +135,46 @@ function separateDeclarationOutput (appRoot: string): void {
       },
     }),
   )
+}
+
+/**
+ * Rewrites the generated asset mapping so assets land where the app reads them.
+ *
+ * @remarks
+ * The generator writes the **string** form, `assets: ['apps/<name>/src/assets']`.
+ * Under `@nx/esbuild` 23 that does not put the files at `dist/assets/`; measured
+ * on a real build, a file placed in `src/assets` does not reach `dist` **at
+ * all**. The generated `src/assets/.gitkeep` hides it until someone adds a real
+ * asset, and then code reading `new URL('../assets/...', import.meta.url)` from
+ * `dist/functions/*.js` simply finds nothing.
+ *
+ * The object form states input, glob and output explicitly, and with it the same
+ * file lands at `dist/assets/<file>` — verified on a generated workspace.
+ *
+ * @param appRoot - Absolute path to the generated app's directory.
+ * @param name - The app's project name, used to build the workspace-relative input.
+ * @returns Nothing.
+ * @throws Propagates any `fs`/JSON error reading or writing the manifest.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function repairAssetMapping (appRoot: string, name: string): void {
+  const manifestPath = join(appRoot, 'package.json')
+  if (!fileExists(manifestPath)) {
+    return
+  }
+  const manifest = readJson<{
+    nx?: { targets?: { build?: { options?: Record<string, unknown> } } }
+  }>(manifestPath)
+  const options = manifest.nx?.targets?.build?.options
+  if (!options || !Array.isArray(options.assets)) {
+    return
+  }
+  options.assets = options.assets.map(asset =>
+    (typeof asset === 'string'
+      ? { input: asset, glob: '**/*', output: asset.replace(`apps/${name}/src/`, '') }
+      : asset),
+  )
+  writeFileEnsured(manifestPath, toJson(manifest))
 }
 
 /**
