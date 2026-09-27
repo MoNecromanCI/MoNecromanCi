@@ -1950,11 +1950,11 @@ section('python', ['alt stack'], () => {
   // import genuinely resolves before any wheel is ever built.
   writeFileSync(
     path.join(altWorkspace, 'python-packages/pyshared/pyshared/greeting.py'),
-    'from pycore import hello as core_hello\n\n\ndef build_greeting():\n    return "Hello pyshared uses " + core_hello()\n',
+    'from pycore import hello as core_hello\n\n\ndef build_greeting() -> str:\n    return "Hello pyshared uses " + core_hello()\n',
   )
   writeFileSync(
     path.join(altWorkspace, 'python-packages/pyshared/tests/test_greeting.py'),
-    'from pyshared.greeting import build_greeting\n\n\ndef test_build_greeting():\n    assert build_greeting() == "Hello pyshared uses hello from pycore"\n',
+    'from pyshared.greeting import build_greeting\n\n\ndef test_build_greeting() -> None:\n    assert build_greeting() == "Hello pyshared uses hello from pycore"\n',
   )
 
   console.log('\n▸ wiring pysvc (packed) -> a real external PyPI dependency (tomli)')
@@ -1968,11 +1968,11 @@ section('python', ['alt stack'], () => {
   // makes it importable locally — this one keeps its test file.
   writeFileSync(
     path.join(altWorkspace, 'apps/pysvc/pysvc/greeting.py'),
-    'import tomli\n\n\ndef build_greeting():\n    return "Hello pysvc uses tomli " + tomli.__version__\n',
+    'import tomli\n\n\ndef build_greeting() -> str:\n    return "Hello pysvc uses tomli " + tomli.__version__\n',
   )
   writeFileSync(
     path.join(altWorkspace, 'apps/pysvc/tests/test_greeting.py'),
-    'from pysvc.greeting import build_greeting\n\n\ndef test_build_greeting():\n    assert build_greeting().startswith("Hello pysvc uses tomli ")\n',
+    'from pysvc.greeting import build_greeting\n\n\ndef test_build_greeting() -> None:\n    assert build_greeting().startswith("Hello pysvc uses tomli ")\n',
   )
 
   /* ---------------------------------------------------------------------------
