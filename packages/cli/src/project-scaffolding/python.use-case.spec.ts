@@ -402,3 +402,40 @@ describe('runAdd python-vendor', () => {
     )
   })
 })
+
+describe('the Python bytecode ignores reach a workspace that gained Python via add', () => {
+  it('appends them after the add that creates the first Python project', async () => {
+    // The gap this closes: `ensurePythonArtefactsIgnored` is conditional on a
+    // Python project existing, and it used to run ONLY from `applyOverlay` —
+    // i.e. at `mnci new`, when no Python project exists yet, and at
+    // `mnci upgrade`. So a workspace that gained its first Python project
+    // through `mnci add` never got the lines, and the first `git add -A` after
+    // running that project's targets committed its `__pycache__/`. The e2e's
+    // generic "everything a build writes must be ignored" assertion caught it:
+    // apps/pyfunc/pyfunc/__pycache__/greeting.cpython-312.pyc.
+    writeFileSync(join(workspaceRoot, '.gitignore'), 'node_modules\ndist\n')
+    // The generator is mocked, so stand in for the pyproject.toml it writes —
+    // that file is what makes the workspace "has Python" to the guard.
+    mkdirSync(join(workspaceRoot, 'apps/pysvc'), { recursive: true })
+    writeFileSync(join(workspaceRoot, 'apps/pysvc/pyproject.toml'), '[project]\nname = "pysvc"\n')
+
+    await runAdd('python-app', 'pysvc', {})
+
+    const gitignore = readFileSync(join(workspaceRoot, '.gitignore'), 'utf8')
+    expect(gitignore).toContain('__pycache__/')
+    expect(gitignore).toContain('*.py[cod]')
+    // Appended, never replacing what was already there.
+    expect(gitignore).toContain('node_modules')
+    expect(gitignore).toContain('dist')
+  })
+
+  it('leaves a JavaScript-only workspace alone', async () => {
+    // The conditional is correct and stays: a workspace with no Python project
+    // has no business carrying ignores for a language it does not use.
+    writeFileSync(join(workspaceRoot, '.gitignore'), 'node_modules\ndist\n')
+
+    await runAdd('node-app', 'svc', {})
+
+    expect(readFileSync(join(workspaceRoot, '.gitignore'), 'utf8')).not.toContain('__pycache__')
+  })
+})

@@ -575,6 +575,15 @@ describe('the prune command survives TypeScript, the shell and node', () => {
   it('says so and exits 0 when the root has no overrides at all', async () => {
     seedNxGeneratorOutput('api')
     await runAdd('node-function-app', 'api', {})
+    // Stripped deliberately, because a workspace mnci generated always HAS
+    // overrides: the overlay writes ESLINT_PEER_OVERRIDES, SECURITY_OVERRIDES
+    // and NX_PEER_OVERRIDES unconditionally. The branch is still worth pinning
+    // — a hand-edited manifest can reach it, and the command must report and
+    // exit 0 rather than crash.
+    const rootPath = join(workspaceRoot, 'package.json')
+    const root = JSON.parse(readFileSync(rootPath, 'utf8')) as Record<string, unknown>
+    delete root.overrides
+    writeFileSync(rootPath, JSON.stringify(root))
     const command = (
       JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8')) as {
         nx: { targets: { prune: { options: { command: string } } } }
@@ -585,5 +594,57 @@ describe('the prune command survives TypeScript, the shell and node', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('No root overrides')
+  })
+})
+
+describe('the @nx/react express peer override lands before any generator installs', () => {
+  it('is on disk by the time the FIRST runNx call happens', async () => {
+    // The whole point of the fix, and the reason it is asserted on ordering
+    // rather than on the final manifest. `nx g @nx/node:application
+    // --framework=express` adds express to the root manifest AND runs
+    // `npm install` in the same invocation, so the ERESOLVE against
+    // @nx/react's stale `express@^4.21.2` optional peer fires INSIDE that
+    // generator. An override written afterwards — which is what mnci did — is
+    // always too late, and the old code's comment claimed it was only the
+    // *next* add that would fail.
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: '@demo/source', devDependencies: { '@nx/react': '^23.2.1' } }),
+    )
+
+    const overridesAtEachCall: (unknown | undefined)[] = []
+    mockRunNx.mockImplementation(() => {
+      const manifest = JSON.parse(
+        readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
+      ) as { overrides?: Record<string, unknown> }
+      overridesAtEachCall.push(manifest.overrides?.['@nx/react'])
+    })
+
+    await runAdd('node-app', 'svc', { framework: 'express' })
+
+    expect(overridesAtEachCall.length).toBeGreaterThan(0)
+    // Every call, including the very first — not just the last one.
+    for (const seen of overridesAtEachCall) {
+      expect(seen).toEqual({ express: '>=4.0.0 <6.0.0' })
+    }
+  })
+
+  it('merges into a workspace\'s own overrides rather than replacing them', async () => {
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({
+        name:            '@demo/source',
+        devDependencies: {},
+        overrides:       { 'some-dep': '^1.2.3' },
+      }),
+    )
+
+    await runAdd('node-app', 'svc', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
+    ) as { overrides: Record<string, unknown> }
+    expect(manifest.overrides['some-dep']).toBe('^1.2.3')
+    expect(manifest.overrides['@nx/react']).toEqual({ express: '>=4.0.0 <6.0.0' })
   })
 })

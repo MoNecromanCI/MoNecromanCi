@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { dependabotConfig, reactExpressPeerOverride } from '../workspace-overlay'
+import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored } from '../workspace-overlay'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 
@@ -527,6 +527,43 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
 }
 
 /**
+ * Writes the `@nx/*` peer overrides into the root manifest before any generator runs.
+ *
+ * @remarks
+ * Called at the top of every `mnci add`, before the switch that invokes a
+ * generator, because the generators install as they scaffold: the express node
+ * app's generator adds express to the root manifest and runs `npm install` in
+ * one invocation, and adding the React plugin installs it into a workspace that
+ * may already have express. Either one is the install that hits the stale
+ * express peer, so the override has to be on disk first — writing it afterwards,
+ * as mnci used to, is always too late.
+ *
+ * This is what makes `mnci add` work on a workspace generated before the fix,
+ * without making the user run `mnci upgrade` first. Merged, never replaced, so a
+ * workspace's own overrides survive. Idempotent: re-running writes the same
+ * bytes, and the manifest is left untouched when nothing would change, so an
+ * `add` that needs no override does not dirty the file.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns Nothing.
+ * @throws Propagates any `fs`/JSON error reading or writing the manifest.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function ensureNxPeerOverrides (workspaceRoot: string): void {
+  const manifestPath = join(workspaceRoot, 'package.json')
+  if (!existsSync(manifestPath)) {
+    return
+  }
+  const manifest = readJson<Record<string, unknown>>(manifestPath)
+  const existing = (manifest.overrides as Record<string, unknown> | undefined) ?? {}
+  const overrides = { ...existing, ...NX_PEER_OVERRIDES }
+  if (JSON.stringify(existing) === JSON.stringify(overrides)) {
+    return
+  }
+  writeFileEnsured(manifestPath, toJson({ ...manifest, overrides }))
+}
+
+/**
  * Registers a newly added project's local-dev commands: root `package.json`
  * scripts, and matching VS Code tasks in the workspace's `.code-workspace` file.
  *
@@ -561,6 +598,15 @@ export function registerProjectCommands (
   // Every `add` kind ends here, which makes this the one place the scaffold
   // `.gitkeep` files can be swept without wiring 30 call sites.
   removeStaleGitkeeps(workspaceRoot)
+  // Same reason, and it has to be here rather than only in `applyOverlay`:
+  // `ensurePythonArtefactsIgnored` is conditional on a Python project existing,
+  // and at `mnci new` — the only other time the overlay runs — none does yet.
+  // So a workspace that gained its first Python project through `mnci add` never
+  // got the bytecode ignores, and the first `git add -A` after running that
+  // project's targets committed its `__pycache__/`. Re-evaluated after every add
+  // because this add may be the one that created the first Python project.
+  // Idempotent, and a no-op for a workspace that has none.
+  ensurePythonArtefactsIgnored(workspaceRoot)
   const scripts: Record<string, string> = {
     [`${name}:qa`]: `nx run ${name}:lint && nx run ${name}:test`,
   }
@@ -583,22 +629,15 @@ export function registerProjectCommands (
   const manifestPath = join(workspaceRoot, 'package.json')
   const manifest = readJson<Record<string, unknown>>(manifestPath)
   const existingScripts = (manifest.scripts as Record<string, string> | undefined) ?? {}
-  // Synced on EVERY add, not only the express one, because the override depends
-  // on the manifest's state rather than on which generator just ran — and this
-  // runs after that generator has written its dependencies. `mnci add node-app
-  // --framework express` is what introduces express, and the very next add would
-  // otherwise be the one that fails. See reactExpressPeerOverride for why it is
-  // conditional and why an unconditional form is worse than the bug.
-  const overrides = {
-    ...(manifest.overrides as Record<string, unknown> | undefined),
-    ...reactExpressPeerOverride(manifest),
-  }
+  // No override sync here any more: NX_PEER_OVERRIDES is static and
+  // `ensureNxPeerOverrides` writes it BEFORE the generator runs, which is the
+  // only moment early enough to matter. Spreading `manifest` carries whatever
+  // overrides the workspace already has.
   writeFileEnsured(
     manifestPath,
     toJson({
       ...manifest,
       scripts: { ...existingScripts, ...scripts },
-      ...((Object.keys(overrides).length > 0) && { overrides }),
     }),
   )
 
