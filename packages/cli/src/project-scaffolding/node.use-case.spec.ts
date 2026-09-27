@@ -270,7 +270,7 @@ describe('runAdd node-function-app', () => {
     })
     const packageCommand = (manifest.nx.targets.package as { options: { command: string } }).options
       .command
-    expect(packageCommand).toContain('addLocalFolder(\'apps/api/dist\',\'dist\')')
+    expect(packageCommand).toContain('addLocalFolder(\'apps/api/dist\',\'dist\'')
     expect(packageCommand).toContain('addLocalFile(\'apps/api/host.json\')')
     expect(packageCommand).toContain('addLocalFile(\'apps/api/package.json\')')
     expect(packageCommand).toContain('writeZip(\'dist/drop/node-function-app-api.zip\')')
@@ -518,6 +518,19 @@ describe('the generated app does not fight its own build', () => {
     expect(prune.options.command).toContain('m.overrides=')
   })
 
+  it('excludes declarations from the deploy zip, which has no consumer for them', async () => {
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { package: { options: { command: string } } } } }
+
+    // Written with String.raw: a plain template literal silently eats the
+    // backslashes and the filter would then match nothing.
+    expect(manifest.nx.targets.package.options.command).toContain(String.raw`!/\.d\.ts(\.map)?$/.test(e)`)
+  })
 })
 
 describe('the prune command survives TypeScript, the shell and node', () => {

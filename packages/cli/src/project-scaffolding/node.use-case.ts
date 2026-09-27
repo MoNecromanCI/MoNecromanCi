@@ -431,7 +431,14 @@ function repairNodeFunctionAppManifest (nodeFunctionAppRoot: string, workspaceRo
  */
 function nodeFunctionAppPackageTarget (name: string): Record<string, unknown> {
   const zip = `dist/drop/node-function-app-${name}.zip`
-  const command = `node -e "const fs=require('node:fs');fs.mkdirSync('dist/drop',{recursive:true});const A=require('adm-zip');const z=new A();z.addLocalFolder('apps/${name}/dist','dist');z.addLocalFile('apps/${name}/host.json');z.addLocalFile('apps/${name}/package.json');z.writeZip('${zip}')"`
+  const root = `apps/${name}`
+  // The third argument to addLocalFolder is a filter; declarations are dropped
+  // here rather than at build time. `declaration: false` on the esbuild target
+  // is not available: it collides with the `composite`/`declarationMap` the
+  // workspace's own `typecheck` needs, and the build then dies on TS5069
+  // (measured, both alone and with declarationMap turned off beside it). An app
+  // has no consumers for declarations, so the deploy artifact simply omits them.
+  const command = String.raw`node -e "const fs=require('node:fs');fs.mkdirSync('dist/drop',{recursive:true});const A=require('adm-zip');const z=new A();z.addLocalFolder('${root}/dist','dist',(e)=>!/\.d\.ts(\.map)?$/.test(e));z.addLocalFile('${root}/host.json');z.addLocalFile('${root}/package.json');z.writeZip('${zip}')"`
 
   return {
     executor:  'nx:run-commands',
