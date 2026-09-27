@@ -480,5 +480,80 @@ describe('the generated app does not fight its own build', () => {
     expect(tsconfig.compilerOptions.outDir).not.toBe(manifest.nx.targets.build.options.outputPath)
   })
 
+  it('carries the root overrides into the pruned manifest npm ci reads', async () => {
+    // @nx/js:prune-lockfile cuts dist/package-lock.json from the root lockfile, so
+    // the pruned lockfile has every override applied while dist/package.json has
+    // none. When an override moves a version inside the pruned tree the two
+    // disagree and `npm ci --omit=dev` refuses to install.
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { prune: { executor: string, dependsOn: string[], options: { command: string } } } } }
+    const prune = manifest.nx.targets.prune
+
+    // Nx's own prune is nx:noop over these two; only the body changes.
+    expect(prune.dependsOn).toEqual(['prune-lockfile', 'copy-workspace-modules'])
+    expect(prune.executor).toBe('nx:run-commands')
+    expect(prune.options.command).toContain('apps/api/dist/package.json')
+    expect(prune.options.command).toContain('m.overrides=')
+  })
+
 })
 
+describe('the prune command survives TypeScript, the shell and node', () => {
+  it('actually carries the overrides when executed, newline escape intact', async () => {
+    // Not a string assertion. The first version of this command was written in a
+    // plain template literal, so its `\n` became a REAL newline inside the JS
+    // one-liner - an unterminated string literal that failed at run time while
+    // reading perfectly in review. Only executing it caught that, so that is what
+    // this test does.
+    seedNxGeneratorOutput('api')
+    await runAdd('node-function-app', 'api', {})
+
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { prune: { options: { command: string } } } } }
+    const command = manifest.nx.targets.prune.options.command
+
+    // A root manifest with an override, and the pruned manifest prune-lockfile
+    // would have written beside the lockfile - without any overrides of its own.
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: '@demo/source', overrides: { uuid: '^11.1.1' } }),
+    )
+    mkdirSync(join(workspaceRoot, 'apps/api/dist'), { recursive: true })
+    writeFileSync(
+      join(workspaceRoot, 'apps/api/dist/package.json'),
+      JSON.stringify({ name: '@demo/api', dependencies: { '@azure/functions': '^4.16.2' } }),
+    )
+
+    const result = spawnSync(command, { cwd: workspaceRoot, shell: true, encoding: 'utf8' })
+
+    expect(result.status).toBe(0)
+    const pruned = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/dist/package.json'), 'utf8'),
+    ) as { overrides?: Record<string, string>, dependencies?: Record<string, string> }
+
+    expect(pruned.overrides).toEqual({ uuid: '^11.1.1' })
+    // ...and it rewrote the manifest rather than replacing it.
+    expect(pruned.dependencies).toEqual({ '@azure/functions': '^4.16.2' })
+  })
+
+  it('says so and exits 0 when the root has no overrides at all', async () => {
+    seedNxGeneratorOutput('api')
+    await runAdd('node-function-app', 'api', {})
+    const command = (
+      JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8')) as {
+        nx: { targets: { prune: { options: { command: string } } } }
+      }
+    ).nx.targets.prune.options.command
+
+    const result = spawnSync(command, { cwd: workspaceRoot, shell: true, encoding: 'utf8' })
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('No root overrides')
+  })
+})

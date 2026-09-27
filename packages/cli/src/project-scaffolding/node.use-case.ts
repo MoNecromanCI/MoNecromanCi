@@ -401,6 +401,47 @@ function nodeFunctionAppPackageTarget (name: string): Record<string, unknown> {
 }
 
 /**
+ * Replaces Nx's no-op `prune` with one that carries the root `overrides` across.
+ *
+ * @remarks
+ * `@nx/js:prune-lockfile` cuts `dist/package-lock.json` from the root lockfile,
+ * so the pruned lockfile already has every `overrides` entry applied — while the
+ * `dist/package.json` written beside it has no `overrides` key at all. When an
+ * override changes the version of a package **inside the pruned tree**, the two
+ * disagree and the container build's `npm ci --omit=dev` refuses:
+ * it reports that the manifest and the lock file are not in sync, naming the
+ * package whose version the override moved as missing from the lock file.
+ *
+ * Conditional, not universal: an override that misses the app's runtime tree
+ * changes nothing, which is why a generated workspace's own SECURITY_OVERRIDES
+ * (dev tooling — brace-expansion, smol-toml, nanoid) do not trigger it and a
+ * plain `npm ci` in `dist` succeeds. It bites the moment a workspace pins
+ * something the app actually ships.
+ *
+ * Copying every root entry rather than only the intersecting ones is deliberate:
+ * npm accepts `overrides` naming packages absent from the tree, and computing
+ * the intersection here would need the resolved tree this step does not have.
+ *
+ * Nx's own `prune` is `nx:noop` over `prune-lockfile` + `copy-workspace-modules`,
+ * so the same `dependsOn` is kept and only the body changes.
+ *
+ * @param name - The app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function nodeFunctionAppPruneTarget (name: string): Record<string, unknown> {
+  const pruned = `apps/${name}/dist/package.json`
+  const command = String.raw`node -e "const fs=require('node:fs');const root=JSON.parse(fs.readFileSync('package.json','utf8'));const o=root.overrides;if(!o||Object.keys(o).length===0){console.log('No root overrides - nothing to carry into the pruned manifest.');process.exit(0)}const p='${pruned}';if(!fs.existsSync(p)){console.error('Pruned manifest not found at '+p+' - run the prune-lockfile target first.');process.exit(1)}const m=JSON.parse(fs.readFileSync(p,'utf8'));m.overrides={...o,...m.overrides};fs.writeFileSync(p,JSON.stringify(m,null,2)+'\n');console.log('Carried '+Object.keys(o).length+' root override(s) into '+p)"`
+
+  return {
+    executor:  'nx:run-commands',
+    dependsOn: ['prune-lockfile', 'copy-workspace-modules'],
+    options:   { command },
+  }
+}
+
+/**
  * The `start` target for a Node Azure Function: `func start`, locally.
  *
  * @remarks
@@ -472,6 +513,7 @@ export function addNodeFunctionApp (
   ensureAdmZip(workspaceRoot)
   addNxTargets(join(nodeFunctionAppRoot, 'package.json'), {
     package: nodeFunctionAppPackageTarget(name),
+    prune:   nodeFunctionAppPruneTarget(name),
     start:   nodeFunctionAppStartTarget(name),
   })
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
