@@ -426,3 +426,59 @@ describeOnPosix("the generated pipeline's pack-apps guard, run against a real ad
     expect(result.status).toBe(0)
   })
 })
+
+/** Seeds the tsconfig and manifest `@nx/node:application` writes, which runNx is mocked away from creating. */
+function seedNxGeneratorOutput (app: string): void {
+  const appRoot = join(workspaceRoot, 'apps', app)
+  mkdirSync(appRoot, { recursive: true })
+  writeFileSync(
+    join(appRoot, 'tsconfig.app.json'),
+    JSON.stringify({
+      extends:         '../../tsconfig.base.json',
+      compilerOptions: { outDir: 'dist', tsBuildInfoFile: 'dist/tsconfig.app.tsbuildinfo' },
+      exclude:         ['out-tsc', 'dist'],
+    }),
+  )
+  writeFileSync(
+    join(appRoot, 'package.json'),
+    JSON.stringify({
+      name: `@demo/${app}`,
+      nx:   {
+        targets: {
+          build: {
+            executor: '@nx/esbuild:esbuild',
+            options:  { outputPath: `apps/${app}/dist`, assets: [`apps/${app}/src/assets`] },
+          },
+        },
+      },
+    }),
+  )
+}
+
+describe('the generated app does not fight its own build', () => {
+  it('keeps the declaration output out of the folder the build empties', async () => {
+    // The build's outputPath IS apps/<name>/dist and the esbuild executor empties
+    // it, while Nx runs typecheck and build in parallel. Sharing the folder means
+    // the clean deletes declarations `tsc --build` just wrote and the spec project
+    // fails with TS6305 — reproduced on a real generated workspace before this fix,
+    // and passing after it.
+    seedNxGeneratorOutput('api')
+
+    await runAdd('node-function-app', 'api', {})
+
+    const tsconfig = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/tsconfig.app.json'), 'utf8'),
+    ) as { compilerOptions: { outDir: string, tsBuildInfoFile: string } }
+    const manifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8'),
+    ) as { nx: { targets: { build: { options: { outputPath: string } } } } }
+
+    expect(tsconfig.compilerOptions.outDir).toBe('out-tsc/app')
+    expect(tsconfig.compilerOptions.tsBuildInfoFile).toBe('out-tsc/app/tsconfig.app.tsbuildinfo')
+    // The invariant, stated directly rather than as two literals that could drift
+    // apart: these two must never name the same folder again.
+    expect(tsconfig.compilerOptions.outDir).not.toBe(manifest.nx.targets.build.options.outputPath)
+  })
+
+})
+
