@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { NX_PEER_OVERRIDES, dependabotConfig } from '../workspace-overlay'
+import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored } from '../workspace-overlay'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 
@@ -598,6 +598,15 @@ export function registerProjectCommands (
   // Every `add` kind ends here, which makes this the one place the scaffold
   // `.gitkeep` files can be swept without wiring 30 call sites.
   removeStaleGitkeeps(workspaceRoot)
+  // Same reason, and it has to be here rather than only in `applyOverlay`:
+  // `ensurePythonArtefactsIgnored` is conditional on a Python project existing,
+  // and at `mnci new` — the only other time the overlay runs — none does yet.
+  // So a workspace that gained its first Python project through `mnci add` never
+  // got the bytecode ignores, and the first `git add -A` after running that
+  // project's targets committed its `__pycache__/`. Re-evaluated after every add
+  // because this add may be the one that created the first Python project.
+  // Idempotent, and a no-op for a workspace that has none.
+  ensurePythonArtefactsIgnored(workspaceRoot)
   const scripts: Record<string, string> = {
     [`${name}:qa`]: `nx run ${name}:lint && nx run ${name}:test`,
   }
