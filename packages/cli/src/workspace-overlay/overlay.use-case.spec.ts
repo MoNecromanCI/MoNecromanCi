@@ -527,9 +527,52 @@ describe('withReleaseConfig', () => {
         // Releasing packages must not require building apps; both globs listed
         // (nx run-many no-ops on an empty one).
         preVersionCommand:              'npx nx run-many -t build --projects=packages/*,python-packages/*',
+        // The first release of two NEW interdependent packages 404s without
+        // this: @nx/js resyncs package-lock.json against the registry after
+        // versioning, and one of the two packages does not exist there yet.
+        versionActionsOptions:          { skipLockFileUpdate: true },
       },
       changelog: { workspaceChangelog: false },
     })
+  })
+
+  it('skips the lock file resync, which cannot succeed on the release that needs it', () => {
+    // Reported as a `preVersionCommand` problem; it is not. mnci overrides
+    // `preVersionCommand` with a build, and the resync comes from `@nx/js`'s
+    // `afterAllProjectsVersioned` hook, which shells `npm install
+    // --package-lock-only` AFTER every project is versioned. That resolves the
+    // whole tree against the registry, so the first release of two new
+    // interdependent packages 404s: A depends on B at the version this run is
+    // about to publish, and B is not on the registry yet.
+    //
+    // Asserted for every CI provider, because the failure has nothing to do
+    // with which pipeline runs it.
+    for (const ci of ['github', 'azure', 'both'] as const) {
+      const version = (withReleaseConfig({ $schema: 'x' }, ci).release as {
+        version: { versionActionsOptions?: { skipLockFileUpdate?: boolean } }
+      }).version
+      expect(version.versionActionsOptions).toEqual({ skipLockFileUpdate: true })
+    }
+  })
+
+  it('adds the lock file skip to a workspace generated before the fix', () => {
+    // The path that matters for existing repos: they already carry a `release`
+    // block with a `version` object, and `mnci upgrade` has to reach INSIDE it
+    // rather than leaving the old object alone. Their own keys must survive.
+    const existing = {
+      $schema: 'x',
+      release: {
+        projectsRelationship: 'independent',
+        version:              { conventionalCommits: true, somethingTheyAdded: 42 },
+      },
+    }
+
+    const version = (withReleaseConfig(existing, 'github').release as {
+      version: Record<string, unknown>
+    }).version
+
+    expect(version.versionActionsOptions).toEqual({ skipLockFileUpdate: true })
+    expect(version.somethingTheyAdded).toBe(42)
   })
 
   it('does the same for both (GitHub Releases are not safe to assume when Azure Pipelines might be the one that runs)', () => {

@@ -487,6 +487,29 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
       // absent (it spreads the existing release.version over its default). Both
       // globs are listed; `nx run-many` no-ops cleanly when one matches nothing.
       preVersionCommand:              'npx nx run-many -t build --projects=packages/*,python-packages/*',
+      // The lock file resync is OFF, and the reason is that it cannot succeed
+      // on the one release where it would matter.
+      //
+      // It is not `preVersionCommand` that does this, despite the name it gets
+      // reported under: `@nx/js`'s `afterAllProjectsVersioned` hook shells
+      // `npm install --package-lock-only` once every project has been versioned.
+      // That command resolves the whole tree against the registry, so the first
+      // release of two NEW interdependent packages 404s — package A declares a
+      // dependency on package B at the version this very run is about to
+      // publish, and B does not exist on the registry yet. Measured on a real
+      // workspace releasing `@scope/cli` and `@scope/studio` together.
+      //
+      // Turning it off costs nothing here, because mnci releases are tag-only:
+      // `git.commit` is `false`, so the refreshed lock file is written into an
+      // ephemeral CI checkout and then thrown away without ever being committed.
+      // It was never protecting anything. That it goes stale is not a new
+      // condition either — every manifest on disk is already stale by design for
+      // exactly the same reason, which is why `fallbackCurrentVersionResolver`
+      // is `'disk'` and why a tagless clone makes a dry run silently wrong.
+      //
+      // A workspace that DOES want the lock file refreshed should commit the
+      // bump too (`git.commit: true`), at which point this can be dropped.
+      versionActionsOptions:          { skipLockFileUpdate: true },
     },
     changelog: githubReleases
       ? {
