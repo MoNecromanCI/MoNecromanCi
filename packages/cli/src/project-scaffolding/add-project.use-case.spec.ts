@@ -115,6 +115,25 @@ describe('runAdd', () => {
     expect(manifest.private).toBe(true)
   })
 
+  it('renames internal-lib\'s placeholder too, since it is the same @nx/js:lib scaffold', async () => {
+    // Same generator, same bare `src/lib/<name>.ts`, so the same
+    // vertical-slices/file-role rejection. Covered separately because the call
+    // site is its own line in the switch, not shared with npm-lib's.
+    mkdirSync(join(workspaceRoot, 'libs/utils/src/lib'), { recursive: true })
+    writeFileSync(
+      join(workspaceRoot, 'libs/utils/package.json'),
+      JSON.stringify({ name: '@demo/utils' }),
+    )
+    writeFileSync(join(workspaceRoot, 'libs/utils/src/lib/utils.ts'), 'export const x = 1\n')
+    writeFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), "export * from './lib/utils'\n")
+
+    await runAdd('internal-lib', 'utils', {})
+
+    expect(existsSync(join(workspaceRoot, 'libs/utils/src/lib/utils.use-case.ts'))).toBe(true)
+    expect(readFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), 'utf8'))
+      .toContain("'./lib/utils.use-case'")
+  })
+
   it('prompts for the kind and name when omitted', async () => {
     mockSelect.mockResolvedValue('react-app')
     mockPromptText.mockResolvedValue('shop')

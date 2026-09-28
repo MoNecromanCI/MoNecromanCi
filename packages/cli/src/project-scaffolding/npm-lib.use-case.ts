@@ -7,6 +7,7 @@ import {
   markPublic,
   registerProjectCommands,
   removeGeneratedEslintConfig,
+  renameScaffoldPlaceholder,
   runGeneratorAndRepair,
   writeProjectReadme,
   type AddOptions,
@@ -91,6 +92,9 @@ export async function addNpmLib (
       // per-project config is deleted rather than overwritten.
       // Nx writes a README crediting itself; mnci generated this project.
       writeProjectReadme(projectRoot, `${scope}/${name}`, stack.testRunner)
+      // @nx/js:lib's `src/lib/<name>.ts` has no role suffix, so mnci's own
+      // vertical-slices/file-role rule rejects it on the first lint.
+      renameScaffoldPlaceholder(projectRoot, name)
       removeGeneratedEslintConfig(workspaceRoot, `packages/${name}`)
       // `--publishable` also scaffolds a whole local-registry story (verdaccio
       // config, devDependency, root target) that mnci's tag-only release model

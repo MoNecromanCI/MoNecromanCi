@@ -1676,3 +1676,66 @@ template `@mnci/nx-python-pip` generates is annotated. The e2e then hand-writes
 annotations, and `mypy --strict` (which mnci configures) rightly rejects them:
 3 errors per project, `no-untyped-def` and `no-untyped-call`. The four fixtures
 are annotated now, which makes the assertion test what it claims to.
+
+### 34. Two defects reported against a real workspace — ✅ done
+
+**mnci's own lint config rejected mnci's own generator output.** `mnci add npm-lib
+<name>` scaffolds `src/lib/<name>.ts` — a bare name with no role suffix — and
+`vertical-slices/file-role`, which ships in `@mnci/eslint-config`, rejects it on
+the first lint:
+
+```
+A production file ends in its role - .handler .use-case .algorithm ... -
+so "studio.ts" says what it is    vertical-slices/file-role
+```
+
+Reproducible every time, not a one-off; it hit two packages in the same project.
+Measured on a freshly generated workspace with the slice rules on: `eslint`
+reports 14 problems on a new `npm-lib`, 13 of them stylistic and `--fix`-able.
+That last one cannot be auto-fixed, because the only fix is a rename.
+
+`renameScaffoldPlaceholder()` renames it to `<name>.use-case.ts` and repoints
+both the spec and the barrel's re-export, so the scaffold still builds and its
+sample test still runs. `use-case` is the generic role for a library's public
+behaviour, which is what the placeholder stands in for. Applied to `npm-lib` and
+`internal-lib` — the two `@nx/js:lib` kinds. After the fix a freshly generated
+`npm-lib` lints clean, exit 0.
+
+**Unconditional, deliberately.** Gating it on the rule being active would mean
+parsing the workspace's own `eslint.config.mjs` — user-owned arbitrary
+JavaScript — and mnci has now shipped two correct conditionals that could never
+fire (see #33). A role-suffixed placeholder costs nothing when the rule is off,
+and the scaffold then demonstrates the convention by example.
+
+`react-lib` is **not** covered, and that is a decision rather than an oversight:
+`@nx/react:library` scaffolds a component, `component` is not one of the shipped
+roles, and renaming it to `use-case` would make the name lie. A workspace linting
+React with these rules passes `roles: ['component']` itself. Adding `component`
+to the default `ROLES` would change the shipped config for everyone, which is a
+bigger call than this bug.
+
+**The release lock-file resync cannot succeed on the one release that needs it.**
+Reported against `preVersionCommand`; it is not that. mnci overrides
+`preVersionCommand` with a build, and the resync comes from `@nx/js`'s
+`afterAllProjectsVersioned` hook (`release/version-actions.js` → `updateLockFile`),
+which shells the package manager's lock-file update **after** every project has
+been versioned. That resolves the tree against the registry.
+
+Reproduced the mechanism minimally: a workspace package depending on a sibling
+workspace package at a version the sibling is not at falls through to the
+registry and 404s —
+`npm error 404 Not Found - GET https://registry.npmjs.org/@scope%2fb`. Note that
+with the version matching, npm links locally and there is no 404; and with
+`optionalDependencies` the mismatch did **not** 404 in that minimal lab, so the
+reporter's exact trigger is not fully reproduced even though the mechanism is.
+
+`release.version.versionActionsOptions.skipLockFileUpdate: true` is now the
+default (the path is Nx's own, from its v21 migration notes). It costs nothing
+here: `git.commit` is `false`, so the refreshed lock file is written into an
+ephemeral CI checkout and thrown away without ever being committed — it was
+never protecting anything. Its going stale is not a new condition either, since
+every manifest on disk is already stale by design, which is why
+`fallbackCurrentVersionResolver` is `'disk'`. A workspace that does want the lock
+file refreshed should commit the bump too, at which point this can be dropped.
+`mnci upgrade` reaches inside an existing `release.version` object to add it, and
+mnci's own `nx.json` carried the same gap and now has the fix.

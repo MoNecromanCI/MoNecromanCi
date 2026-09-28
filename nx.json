@@ -79,7 +79,10 @@
     "version": {
       "preVersionCommand": "npx nx run-many -t build --projects=packages/*,python-packages/*",
       "conventionalCommits": true,
-      "fallbackCurrentVersionResolver": "disk"
+      "fallbackCurrentVersionResolver": "disk",
+      "versionActionsOptions": {
+        "skipLockFileUpdate": true
+      }
     },
     "changelog": {
       "workspaceChangelog": false
