@@ -427,3 +427,67 @@ describe('runAdd npm-lib', () => {
     expect(existsSync(join(workspaceRoot, 'packages/sdk'))).toBe(false)
   })
 })
+
+// Exactly what @nx/js:lib writes: a bare-named placeholder in src/lib, a spec
+// beside it, and a barrel re-exporting it.
+const seedGeneratedSource = (): void => {
+  mkdirSync(join(workspaceRoot, 'packages/sdk/src/lib'), { recursive: true })
+  writeFileSync(
+    join(workspaceRoot, 'packages/sdk/src/lib/sdk.ts'),
+    "export function sdk(): string {\n  return 'sdk';\n}\n",
+  )
+  writeFileSync(
+    join(workspaceRoot, 'packages/sdk/src/lib/sdk.spec.ts'),
+    "import { sdk } from './sdk';\n\ndescribe('sdk', () => {\n  it('works', () => {\n" +
+      "    expect(sdk()).toEqual('sdk');\n  });\n});\n",
+  )
+  writeFileSync(join(workspaceRoot, 'packages/sdk/src/index.ts'), "export * from './lib/sdk';\n")
+}
+
+describe('the scaffold passes mnci\'s own vertical-slice rule', () => {
+  // The install-failure tests above leave a throwing implementation on the
+  // module mock, and `restoreAllMocks` only restores `jest.spyOn` spies — so
+  // reset it here rather than inheriting a failure these tests never asked for.
+  beforeEach(() => {
+    mockRunNx.mockReset()
+  })
+
+  it('renames the placeholder to a name file-role accepts', async () => {
+    // mnci's own @mnci/eslint-config rejects the generator's own output:
+    //   A production file ends in its role - .handler .use-case .algorithm ...
+    //   - so "sdk.ts" says what it is   vertical-slices/file-role
+    // Measured on a freshly generated workspace with the slice rules on: 14
+    // problems, 13 of them stylistic and auto-fixable. This one is not — the
+    // only fix is a rename.
+    seedGeneratedManifest()
+    seedGeneratedSource()
+
+    await runAdd('npm-lib', 'sdk', {})
+
+    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.use-case.ts'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.ts'))).toBe(false)
+  })
+
+  it('repoints the barrel and the spec, so the package still has an entry point', async () => {
+    // The rename is only half of it: leave the re-export alone and the package
+    // has no entry point at all, which the build would catch but only later.
+    seedGeneratedManifest()
+    seedGeneratedSource()
+
+    await runAdd('npm-lib', 'sdk', {})
+
+    expect(readFileSync(join(workspaceRoot, 'packages/sdk/src/index.ts'), 'utf8'))
+      .toContain("'./lib/sdk.use-case'")
+    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.use-case.spec.ts'))).toBe(true)
+    expect(readFileSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.use-case.spec.ts'), 'utf8'))
+      .toContain("'./sdk.use-case'")
+  })
+
+  it('is a no-op when the generator wrote no placeholder', async () => {
+    // Guards the mocked-generator path and a re-run against an already-renamed
+    // project: neither should throw.
+    seedGeneratedManifest()
+
+    await expect(runAdd('npm-lib', 'sdk', {})).resolves.not.toThrow()
+  })
+})

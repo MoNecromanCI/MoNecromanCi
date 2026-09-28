@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored } from '../workspace-overlay'
@@ -524,6 +524,78 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
   const base = { label: `${name}: ${kind}`, type: 'npm', script, problemMatcher: [] }
 
   return kind === 'start' ? { ...base, isBackground: true } : { ...base, group: kind }
+}
+
+/**
+ * Renames `@nx/js:lib`'s placeholder to a name mnci's own lint rule accepts.
+ *
+ * @remarks
+ * `@nx/js:lib` scaffolds `src/lib/<name>.ts` — a bare name with no role suffix —
+ * and `vertical-slices/file-role`, which ships in `@mnci/eslint-config`, rejects
+ * it on the first lint:
+ *
+ * ```
+ * A production file ends in its role - .handler .use-case .algorithm ... -
+ * so "studio.ts" says what it is   vertical-slices/file-role
+ * ```
+ *
+ * So mnci's own opinionated config failed mnci's own generator output, every
+ * time, for any workspace that turned the slice rules on. Reproduced on a
+ * freshly generated workspace: of the 14 problems `eslint` reports on a new
+ * `npm-lib`, 13 are stylistic and `--fix` away — this one cannot, because the
+ * only fix is a rename.
+ *
+ * `use-case` is the role: it is the generic one for a library's public
+ * behaviour, and it is what the placeholder is standing in for.
+ *
+ * **Unconditional, not gated on the rule being active.** Detecting that would
+ * mean parsing the workspace's own `eslint.config.mjs`, which is user-owned
+ * arbitrary JavaScript, and mnci has twice shipped a correct conditional that
+ * could never fire — see `NX_PEER_OVERRIDES` and `ensurePythonArtefactsIgnored`.
+ * A role-suffixed placeholder costs nothing when the rule is off, and the
+ * scaffold then demonstrates by example the convention the config enforces.
+ *
+ * Both the spec and the barrel's re-export are repointed, so the scaffold still
+ * builds and its sample test still runs. A no-op when the placeholder is absent
+ * or has already been renamed.
+ *
+ * `react-lib` is deliberately NOT covered: `@nx/react:library` scaffolds a
+ * component, and `component` is not one of the shipped roles — renaming it to
+ * `use-case` would make the name lie. A workspace linting React with these
+ * rules passes `roles: ['component']` itself.
+ *
+ * @param projectRoot - Absolute path to the generated project's directory.
+ * @param name - The project name the generator used for the placeholder.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error renaming or rewriting the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function renameScaffoldPlaceholder (projectRoot: string, name: string): void {
+  const placeholder = join(projectRoot, 'src', 'lib', `${name}.ts`)
+  if (!existsSync(placeholder)) {
+    return
+  }
+  renameSync(placeholder, join(projectRoot, 'src', 'lib', `${name}.use-case.ts`))
+
+  const spec = join(projectRoot, 'src', 'lib', `${name}.spec.ts`)
+  if (existsSync(spec)) {
+    const renamed = join(projectRoot, 'src', 'lib', `${name}.use-case.spec.ts`)
+    renameSync(spec, renamed)
+    writeFileEnsured(
+      renamed,
+      readFileSync(renamed, 'utf8').replaceAll(`./${name}'`, () => `./${name}.use-case'`),
+    )
+  }
+
+  // The barrel re-exports `./lib/<name>`; without this the package has no
+  // entry point at all, which the build would catch but only after the fact.
+  const barrel = join(projectRoot, 'src', 'index.ts')
+  if (existsSync(barrel)) {
+    writeFileEnsured(
+      barrel,
+      readFileSync(barrel, 'utf8').replaceAll(`./lib/${name}'`, () => `./lib/${name}.use-case'`),
+    )
+  }
 }
 
 /**
