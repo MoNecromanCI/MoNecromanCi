@@ -2928,6 +2928,11 @@ section('vscode extension', ['alt stack'], () => {
     editorSliceLint.output,
   )
 
+  // tools/ is linted by the workspace root, not by the project (#249): the packaging
+  // script mnci writes there must pass the lint it is written into.
+  const toolsLint = tryRunCapture('npx eslint tools', vsxWorkspace)
+  enforce('vscode: the generated tools/vscode-extension.cjs passes the workspace lint', toolsLint.ok, toolsLint.output)
+
   const editorPackage = tryRunCapture('npx nx run editor:package', vsxWorkspace)
   const vsixTargets = withSidecar
     ? ['win32-x64', 'win32-arm64', 'linux-x64', 'linux-arm64', 'alpine-x64', 'alpine-arm64', 'darwin-x64', 'darwin-arm64']

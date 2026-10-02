@@ -339,7 +339,7 @@ const CSHARP_VERSION_ACTIONS_PATH = 'tools/csharp-version-actions.cjs'
  * `nx release --dry-run` against a real generated workspace with a real
  * `csharp-lib` is what the gated e2e (tracked separately) exists to confirm.
  */
-const CSHARP_VERSION_ACTIONS = `'use strict'
+export const CSHARP_VERSION_ACTIONS = `'use strict'
 
 const { posix } = require('node:path')
 const { VersionActions } = require('nx/release')
@@ -356,6 +356,7 @@ const VERSION_TAG = /<Version>([^<]*)<\\/Version>/
  */
 function findCsproj (tree, root) {
   const name = tree.children(root).find((entry) => entry.endsWith('.csproj'))
+
   return name ? posix.join(root, name) : null
 }
 
