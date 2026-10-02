@@ -1,5 +1,5 @@
 import { existsSync, globSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   fileExists,
   markExecutable,
@@ -1832,7 +1832,10 @@ export function vscodeWorkspace (
   // anything it has no opinion about survives.
   const settings = { ...existingSettings, ...vscodeSettings() }
 
-  return JSON.stringify(
+  // `toJson`, like every other JSON file mnci writes: it ends with a newline.
+  // Bare JSON.stringify did not, while `mnci new`'s format pass adds one, so
+  // every `mnci upgrade` showed the same one-character diff on this file.
+  return toJson(
     {
       folders:    [{ path: '.', name: workspaceName }],
       settings,
@@ -1846,8 +1849,6 @@ export function vscodeWorkspace (
         configurations: [...launchConfigurations(workspaceName), ...userConfigurations],
       },
     },
-    null,
-    2,
   )
 }
 
@@ -4291,6 +4292,14 @@ function removeNxAuthoredAgentFiles (workspaceRoot: string): void {
   // Nx writes this one in full, to register its plugin marketplace. The rest
   // of `.claude` - agents, commands - is the user's and is left alone.
   rmSync(join(workspaceRoot, NX_CLAUDE_SETTINGS), { force: true })
+  // ...but when settings.json was all there was, the directory goes too. An
+  // empty `.claude/` is still AI-agent scaffolding to every tool that probes
+  // for the directory, and the e2e's "no AI-agent scaffolding: .claude" check
+  // failed on every fresh workspace because of exactly this leftover.
+  const claudeDirectory = join(workspaceRoot, dirname(NX_CLAUDE_SETTINGS))
+  if (existsSync(claudeDirectory) && readdirSync(claudeDirectory).length === 0) {
+    rmSync(claudeDirectory, { recursive: true, force: true })
+  }
 
   for (const name of NX_AUTHORED_AGENT_FILES) {
     const path = join(workspaceRoot, name)

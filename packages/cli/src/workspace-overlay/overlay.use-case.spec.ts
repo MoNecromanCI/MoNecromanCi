@@ -2211,6 +2211,9 @@ describe('devcontainerJson', () => {
   it('recommends the same extensions as the .code-workspace file', () => {
     expect(parsed().customizations.vscode.extensions).toEqual([...VSCODE_RECOMMENDED_EXTENSIONS])
     expect(vscodeWorkspace('demo')).toContain('dbaeumer.vscode-eslint')
+    // Ends with a newline like every other JSON file mnci writes; without it,
+    // every `mnci upgrade` re-diffed this file against `mnci new`'s formatted copy.
+    expect(vscodeWorkspace('demo').endsWith('}\n')).toBe(true)
   })
 })
 
@@ -3689,6 +3692,10 @@ describe('applyOverlay', () => {
     for (const file of scaffolding) {
       expect(existsSync(join(workspaceRoot, file))).toBe(false)
     }
+    // The directories that held nothing else go too. `.claude` is removed by
+    // content (only Nx's settings.json), so it is the one that used to survive
+    // empty - and an empty `.claude/` still reads as agent scaffolding.
+    expect(existsSync(join(workspaceRoot, '.claude'))).toBe(false)
     // And `.github` itself survives, because the removal names SUBDIRECTORIES
     // rather than the directory - `mnci` writes `workflows/ci.yml` and
     // `dependabot.yml` into it on the github path, and deleting `.github`
@@ -3740,6 +3747,8 @@ describe('applyOverlay', () => {
 
     expect(existsSync(join(workspaceRoot, '.claude/agents/reviewer.md'))).toBe(true)
     expect(existsSync(join(workspaceRoot, '.claude/settings.json'))).toBe(false)
+    // Not empty, so the directory stays.
+    expect(existsSync(join(workspaceRoot, '.claude'))).toBe(true)
   })
 
   it('leaves no blank lines behind on a CRLF checkout', () => {
