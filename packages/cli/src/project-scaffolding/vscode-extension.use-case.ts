@@ -88,13 +88,13 @@ export const VSCODE_EXTENSION_SCRIPT = String.raw`#!/usr/bin/env node
 // Packages and publishes a VS Code extension project. Its Nx targets call it:
 //   node tools/vscode-extension.cjs package apps/<name> [--sidecar <go-app>]
 //   node tools/vscode-extension.cjs publish apps/<name> [--sidecar <go-app>]
-// Without --sidecar: one universal dist/drop/<name>.vsix.
-// With --sidecar: one dist/drop/<name>-<target>.vsix per Marketplace target, each
+// Without --sidecar: one universal dist/drop/<project>.vsix.
+// With --sidecar: one dist/drop/<project>-<target>.vsix per Marketplace target, each
 // carrying that platform's binary from the Go app's build-all in bin/.
 'use strict'
 const { spawnSync } = require('node:child_process')
 const { cpSync, existsSync, mkdirSync, readFileSync, rmSync } = require('node:fs')
-const { dirname, join, resolve } = require('node:path')
+const { basename, dirname, join, resolve } = require('node:path')
 
 const TARGETS = ${JSON.stringify(VSCODE_SIDECAR_TARGETS)}
 const DROP = resolve('dist/drop')
@@ -127,7 +127,7 @@ function vsixFiles (name, sidecar) {
 function packageExtension (projectRoot, manifest, sidecar) {
   mkdirSync(DROP, { recursive: true })
   if (!sidecar) {
-    run('@vscode/vsce', 'vsce', ['package', ...VSCE_FLAGS, '--out', vsixFiles(manifest.name)[0]], { cwd: projectRoot })
+    run('@vscode/vsce', 'vsce', ['package', ...VSCE_FLAGS, '--out', vsixFiles(project)[0]], { cwd: projectRoot })
 
     return
   }
@@ -139,7 +139,7 @@ function packageExtension (projectRoot, manifest, sidecar) {
       if (!existsSync(source)) fail('No ' + platform + ' build of ' + sidecar + ' at ' + source + ' - its build-all target did not write one.')
       rmSync(staging, { recursive: true, force: true })
       cpSync(source, staging, { recursive: true })
-      run('@vscode/vsce', 'vsce', ['package', '--target', target, ...VSCE_FLAGS, '--out', join(DROP, manifest.name + '-' + target + '.vsix')], { cwd: projectRoot })
+      run('@vscode/vsce', 'vsce', ['package', '--target', target, ...VSCE_FLAGS, '--out', join(DROP, project + '-' + target + '.vsix')], { cwd: projectRoot })
     }
   } finally {
     rmSync(staging, { recursive: true, force: true })
@@ -148,7 +148,7 @@ function packageExtension (projectRoot, manifest, sidecar) {
 
 function publishExtension (manifest, sidecar, dryRun) {
   if (dryRun) {
-    console.log('Dry run - would publish ' + vsixFiles(manifest.name, sidecar).join(', ') + ' to the Marketplace.')
+    console.log('Dry run - would publish ' + vsixFiles(project, sidecar).join(', ') + ' to the Marketplace.')
 
     return
   }
@@ -158,7 +158,7 @@ function publishExtension (manifest, sidecar, dryRun) {
 
     return
   }
-  const files = vsixFiles(manifest.name, sidecar)
+  const files = vsixFiles(project, sidecar)
   const missing = files.filter(file => !existsSync(file))
   if (missing.length > 0) fail('Nothing to publish: ' + missing.join(', ') + ' not found - run the package target first.')
   run('@vscode/vsce', 'vsce', ['publish', '--packagePath', ...files, '--skip-duplicate'])
@@ -169,6 +169,9 @@ const sidecarIndex = rest.indexOf('--sidecar')
 const sidecar = sidecarIndex === -1 ? undefined : rest[sidecarIndex + 1]
 if (!projectRoot || !existsSync(join(projectRoot, 'package.json'))) fail('Usage: node tools/vscode-extension.cjs package|publish <project root> [--sidecar <go-app>]')
 const manifest = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
+// Packages are named after the project folder, never the manifest name, which is
+// free to change (the Marketplace id need not match the folder).
+const project = basename(resolve(projectRoot))
 // nx release --dry-run hands the publish target --dryRun=true and sets NX_DRY_RUN
 // (measured on Nx 23), so a dry run never reaches the Marketplace, token or not.
 const dryRun = rest.some(argument => /^--dry-?run(=true)?$/i.test(argument)) || process.env.NX_DRY_RUN === 'true'
@@ -376,7 +379,11 @@ function defaultPublisher (workspaceRoot: string): string {
  * Reshapes the generated manifest into an extension manifest and rewires its build.
  *
  * @remarks
- * - `name` loses its scope: `vsce` rejects scoped names.
+ * - `name` loses its scope: `vsce` rejects scoped names. `nx.name` pins the Nx
+ *   project name to the folder, so `name` and `displayName` are free to change
+ *   afterwards (the Marketplace id need not match the folder, #247); without it Nx
+ *   takes the project name from `name`, and renaming the extension would orphan
+ *   every root script, task and launch entry that names the project.
  * - `engines.vscode` is pinned to the installed `@types/vscode` (`vsce` refuses a
  *   package whose types are newer than its engine range).
  * - The build bundles (`bundle`, `thirdParty`): a `.vsix` ships no `node_modules`,
@@ -428,7 +435,7 @@ function reshapeManifest (projectRoot: string, name: string, publisher: string, 
       main:             './dist/main.js',
       activationEvents: [],
       contributes:      { commands: [{ command: `${name}.hello`, title: `${name}: Hello` }] },
-      nx:               { ...nx, tags: [...new Set([...(nx.tags ?? []), VSCODE_EXTENSION_TAG])], targets },
+      nx:               { ...nx, name, tags: [...new Set([...(nx.tags ?? []), VSCODE_EXTENSION_TAG])], targets },
     }),
   )
 }
@@ -603,6 +610,44 @@ export function refreshVscodeExtensionScript (workspaceRoot: string): boolean {
   writeFileEnsured(path, VSCODE_EXTENSION_SCRIPT)
 
   return true
+}
+
+/**
+ * Pins `nx.name` on every extension that lacks it.
+ *
+ * @remarks
+ * Extensions added by `@mnci/cli` 4.12.0 have no `nx.name`, so their Nx project
+ * name still comes from the manifest `name` (#247). Pinning it to that same value
+ * changes nothing today and makes a later rename of the extension safe.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative manifests that were updated.
+ * @throws Propagates any `fs`/JSON error.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function pinVscodeExtensionProjectNames (workspaceRoot: string): string[] {
+  const apps = join(workspaceRoot, 'apps')
+  let entries: string[]
+  try {
+    entries = readdirSync(apps)
+  } catch {
+    return []
+  }
+  const updated: string[] = []
+  for (const entry of entries) {
+    const manifestPath = join(apps, entry, 'package.json')
+    if (!fileExists(manifestPath)) {
+      continue
+    }
+    const manifest = readJson<{ name?: string; nx?: { name?: string; tags?: string[] } }>(manifestPath)
+    if (!manifest.nx?.tags?.includes(VSCODE_EXTENSION_TAG) || manifest.nx.name !== undefined || manifest.name === undefined) {
+      continue
+    }
+    writeFileEnsured(manifestPath, toJson({ ...manifest, nx: { ...manifest.nx, name: manifest.name } }))
+    updated.push(`apps/${entry}/package.json`)
+  }
+
+  return updated
 }
 
 /**

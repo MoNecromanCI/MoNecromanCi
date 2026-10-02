@@ -155,7 +155,9 @@ committing an upgrade.
   `engines.vscode` pinned to the installed `@types/vscode`, `src/main.ts` (the slice rules
   reject `extension.ts`), a `vscode` stub for unit tests (`test/vscode.stub.ts`, mapped by
   Jest `moduleNameMapper` or Vitest `alias`), and an `<name>: debug` `extensionHost` launch
-  entry (never `mnci: …`, which the overlay replaces on upgrade).
+  entry (never `mnci: …`, which the overlay replaces on upgrade). `nx.name` pins the
+  Nx project name, so the manifest `name` can become any Marketplace id; packages are
+  named after the project folder (#247).
 - `package` and `nx-release-publish` both run **`tools/vscode-extension.cjs`**, a workspace
   file mnci owns (written on add, rewritten by `mnci upgrade` via
   `refreshVscodeExtensionScript`). `--sidecar <go-app>` packages one `.vsix` per Marketplace
