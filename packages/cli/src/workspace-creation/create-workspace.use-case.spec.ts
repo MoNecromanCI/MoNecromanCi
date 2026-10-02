@@ -11,7 +11,10 @@ import type * as Overlay from '../workspace-overlay'
 // cannot quietly break an unrelated import somewhere in the module graph.
 jest.mock('node:fs', () => ({
   ...jest.requireActual<typeof NodeFs>('node:fs'),
-  rmSync: jest.fn(),
+  rmSync:      jest.fn(),
+  // Real, but recorded, so the --into tests can remove every staging tree
+  // runNew made even when runNew itself failed to (which is the bug they catch).
+  mkdtempSync: jest.fn((prefix: string) => jest.requireActual<typeof NodeFs>('node:fs').mkdtempSync(prefix)),
 }))
 jest.mock('../nx-workspace', () => ({ runNpx: jest.fn(), runFormatter: jest.fn(), runShell: jest.fn() }))
 jest.mock('../workspace-overlay', () => ({
@@ -419,10 +422,14 @@ describe('runNew', () => {
 
     afterEach(() => {
       realRmSync(adoptTarget, { recursive: true, force: true })
-      // rmSync is mocked, so remove for real whatever staging tree runNew made.
-      for (const [path] of mockRmSync.mock.calls) {
-        if (String(path).includes('mnci-new-')) realRmSync(path, { recursive: true, force: true })
+      // rmSync is mocked, so remove for real every staging tree runNew created,
+      // whether or not runNew asked for its removal.
+      for (const created of jest.mocked(mkdtempSync).mock.results) {
+        if (created.type === 'return' && String(created.value).includes('mnci-new-')) {
+          realRmSync(String(created.value), { recursive: true, force: true })
+        }
       }
+      jest.mocked(mkdtempSync).mockClear()
     })
 
     it('removes the staging tree when generation fails, instead of leaking it into the temp dir', async () => {
