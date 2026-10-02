@@ -122,6 +122,9 @@ committing an upgrade.
   Bootstraps one root `go.mod` via the plugin's `init` + `convert-to-one-mod`,
   then writes build/test/lint targets explicitly. Lint is pinned to
   `golangci-lint`; the plugin's own default is `go fmt`, which only reformats.
+  CI installs it at `GOLANGCI_LINT_VERSION` from the prebuilt release, verified
+  against its SHA-256 checksums (~1 s, versus ~70 s compiling `@latest`), falling
+  back to `go install` at the same version; bump the pin deliberately (#239).
 - Go libraries are shaped as slice packages: `reshapeGoLibraryScaffold()`
   replaces the plugin's root `<name>.go` with a root `doc.go` and moves the
   sample into one starter slice (`libs/<name>/<pkg>/<snake>_use_case.go`).

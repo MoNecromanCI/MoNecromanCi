@@ -101,10 +101,11 @@ jobs:
         name: Download Go module dependencies
 
       # golangci-lint is what the generated Go lint target actually runs (the
-      # plugin's own default is 'go fmt', which only reformats). 'go install'
-      # drops it in GOPATH/bin, which is not on PATH by default on a hosted
-      # runner — so publish it for every later step in the job.
-      - run: node -e "const fs=require('node:fs'),cp=require('node:child_process');if(!fs.existsSync('go.mod')){console.log('No Go projects - skipping.');process.exit(0)}if(cp.spawnSync('golangci-lint',['--version'],{stdio:'ignore'}).status===0){console.log('golangci-lint already installed - skipping.');process.exit(0)}process.exit(cp.spawnSync('go',['install','github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest'],{stdio:'inherit'}).status ?? 1)"
+      # plugin's own default is 'go fmt', which only reformats). The pinned,
+      # checksum-verified prebuilt release lands in GOPATH/bin (go install at the
+      # same version is the fallback), which is not on PATH by default on a
+      # hosted runner — so publish it for every later step in the job.
+      - run: node -e "const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');if(!fs.existsSync('go.mod')){console.log('No Go projects - skipping.');process.exit(0)}if(cp.spawnSync('golangci-lint',['--version'],{stdio:'ignore'}).status===0){console.log('golangci-lint already installed - skipping.');process.exit(0)}const v='2.14.0';const fallback=reason=>{console.log('Prebuilt golangci-lint '+v+' unavailable ('+reason+') - building it with go install instead.');process.exit(cp.spawnSync('go',['install','github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v'+v],{stdio:'inherit'}).status ?? 1)};const plat={linux:'linux',darwin:'darwin',win32:'windows'}[process.platform],arch={x64:'amd64',arm64:'arm64'}[process.arch];if(!plat||!arch)fallback('no prebuilt release for '+process.platform+'/'+process.arch);const gopath=cp.spawnSync('go',['env','GOPATH'],{encoding:'utf8'});if(gopath.status!==0)fallback('go env GOPATH failed');const name='golangci-lint-'+v+'-'+plat+'-'+arch,file=name+(plat==='windows'?'.zip':'.tar.gz'),base='https://github.com/golangci/golangci-lint/releases/download/v'+v+'/';const get=async u=>{const r=await fetch(u,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw new Error('HTTP '+r.status+' for '+u);return Buffer.from(await r.arrayBuffer())};(async()=>{const sums=(await get(base+'golangci-lint-'+v+'-checksums.txt')).toString('utf8').split('\n').map(l=>l.trim().split(' ').filter(Boolean));const entry=sums.find(p=>p[1]===file);if(!entry)throw new Error(file+' is not in the release checksums');const archive=await get(base+file);if(crypto.createHash('sha256').update(archive).digest('hex')!==entry[0])throw new Error('checksum mismatch for '+file);const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'golangci-lint-')),archivePath=path.join(tmp,file);fs.writeFileSync(archivePath,archive);const tar=plat==='windows'?path.join(process.env.SystemRoot||'','System32','tar.exe'):'tar';const x=cp.spawnSync(tar,['-xf',archivePath,'-C',tmp],{stdio:'inherit'});if(x.status!==0)throw new Error('could not extract '+file);const exe='golangci-lint'+(plat==='windows'?'.exe':''),bin=path.join(gopath.stdout.trim(),'bin');fs.mkdirSync(bin,{recursive:true});fs.copyFileSync(path.join(tmp,name,exe),path.join(bin,exe));fs.chmodSync(path.join(bin,exe),0o755);fs.rmSync(tmp,{recursive:true,force:true});console.log('golangci-lint '+v+' installed from its checksum-verified prebuilt release into '+bin)})().catch(error=>fallback(error.message))"
         name: Install golangci-lint
 
       - run: node -e "const fs=require('node:fs'),cp=require('node:child_process');if(!fs.existsSync('go.mod')){console.log('No Go projects - skipping.');process.exit(0)}const r=cp.spawnSync('go',['env','GOPATH'],{encoding:'utf8'});if(r.status!==0){console.log('Could not resolve GOPATH - skipping.');process.exit(0)}const bin=require('node:path').join(r.stdout.trim(),'bin');if(!process.env.GITHUB_PATH){console.log('Not running in GitHub Actions - skipping.');process.exit(0)}fs.appendFileSync(process.env.GITHUB_PATH,bin+'\n')"
@@ -317,7 +318,7 @@ jobs:
       # download degrades to the behaviour we have today rather than turning the
       # nightly red for something that is not mnci's fault. A silent pass is not
       # possible: the report names every skipped section.
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
         name: Install golangci-lint (so the e2e's Go lint assertion runs)
         continue-on-error: true
 

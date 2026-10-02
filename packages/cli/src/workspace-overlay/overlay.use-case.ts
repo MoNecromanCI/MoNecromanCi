@@ -2305,6 +2305,26 @@ const PIP_AUDIT_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\'requirem
 const GO_MODULE_DOWNLOAD_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\'go.mod\')){console.log(\'No Go projects - skipping.\');process.exit(0)}process.exit(require(\'node:child_process\').spawnSync(\'go\',[\'mod\',\'download\'],{stdio:\'inherit\'}).status ?? 1)"'
 
 /**
+ * The golangci-lint version every generated workspace installs.
+ *
+ * @remarks
+ * Pinned, like {@link FLUTTER_SDK_VERSION}, for two reasons measured on a real
+ * generated workspace (russoedu/MoNecromanCi#239):
+ *
+ * - **Reproducibility.** The guard used to `go install …@latest`, so a new
+ *   golangci-lint release could add or tighten linters and turn every
+ *   workspace's CI red overnight with no change on its side, while a developer's
+ *   local copy disagreed with CI.
+ * - **Speed.** A pinned version has a published prebuilt binary to download,
+ *   instead of a compile. See {@link GOLANGCI_LINT_INSTALL_GUARD}.
+ *
+ * Bump it deliberately: check the release notes for new default linters, then
+ * run the e2e's Go section. Exported so tests and this repo's own workflow can
+ * assert it.
+ */
+export const GOLANGCI_LINT_VERSION = '2.14.0'
+
+/**
  * The portable `node -e` one-liner that installs `golangci-lint` when the
  * workspace has Go projects and the agent does not already provide it.
  *
@@ -2314,20 +2334,65 @@ const GO_MODULE_DOWNLOAD_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\
  * only reformats and would make a green lint step meaningless. Hosted agents
  * ship Go but not golangci-lint, so CI has to supply it.
  *
- * Installs via `go install`, which needs no package manager, no sudo and no
- * platform switch — the same binary lands on Linux, macOS and Windows
- * agents. `go install` places it in `GOBIN` (or `GOPATH/bin`), so that
- * directory is appended to `PATH` for subsequent steps through each
- * provider's own mechanism (see the call sites).
+ * **Downloads the project's prebuilt release instead of compiling it.** The
+ * previous `go install …@latest` built golangci-lint from source on every run:
+ * 68 s of a ~2 min job on Lore Master's first CI run, more than install, lint,
+ * test and build together. The prebuilt archive (≈14 MB) downloads and extracts
+ * in about a second. In order:
  *
- * Skips when `golangci-lint` is already resolvable, so a self-hosted agent
- * that pre-installs it pays nothing.
+ * 1. Map `process.platform`/`process.arch` to the release asset name.
+ * 2. Fetch the release's `checksums.txt` and the archive, and refuse the archive
+ *    unless its SHA-256 matches, so a tampered or truncated download is never
+ *    executed.
+ * 3. Extract it with `tar -xf`. On Windows that is the absolute
+ *    `%SystemRoot%\System32\tar.exe` (bsdtar, shipped with Windows 10 and
+ *    later), which reads the `.zip` the Windows builds come as. Not the bare
+ *    `tar`: on an agent with Git installed the one that wins on `PATH` can be
+ *    GNU tar, which cannot read zip files. Not PowerShell either, which the
+ *    pipeline avoids by design.
+ * 4. Copy the binary into `GOPATH/bin`, the directory the "Add Go tool bin to
+ *    PATH" step already publishes, so nothing downstream changes.
+ *
+ * Any failure (an unmapped platform, a network error, a checksum mismatch, a
+ * failed extract) falls back to `go install` **at the same pinned version**, so
+ * an outage of GitHub's release CDN costs speed, never the build. The reason is
+ * printed first.
+ *
+ * Skips when `golangci-lint` is already resolvable, so a self-hosted agent that
+ * pre-installs it pays nothing.
+ *
+ * Constraints every guard here shares: one line, single quotes inside, and no
+ * colon-space, no space-hash, no backtick, `$` or `%`, so the same text is a
+ * valid YAML plain scalar and survives bash, PowerShell and `cmd.exe` quoting.
  */
-const GOLANGCI_LINT_INSTALL_GUARD = 'node -e "const fs=require(\'node:fs\'),cp=require(\'node:child_process\');if(!fs.existsSync(\'go.mod\')){console.log(\'No Go projects - skipping.\');process.exit(0)}if(cp.spawnSync(\'golangci-lint\',[\'--version\'],{stdio:\'ignore\'}).status===0){console.log(\'golangci-lint already installed - skipping.\');process.exit(0)}process.exit(cp.spawnSync(\'go\',[\'install\',\'github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest\'],{stdio:\'inherit\'}).status ?? 1)"'
+const GOLANGCI_LINT_INSTALL_GUARD = 'node -e "' +
+  "const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');" +
+  "if(!fs.existsSync('go.mod')){console.log('No Go projects - skipping.');process.exit(0)}" +
+  "if(cp.spawnSync('golangci-lint',['--version'],{stdio:'ignore'}).status===0){console.log('golangci-lint already installed - skipping.');process.exit(0)}" +
+  `const v='${GOLANGCI_LINT_VERSION}';` +
+  "const fallback=reason=>{console.log('Prebuilt golangci-lint '+v+' unavailable ('+reason+') - building it with go install instead.');process.exit(cp.spawnSync('go',['install','github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v'+v],{stdio:'inherit'}).status ?? 1)};" +
+  "const plat={linux:'linux',darwin:'darwin',win32:'windows'}[process.platform],arch={x64:'amd64',arm64:'arm64'}[process.arch];" +
+  "if(!plat||!arch)fallback('no prebuilt release for '+process.platform+'/'+process.arch);" +
+  "const gopath=cp.spawnSync('go',['env','GOPATH'],{encoding:'utf8'});if(gopath.status!==0)fallback('go env GOPATH failed');" +
+  "const name='golangci-lint-'+v+'-'+plat+'-'+arch,file=name+(plat==='windows'?'.zip':'.tar.gz'),base='https://github.com/golangci/golangci-lint/releases/download/v'+v+'/';" +
+  "const get=async u=>{const r=await fetch(u,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw new Error('HTTP '+r.status+' for '+u);return Buffer.from(await r.arrayBuffer())};" +
+  '(async()=>{' +
+  String.raw`const sums=(await get(base+'golangci-lint-'+v+'-checksums.txt')).toString('utf8').split('\n').map(l=>l.trim().split(' ').filter(Boolean));` +
+  "const entry=sums.find(p=>p[1]===file);if(!entry)throw new Error(file+' is not in the release checksums');" +
+  'const archive=await get(base+file);' +
+  "if(crypto.createHash('sha256').update(archive).digest('hex')!==entry[0])throw new Error('checksum mismatch for '+file);" +
+  "const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'golangci-lint-')),archivePath=path.join(tmp,file);fs.writeFileSync(archivePath,archive);" +
+  "const tar=plat==='windows'?path.join(process.env.SystemRoot||'','System32','tar.exe'):'tar';" +
+  "const x=cp.spawnSync(tar,['-xf',archivePath,'-C',tmp],{stdio:'inherit'});" +
+  "if(x.status!==0)throw new Error('could not extract '+file);" +
+  "const exe='golangci-lint'+(plat==='windows'?'.exe':''),bin=path.join(gopath.stdout.trim(),'bin');fs.mkdirSync(bin,{recursive:true});" +
+  'fs.copyFileSync(path.join(tmp,name,exe),path.join(bin,exe));fs.chmodSync(path.join(bin,exe),0o755);fs.rmSync(tmp,{recursive:true,force:true});' +
+  "console.log('golangci-lint '+v+' installed from its checksum-verified prebuilt release into '+bin)" +
+  '})().catch(error=>fallback(error.message))"'
 
 /**
  * The shared prelude that resolves `GOPATH/bin` — where
- * {@link GOLANGCI_LINT_INSTALL_GUARD}'s `go install` puts the linter.
+ * {@link GOLANGCI_LINT_INSTALL_GUARD} puts the linter (whether downloaded or built).
  *
  * @remarks
  * Not a step on its own: {@link GO_TOOL_PATH_AZURE} and
@@ -2364,7 +2429,7 @@ const GO_TOOL_PATH_GITHUB = `node -e "${GO_TOOL_PATH_PRELUDE}if(!process.env.GIT
  * The Flutter SDK version the generated pipeline installs.
  *
  * @remarks
- * Pinned, unlike `golangci-lint`'s `@latest`, because the Flutter version
+ * Pinned, like {@link GOLANGCI_LINT_VERSION}, because the Flutter version
  * *determines the Dart version*, and Dart is what has the hard floor here:
  * pub workspaces — the whole basis of mnci's central-dependency model for
  * Dart — need Dart 3.6+. A floating `stable` could in principle move the
@@ -3391,8 +3456,9 @@ ${npmAuthenticateStep}  - script: npm ci
     displayName: Download Go module dependencies
 
   # golangci-lint is what the generated Go lint target actually runs (the
-  # plugin's own default is 'go fmt', which only reformats). 'go install'
-  # drops it in GOPATH/bin, which is not on PATH by default on a hosted
+  # plugin's own default is 'go fmt', which only reformats). The pinned,
+  # checksum-verified prebuilt release lands in GOPATH/bin (go install at the
+  # same version is the fallback), which is not on PATH by default on a hosted
   # agent — so prepend it for every later step in the job.
   - script: ${GOLANGCI_LINT_INSTALL_GUARD}
     displayName: Install golangci-lint
@@ -3719,9 +3785,10 @@ jobs:
         name: Download Go module dependencies
 
       # golangci-lint is what the generated Go lint target actually runs (the
-      # plugin's own default is 'go fmt', which only reformats). 'go install'
-      # drops it in GOPATH/bin, which is not on PATH by default on a hosted
-      # runner — so publish it for every later step in the job.
+      # plugin's own default is 'go fmt', which only reformats). The pinned,
+      # checksum-verified prebuilt release lands in GOPATH/bin (go install at the
+      # same version is the fallback), which is not on PATH by default on a
+      # hosted runner — so publish it for every later step in the job.
       - run: ${GOLANGCI_LINT_INSTALL_GUARD}
         name: Install golangci-lint
 
