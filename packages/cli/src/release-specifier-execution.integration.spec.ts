@@ -34,6 +34,10 @@ interface Workspace {
   dart?:   number
   csharp?: number
   python?: number
+  /** `apps/` projects tagged `type:vscode-extension`, released by their tag. */
+  vscode?: number
+  /** `apps/` projects with a `package.json` and no release tag (a node-app). */
+  apps?:   number
 }
 
 function seed (dir: string, workspace: Workspace): void {
@@ -48,6 +52,15 @@ function seed (dir: string, workspace: Workspace): void {
   write('packages', 'dart', workspace.dart ?? 0, 'pubspec.yaml')
   write('packages', 'csharp', workspace.csharp ?? 0, 'app.csproj')
   write('python-packages', 'py', workspace.python ?? 0, 'pyproject.toml')
+  const app = (prefix: string, count: number, tags: string[]): void => {
+    for (let index = 0; index < count; index++) {
+      const projectRoot = join(dir, 'apps', `${prefix}-${index}`)
+      mkdirSync(projectRoot, { recursive: true })
+      writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({ name: `${prefix}-${index}`, nx: { tags } }))
+    }
+  }
+  app('extension', workspace.vscode ?? 0, ['type:vscode-extension'])
+  app('service', workspace.apps ?? 0, [])
 }
 
 function runIn (
@@ -250,6 +263,31 @@ describe('every releasable manifest shape is detected, not just npm', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('Nothing to release - skipping.')
+  })
+
+  it('releases a workspace whose only releasable project is a VS Code extension', () => {
+    // An extension lives in apps/, outside every glob the guard counted, and is
+    // in release scope only through its tag (#229). Uncounted, the guard said
+    // "Nothing to release" for ever, the Flutter bug again.
+    const result = runIn(dir, { vscode: 1 })
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).not.toContain('Nothing to release')
+    expect(result.stdout).toContain('NPX_CALLED_WITH: nx release --yes')
+  })
+
+  it('does not count an app without the extension tag', () => {
+    const result = runIn(dir, { apps: 2 })
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('Nothing to release - skipping.')
+  })
+
+  it('counts an extension toward the keyword guard', () => {
+    const result = runIn(dir, { npm: 1, vscode: 1, apps: 1 }, 'minor')
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('2 releasable packages')
   })
 
   it('counts C# and Python alongside the rest', () => {

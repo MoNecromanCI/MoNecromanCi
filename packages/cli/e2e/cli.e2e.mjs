@@ -2872,6 +2872,126 @@ section('flutter', [], () => {
     )
   }
 })
+section('vscode extension', ['alt stack'], () => {
+  /* ---------------------------------------------------------------------------
+   * VS Code extension (#225, #229): @nx/node:application reshaped into a
+   * Marketplace extension, packaged by vsce, released by tag.
+   *
+   * Its own workspace, so the release dry run below has the extension as its ONLY
+   * releasable project: the case #229 exists for (nothing in packages/*). Azure
+   * CI, so the dry run stops at tags; a github workspace would also ask the
+   * GitHub API for a release, which needs a real repository and token. With Go,
+   * the extension carries a go-app sidecar and packages per platform; without
+   * it, one universal package, and the sidecar half is reported SKIPPED.
+   * ------------------------------------------------------------------------- */
+
+  const vsxWorkspace = path.join(temporary, 'vsx')
+  console.log('\n▸ mnci new vsx --ci azure, then mnci add vscode-extension')
+  run(`node ${CLI} new vsx --yes --registry npm --scope @vsx --ci azure`, temporary)
+  const withSidecar = hasGo()
+  if (withSidecar) {
+    run(`node ${CLI} add go-app engine`, vsxWorkspace)
+    run(`node ${CLI} add vscode-extension editor --sidecar engine --publisher acme`, vsxWorkspace)
+  } else {
+    skip('the vscode-extension sidecar half', 'the Go toolchain is not on PATH')
+    run(`node ${CLI} add vscode-extension editor --publisher acme`, vsxWorkspace)
+  }
+
+  const editorManifest = JSON.parse(readFileSync(path.join(vsxWorkspace, 'apps/editor/package.json'), 'utf8'))
+  enforce(
+    'vscode: a manifest vsce accepts (unscoped name, publisher, engines.vscode, main) tagged for release',
+    editorManifest.name === 'editor' &&
+      editorManifest.publisher === 'acme' &&
+      /^\^1\.\d+\.\d+$/.test(editorManifest.engines?.vscode ?? '') &&
+      editorManifest.main === './dist/main.js' &&
+      editorManifest.nx?.tags?.includes('type:vscode-extension'),
+    JSON.stringify(editorManifest, undefined, 2),
+  )
+
+  const editorVerify = tryRunCapture('npx nx run-many -t lint,test,typecheck,build --projects=editor', vsxWorkspace)
+  enforce(
+    'vscode: lint, test (activate against the vscode stub), typecheck and build pass',
+    editorVerify.ok,
+    editorVerify.output,
+  )
+
+  // The slice rules are opt-in, and the scaffold has to pass them when they are on:
+  // src/main.ts (never extension.ts) and nothing else at the root of src.
+  const vsxEslintConfig = path.join(vsxWorkspace, 'eslint.config.mjs')
+  const vsxEslintOriginal = readFileSync(vsxEslintConfig, 'utf8')
+  writeFileSync(vsxEslintConfig, vsxEslintOriginal.replace('...mnci()', '...mnci({ verticalSlices: true })'))
+  const editorSliceLint = tryRunCapture('npx nx run editor:lint --skip-nx-cache', vsxWorkspace)
+  writeFileSync(vsxEslintConfig, vsxEslintOriginal)
+  enforce(
+    'vscode: the scaffold passes lint with verticalSlices on',
+    vsxEslintOriginal.includes('...mnci()') && editorSliceLint.ok,
+    editorSliceLint.output,
+  )
+
+  const editorPackage = tryRunCapture('npx nx run editor:package', vsxWorkspace)
+  const vsixTargets = withSidecar
+    ? ['win32-x64', 'win32-arm64', 'linux-x64', 'linux-arm64', 'alpine-x64', 'alpine-arm64', 'darwin-x64', 'darwin-arm64']
+    : [undefined]
+  const vsixPaths = vsixTargets.map(target => path.join(vsxWorkspace, 'dist/drop', target ? `editor-${target}.vsix` : 'editor.vsix'))
+  const missingVsix = vsixPaths.filter(file => !existsSync(file))
+  enforce(
+    `vscode: package writes ${vsixPaths.length === 1 ? 'one universal .vsix' : 'one .vsix per Marketplace target'} into dist/drop`,
+    editorPackage.ok && missingVsix.length === 0,
+    missingVsix.length > 0 ? `missing: ${missingVsix.join(', ')}\n${editorPackage.output}` : editorPackage.output,
+  )
+  if (missingVsix.length === 0) {
+    // adm-zip from the alt workspace: this one only has it when the go-app put it there.
+    const AdmZipVsix = createRequire(path.join(altWorkspace, 'package.json'))('adm-zip')
+    const problems = []
+    for (const [index, file] of vsixPaths.entries()) {
+      const archive = new AdmZipVsix(file)
+      const names = archive.getEntries().map(entry => entry.entryName)
+      const text = entry => archive.getEntry(entry)?.getData().toString('utf8') ?? ''
+      const main = text('extension/dist/main.js')
+      const requires = [...new Set(main.matchAll(/require\("([^"]+)"\)/g).map(match => match[1]))]
+      if (requires.join(',') !== 'vscode') problems.push(`${file}: main.js requires ${requires.join(', ')}`)
+      if (names.some(name => name.includes('node_modules/') || name.startsWith('extension/src/'))) problems.push(`${file}: ships node_modules or src`)
+      const target = vsixTargets[index]
+      if (target) {
+        const binary = target.startsWith('win32') ? 'extension/bin/engine.exe' : 'extension/bin/engine'
+        if (!names.includes(binary)) problems.push(`${file}: no ${binary} (${names.join(', ')})`)
+        if (!text('extension.vsixmanifest').includes(`TargetPlatform="${target}"`)) problems.push(`${file}: manifest is not for ${target}`)
+      }
+    }
+    enforce(
+      'vscode: every .vsix holds a bundled main.js requiring only vscode, no node_modules, and (with a sidecar) its platform binary',
+      problems.length === 0,
+      problems.join('\n'),
+    )
+    enforce(
+      'vscode: the sidecar staging folder does not outlive packaging',
+      !existsSync(path.join(vsxWorkspace, 'apps/editor/bin')),
+    )
+  }
+
+  run(`node ${CLI} upgrade`, vsxWorkspace)
+  const vsxCodeWorkspace = readFileSync(path.join(vsxWorkspace, 'vsx.code-workspace'), 'utf8')
+  enforce(
+    'vscode: mnci upgrade keeps the editor: debug launch entry and its build task',
+    vsxCodeWorkspace.includes('"editor: debug"') && vsxCodeWorkspace.includes('"editor: build (development)"'),
+  )
+
+  // #229's acceptance: an extension-only workspace releases. `--yes` makes nx run
+  // the publish phase too (it skips it otherwise, even in a dry run), which proves
+  // the publish target exists, depends on package, and never publishes in a dry run.
+  run('git add -A', vsxWorkspace)
+  run('git -c user.email=e2e@mnci.invalid -c user.name=e2e commit -q --no-verify -m "feat: editor extension"', vsxWorkspace)
+  const vsxRelease = tryRunCapture('npx nx release --dry-run --yes', vsxWorkspace)
+  enforce(
+    'vscode: nx release --dry-run versions an extension-only workspace through the tag matcher and dry-runs the publish',
+    vsxRelease.ok &&
+      // Matched on the manifest path alone: nx colours the project name, so a
+      // pattern spanning it sees escape codes, not a space.
+      /New version \S+ written to manifest: apps\/editor\/package\.json/.test(vsxRelease.output) &&
+      vsxRelease.output.includes('Dry run - would publish'),
+    vsxRelease.output,
+  )
+})
 /* ---------------------------------------------------------------------------
  * Report
  * ------------------------------------------------------------------------- */

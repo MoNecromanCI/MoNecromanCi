@@ -111,6 +111,11 @@ mnci add flutter-app hello         # Flutter web app -> apps/ (bundle, zipped in
 mnci add flutter-lib shared        # publishable (by git tag) -> packages/
 mnci add flutter-internal-lib core # private shared package -> libs/
 
+# VS Code extensions (@nx/node + vsce — bundled, packaged per platform, published by nx release)
+mnci add vscode-extension editor                      # one universal .vsix -> dist/drop/
+mnci add vscode-extension editor --sidecar api        # one .vsix per platform, go-app api's binary in bin/
+mnci add vscode-extension editor --publisher acme     # Marketplace publisher (default: the scope without @)
+
 mnci upgrade                  # re-apply the latest overlay (see below)
 mnci upgrade --agent windows-latest   # ...with an explicit override
 
@@ -687,6 +692,7 @@ copy is discarded.
 | Directory          | Contents                                                       | Released?                              |
 | ------------------ | -------------------------------------------------------------- | -------------------------------------- |
 | `apps/`            | React / Node / Python / Go / Flutter apps (plain or Functions) | Never (packed into the drop)           |
+| `apps/` (tagged)   | VS Code extensions (`type:vscode-extension`)                   | Yes — `nx release`, `vsce publish`     |
 | `packages/`        | Publishable npm libraries, plus Go and Dart packages           | Yes — `nx release`, per-package tags   |
 | `python-packages/` | Publishable Python packages (hatchling wheels)                 | Yes — `twine upload` (Azure Artifacts) |
 | `libs/`            | Internal libraries (TS, Python, Go or Dart), never published   | Never                                  |
@@ -704,6 +710,14 @@ package in `packages/` needs no such exclusion — `pubspec.yaml` has a real
 reads it. Publishable Python packages get their own
 `python-packages/` dir so the npm `nx release` (`packages/*`) is never entangled
 with Python publishing.
+
+The second exception goes the other way: a **VS Code extension** lives in
+`apps/` (it is an application, and the slice lint treats it as one) but is
+versioned and published like a package. `release.projects` matches it by its tag,
+`tag:type:vscode-extension`, rather than by path: the array is mnci's and is
+rewritten by every `mnci upgrade`, so a hand-added `apps/my-extension` would be
+lost, while a tag matcher is the same on every upgrade and covers every extension
+there will ever be.
 
 Every kind builds to its own Nx-default output location (`apps/<name>/dist`,
 `packages/<name>/dist`, ...) — no post-generation build-output rewiring for
@@ -1428,6 +1442,53 @@ build` links statically, so the binary in the drop already contains
   `go install` at the same pinned version. All three skip cleanly when the
   workspace has no root `go.mod`, and the linter install also skips when the
   agent already provides it.
+
+## VS Code extensions (`@nx/node:application` + `vsce`)
+
+`mnci add vscode-extension <name>` scaffolds with the plain `@nx/node:application`
+generator (your test runner, esbuild) and turns the result into a Marketplace
+extension:
+
+- **Bundled.** `bundle: true`, `thirdParty: true`, `external: ['vscode']`. A `.vsix`
+  ships no `node_modules`, so the generator's un-bundled mirror of the source tree
+  could not run in the extension host; `vscode` is the host's own module.
+- **A manifest `vsce` accepts.** Unscoped `name` (`vsce` rejects scopes),
+  `publisher` (`--publisher`, default the workspace scope without `@`),
+  `engines.vscode` pinned to the installed `@types/vscode` (`vsce` refuses types
+  newer than the engine range), `main: ./dist/main.js`, empty `activationEvents`
+  (VS Code activates on a contributed command by itself since 1.74) and one sample
+  command. Tagged `type:vscode-extension`.
+- **`src/main.ts`**, not `extension.ts`: the slice rules allow only `index` and
+  `main` at the root of `src`.
+- **Unit tests run against a stub of `vscode`**, `test/vscode.stub.ts`, mapped by
+  Jest's `moduleNameMapper` or Vitest's `alias`. The real module exists only
+  inside the extension host. The stub covers the sample and grows with your code.
+- **`package`** writes `dist/drop/<name>.vsix` with `vsce package
+  --no-dependencies` (mandatory with hoisted npm workspaces).
+- **`--sidecar <go-app>`** ships a native binary. `package` then runs the Go app's
+  `build-all` with `VERSION` set to the extension's version, and writes one `.vsix`
+  per Marketplace target, `dist/drop/<name>-<target>.vsix`, with that platform's
+  binary in `bin/`: `win32-x64`, `win32-arm64`, `linux-x64`, `linux-arm64`,
+  `darwin-x64`, `darwin-arm64`, plus `alpine-x64`/`alpine-arm64` from the static
+  Linux binaries. Unix file modes survive into the package, so the binary stays
+  executable. Resolve it at runtime from `context.extensionPath` + `bin/`.
+- **`nx-release-publish`** runs `vsce publish --packagePath <every vsix>
+  --skip-duplicate` when `VSCE_PAT` is set (a Marketplace personal access token, as
+  a CI secret) and skips with a message otherwise. It depends on `package`, so it
+  ships the version `nx release` just wrote. The CI release step passes `VSCE_PAT`
+  through in both providers.
+- **Debugging**: an `<name>: debug` launch entry (`extensionHost`) opens a second
+  VS Code window with the extension loaded, after the `<name>: build (development)`
+  task, which keeps source maps.
+
+Both targets run `tools/vscode-extension.cjs`, a workspace file mnci owns (like
+`tools/csharp-version-actions.cjs`): `mnci add vscode-extension` writes it and
+`mnci upgrade` rewrites it. It resolves `vsce` and `nx` through their own
+`package.json` `bin` and runs them with `node`, with no shell, so a workspace path
+containing spaces works on Windows.
+
+Not built yet: integration tests through `@vscode/test-cli` (they download VS Code
+and need a display, so they would be gated like the Go and Flutter sections).
 
 ## Flutter (`@mnci/nx-flutter` — one root `pubspec.yaml` pub workspace)
 

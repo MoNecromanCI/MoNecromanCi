@@ -330,7 +330,8 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
     '                                 #     go-app, go-function-app, go-lib, go-internal-lib,',
   )
   logger.info(
-    '                                 #     flutter-app, flutter-lib, flutter-internal-lib',
+    '                                 #     flutter-app, flutter-lib, flutter-internal-lib,',
   )
+  logger.info('                                 #     vscode-extension')
   logger.info('  git add -A && git commit -m "feat: initial workspace"')
 }

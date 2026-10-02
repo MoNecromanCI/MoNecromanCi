@@ -40,6 +40,10 @@ export interface AddOptions {
   framework?: NodeFramework
   /** `python-vendor` only: the internal Python library (under `libs/`) to vendor into `name`. */
   lib?:       string
+  /** `vscode-extension` only: the Marketplace publisher id (defaults to the workspace scope without `@`). */
+  publisher?: string
+  /** `vscode-extension` only: a `go-app` whose six-platform build ships inside the extension. */
+  sidecar?:   string
 }
 
 /**
