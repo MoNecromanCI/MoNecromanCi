@@ -50,6 +50,23 @@ export const VSCODE_SIDECAR_TARGETS: Readonly<Record<string, string>> = {
 }
 
 /**
+ * Renders a string map as an object literal in the house style.
+ *
+ * @remarks
+ * The script is linted by the workspace it is written into (#249), and
+ * `mnci upgrade` rewrites it without formatting, so it must be clean as written:
+ * `JSON.stringify` would give double quotes and no spacing.
+ *
+ * @param map - The keys and values to render.
+ * @returns A one-line object literal with single-quoted keys and values.
+ * @throws Never - pure string building.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function scriptObjectLiteral (map: Readonly<Record<string, string>>): string {
+  return `{ ${Object.entries(map).map(([key, value]) => `'${key}': '${value}'`).join(', ')} }`
+}
+
+/**
  * The `tools/vscode-extension.cjs` script: `package` and `publish` for every extension.
  *
  * @remarks
@@ -96,7 +113,7 @@ const { spawnSync } = require('node:child_process')
 const { cpSync, existsSync, mkdirSync, readFileSync, rmSync } = require('node:fs')
 const { basename, dirname, join, resolve } = require('node:path')
 
-const TARGETS = ${JSON.stringify(VSCODE_SIDECAR_TARGETS)}
+const TARGETS = ${scriptObjectLiteral(VSCODE_SIDECAR_TARGETS)}
 const DROP = resolve('dist/drop')
 const VSCE_FLAGS = ['--no-dependencies', '--skip-license', '--allow-missing-repository']
 
@@ -174,7 +191,7 @@ const manifest = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf
 const project = basename(resolve(projectRoot))
 // nx release --dry-run hands the publish target --dryRun=true and sets NX_DRY_RUN
 // (measured on Nx 23), so a dry run never reaches the Marketplace, token or not.
-const dryRun = rest.some(argument => /^--dry-?run(=true)?$/i.test(argument)) || process.env.NX_DRY_RUN === 'true'
+const dryRun = rest.some(argument => /^--dry-?run(?:=true)?$/i.test(argument)) || process.env.NX_DRY_RUN === 'true'
 if (command === 'package') packageExtension(projectRoot, manifest, sidecar)
 else if (command === 'publish') publishExtension(manifest, sidecar, dryRun)
 else fail('Unknown command ' + command + ' - expected package or publish.')
