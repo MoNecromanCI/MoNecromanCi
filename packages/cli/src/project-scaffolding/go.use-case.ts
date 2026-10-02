@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
@@ -259,6 +259,122 @@ function goPackageTarget (tag: string, name: string): Record<string, unknown> {
 }
 
 /**
+ * The platforms a Go app is cross-compiled for by its `build-all` target.
+ *
+ * @remarks
+ * Every desktop OS on both CPU families, the set an editor extension or a CLI that
+ * ships its own binary has to cover. Go builds all of them from one machine without
+ * cgo, which is why the targets below need no matrix of CI agents.
+ */
+export const GO_PLATFORMS = [
+  'windows/amd64', 'windows/arm64', 'linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64',
+] as const
+
+/**
+ * The `build-all` target for a Go app: one static binary per {@link GO_PLATFORMS}.
+ *
+ * @remarks
+ * Writes `dist/platforms/<name>/<goos>-<goarch>/<name>[.exe]` with `CGO_ENABLED=0`,
+ * `-trimpath` and `-ldflags "-s -w -X main.version=<VERSION>"`, `VERSION` coming from
+ * the environment (`dev` when unset), so a release stamps its tag without editing
+ * anything.
+ *
+ * Deliberately NOT under `dist/apps/<name>/`, though that is where `build` writes: Nx
+ * clears a target's declared outputs before restoring them from cache, so a cached
+ * `build` would delete the cross-compiled binaries nested inside its directory.
+ *
+ * `VERSION` is an input, so a release never reuses a binary stamped `dev`; the root
+ * `go.mod`/`go.sum` are inputs because a dependency bump changes every binary.
+ *
+ * @param name - The Go app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goBuildAllTarget (name: string): Record<string, unknown> {
+  const platforms = JSON.stringify(GO_PLATFORMS).replaceAll('"', "'")
+  const command = `node -e "const{spawnSync}=require('node:child_process');const v=process.env.VERSION||'dev';for(const p of ${platforms}){const[os,arch]=p.split('/');const out='../../dist/platforms/${name}/'+os+'-'+arch+'/${name}'+(os==='windows'?'.exe':'');const r=spawnSync('go',['build','-trimpath','-ldflags','-s -w -X main.version='+v,'-o',out,'.'],{cwd:'apps/${name}',stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:os,GOARCH:arch}});if(r.status!==0)process.exit(r.status??1)}"`
+
+  return {
+    executor: 'nx:run-commands',
+    inputs:   ['default', '^default', '{workspaceRoot}/go.mod', '{workspaceRoot}/go.sum', { env: 'VERSION' }],
+    outputs:  [`{workspaceRoot}/dist/platforms/${name}`],
+    options:  { command },
+  }
+}
+
+/**
+ * The `package-all` target for a Go app: one zip per platform {@link goBuildAllTarget}
+ * built.
+ *
+ * @remarks
+ * `dist/drop/<tag>-<name>-<goos>-<goarch>.zip`, each holding that platform's binary,
+ * the same `adm-zip` one-liner as {@link goPackageTarget}. The single-platform
+ * `package` target keeps its name, so CI's drop handling is unchanged.
+ *
+ * @param tag - The drop basename prefix (`go-app` or `go-function-app`).
+ * @param name - The Go app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goPackageAllTarget (tag: string, name: string): Record<string, unknown> {
+  const command = `node -e "const fs=require('node:fs');const A=require('adm-zip');fs.mkdirSync('dist/drop',{recursive:true});for(const d of fs.readdirSync('dist/platforms/${name}')){const z=new A();z.addLocalFolder('dist/platforms/${name}/'+d);z.writeZip('dist/drop/${tag}-${name}-'+d+'.zip')}"`
+
+  return {
+    executor:  'nx:run-commands',
+    dependsOn: ['build-all'],
+    outputs:   [`{workspaceRoot}/dist/drop/${tag}-${name}-*.zip`],
+    options:   { command },
+  }
+}
+
+/**
+ * Gives every Go app in the workspace its `build-all` and `package-all` targets when it
+ * lacks them: the `mnci upgrade` path for apps added before the targets existed.
+ *
+ * @remarks
+ * Only adds; a target the user already has, under either name, is never touched.
+ * Idempotent, so a repeat upgrade is a no-op.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The `project.json` files it changed, workspace-relative.
+ * @throws Error when a Go app's `project.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addGoPlatformTargets (workspaceRoot: string): string[] {
+  const changed: string[] = []
+  const apps = join(workspaceRoot, 'apps')
+  if (!fileExists(apps)) {
+    return changed
+  }
+  for (const name of readdirSync(apps)) {
+    const projectJsonPath = join(apps, name, 'project.json')
+    if (!fileExists(projectJsonPath)) {
+      continue
+    }
+    const project = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as { tags?: string[], targets?: Record<string, unknown> }
+    const tag = (project.tags ?? []).find(each => each === 'type:go-app' || each === 'type:go-function-app')?.slice('type:'.length)
+    if (tag === undefined) {
+      continue
+    }
+    const missing: Record<string, unknown> = {}
+    if (project.targets?.['build-all'] === undefined) {
+      missing['build-all'] = goBuildAllTarget(name)
+    }
+    if (project.targets?.['package-all'] === undefined) {
+      missing['package-all'] = goPackageAllTarget(tag, name)
+    }
+    if (Object.keys(missing).length > 0) {
+      addProjectJsonTargets(projectJsonPath, missing)
+      changed.push(`apps/${name}/project.json`)
+    }
+  }
+
+  return changed
+}
+
+/**
  * The `start` target for a Go app: `go run .`, locally.
  *
  * @remarks
@@ -446,11 +562,13 @@ export function addGoApp (workspaceRoot: string, name: string): void {
     workspaceRoot,
   )
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
-    build:   goBuildTarget(name),
-    test:    goTestTarget(),
-    lint:    goLintTarget(),
-    package: goPackageTarget('go-app', name),
-    start:   goStartTarget(name),
+    'build':       goBuildTarget(name),
+    'test':        goTestTarget(),
+    'lint':        goLintTarget(),
+    'package':     goPackageTarget('go-app', name),
+    'build-all':   goBuildAllTarget(name),
+    'package-all': goPackageAllTarget('go-app', name),
+    'start':       goStartTarget(name),
   })
   registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
 }
@@ -495,10 +613,12 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
     workspaceRoot,
   )
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
-    build:   goBuildTarget(name),
-    test:    goTestTarget(),
-    lint:    goLintTarget(),
-    package: goPackageTarget('go-function-app', name),
+    'build':       goBuildTarget(name),
+    'test':        goTestTarget(),
+    'lint':        goLintTarget(),
+    'package':     goPackageTarget('go-function-app', name),
+    'build-all':   goBuildAllTarget(name),
+    'package-all': goPackageAllTarget('go-function-app', name),
   })
   registerProjectCommands(workspaceRoot, name, { build: true })
 }

@@ -125,6 +125,15 @@ committing an upgrade.
   CI installs it at `GOLANGCI_LINT_VERSION` from the prebuilt release, verified
   against its SHA-256 checksums (~1 s, versus ~70 s compiling `@latest`), falling
   back to `go install` at the same version; bump the pin deliberately (#239).
+- Go apps and function apps also get `build-all` and `package-all` (#226): one
+  static binary per platform (windows/linux/darwin × amd64/arm64, `CGO_ENABLED=0`,
+  `-trimpath`, `-ldflags "-s -w -X main.version=$VERSION"`, `dev` when unset) into
+  `dist/platforms/<name>/<goos>-<goarch>/`, then one zip each in `dist/drop/`. Not
+  under `dist/apps/<name>/`: Nx clears a target's outputs when restoring it from
+  cache, so a cached `build` would delete binaries nested in its directory.
+  `VERSION` is a cache input. `-trimpath` keeps `-ldflags` out of `go version -m`,
+  so check the stamp by running the binary. `mnci upgrade` adds both targets to Go
+  apps that lack them (`addGoPlatformTargets`), never overwriting one.
 - Go libraries are shaped as slice packages: `reshapeGoLibraryScaffold()`
   replaces the plugin's root `<name>.go` with a root `doc.go` and moves the
   sample into one starter slice (`libs/<name>/<pkg>/<snake>_use_case.go`).

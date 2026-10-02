@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { runAdd } from './add-project.use-case'
-import { goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
+import { addGoPlatformTargets, GO_PLATFORMS, goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
@@ -131,6 +131,29 @@ describe('runAdd go', () => {
     expect(JSON.stringify(targets.package)).toContain('dist/drop/go-app-api.zip')
   })
 
+  it('cross-compiles for six platforms into dist/platforms, outside the cached build output', async () => {
+    seedProjectJson('apps/api', 'api')
+
+    await runAdd('go-app', 'api', {})
+
+    const targets = readProjectJson('apps/api').targets as Record<string, Record<string, unknown>>
+    const buildAll = targets['build-all']
+    const command = (buildAll.options as { command: string }).command
+    expect(buildAll.executor).toBe('nx:run-commands')
+    expect(buildAll.outputs).toEqual(['{workspaceRoot}/dist/platforms/api'])
+    expect(buildAll.inputs).toEqual(['default', '^default', '{workspaceRoot}/go.mod', '{workspaceRoot}/go.sum', { env: 'VERSION' }])
+    for (const platform of GO_PLATFORMS) {
+      expect(command).toContain(`'${platform}'`)
+    }
+    expect(command).toContain("CGO_ENABLED:'0'")
+    expect(command).toContain("'-s -w -X main.version='+v")
+    expect(command).toContain("cwd:'apps/api'")
+    expect(targets['package-all']).toMatchObject({
+      dependsOn: ['build-all'],
+      outputs:   ['{workspaceRoot}/dist/drop/go-app-api-*.zip'],
+    })
+  })
+
   it('wires a local `go run .` start target and the discoverable root scripts', async () => {
     seedProjectJson('apps/api', 'api')
 
@@ -229,6 +252,16 @@ describe('runAdd go', () => {
     }
     expect(rootManifest.scripts['handler:build']).toBe('nx run handler:build')
     expect(rootManifest.scripts['handler:start']).toBeUndefined()
+  })
+
+  it('packages a Go function app per platform under its own drop basename', async () => {
+    seedProjectJson('apps/handler', 'handler')
+
+    await runAdd('go-function-app', 'handler', {})
+
+    const targets = readProjectJson('apps/handler').targets as Record<string, Record<string, unknown>>
+    expect(targets['build-all']).toBeDefined()
+    expect(targets['package-all'].outputs).toEqual(['{workspaceRoot}/dist/drop/go-function-app-handler-*.zip'])
   })
 
   it('adds a publishable Go lib under packages/ with test and lint but no build or publish target', async () => {
@@ -371,5 +404,50 @@ describe('reshapeGoLibraryScaffold', () => {
     ['my.lib', { packageName: 'mylib', functionName: 'MyLib', fileStem: 'my_lib' }],
   ])('derives Go identifiers for %s', (name, expected) => {
     expect(goLibraryIdentifiers(name)).toEqual(expected)
+  })
+})
+
+describe('addGoPlatformTargets', () => {
+  let root: string
+
+  /** Writes apps/<name>/project.json with these tags and targets. */
+  function app (name: string, tags: string[], targets: Record<string, unknown>): void {
+    mkdirSync(join(root, 'apps', name), { recursive: true })
+    writeFileSync(join(root, 'apps', name, 'project.json'), JSON.stringify({ name, tags, targets }))
+  }
+
+  function targetsOf (name: string): Record<string, unknown> {
+    return (JSON.parse(readFileSync(join(root, 'apps', name, 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'mnci-go-platforms-'))
+  })
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('gives Go apps added before cross-compilation the targets, and nothing else', () => {
+    app('engine', ['type:go-app'], { build: { executor: '@nx-go/nx-go:build' } })
+    app('handler', ['type:go-function-app'], { 'build-all': { command: 'my own' } })
+    app('web', ['type:react-app'], {})
+    mkdirSync(join(root, 'apps', 'notes'))
+
+    expect(addGoPlatformTargets(root)).toEqual(['apps/engine/project.json', 'apps/handler/project.json'])
+
+    const engine = targetsOf('engine')
+    expect(Object.keys(engine).sort((a, b) => a.localeCompare(b))).toEqual(['build', 'build-all', 'package-all'])
+    expect(JSON.stringify(engine['package-all'])).toContain('go-app-engine-*.zip')
+    const handler = targetsOf('handler')
+    expect(handler['build-all']).toEqual({ command: 'my own' })
+    expect(JSON.stringify(handler['package-all'])).toContain('go-function-app-handler-*.zip')
+    expect(targetsOf('web')).toEqual({})
+
+    expect(addGoPlatformTargets(root)).toEqual([])
+  })
+
+  it('does nothing in a workspace without apps/', () => {
+    expect(addGoPlatformTargets(root)).toEqual([])
   })
 })

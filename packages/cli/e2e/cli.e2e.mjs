@@ -2338,10 +2338,10 @@ section('go', ['alt stack'], () => {
     // writes every target explicitly. If that ever regressed, the targets would
     // silently vanish rather than fail loudly.
     for (const [project, directory, expected] of [
-      ['goapi', 'apps/goapi', ['build', 'test', 'lint', 'package', 'start']],
+      ['goapi', 'apps/goapi', ['build', 'test', 'lint', 'package', 'build-all', 'package-all', 'start']],
       ['goutil', 'libs/goutil', ['test', 'lint']],
       ['gocore', 'packages/gocore', ['test', 'lint']],
-      ['gofn', 'apps/gofn', ['build', 'test', 'lint', 'package']],
+      ['gofn', 'apps/gofn', ['build', 'test', 'lint', 'package', 'build-all', 'package-all']],
     ]) {
       const projectJson = JSON.parse(
         readFileSync(path.join(altWorkspace, directory, 'project.json'), 'utf8'),
@@ -2500,6 +2500,24 @@ section('go', ['alt stack'], () => {
         goEntries.map(entry => `${entry.entryName} (${entry.header.size}b)`).join(', '),
       )
     }
+
+    // The six-platform build through real Nx: the go-platform-build-execution
+    // integration spec runs the command itself; this proves Nx accepts the target
+    // (its inputs, the VERSION env input, the output directory) in a generated
+    // workspace, and that cross-compiling from this agent works.
+    // VERSION through process.env, not a `VERSION=` prefix, which cmd.exe (this
+    // suite's CI home) does not understand.
+    process.env.VERSION = '9.9.9'
+    const goBuildAll = tryRunCapture('npx nx run goapi:build-all --skip-nx-cache', altWorkspace)
+    delete process.env.VERSION
+    const goPlatforms = ['windows-amd64', 'windows-arm64', 'linux-amd64', 'linux-arm64', 'darwin-amd64', 'darwin-arm64']
+    const goMissing = goPlatforms.filter(platform =>
+      !existsSync(path.join(altWorkspace, 'dist/platforms/goapi', platform, platform.startsWith('windows') ? 'goapi.exe' : 'goapi')))
+    enforce(
+      'go: build-all cross-compiles goapi for all six platforms into dist/platforms/goapi',
+      goBuildAll.ok && goMissing.length === 0,
+      goMissing.length > 0 ? `missing: ${goMissing.join(', ')}\n${goBuildAll.output}` : goBuildAll.output,
+    )
 
     // The highest-consequence Go invariant. A go-lib lands in `packages/` but has no
     // package.json, so Nx's default versionActions looks for a manifest that is not
