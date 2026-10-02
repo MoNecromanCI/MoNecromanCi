@@ -471,6 +471,9 @@ to one is mirrored in the other by construction:
   `git merge-base`, not `nrwl/nx-set-shas`), everything otherwise. Every fallback
   path (missing ref, unresolvable merge-base, non-PR run) verifies **everything**,
   never nothing.
+- **The first GitHub Release of a repository** needs `release.changelog.automaticFromRef:
+  true` (`--ci github` only): with no tag to start a changelog from, `nx release`
+  versioned the project and then died before tagging (#243, measured).
 - **Release steps** fire only on `event_name == 'push' && ref_name == 'main'` — the
   positive form, not `!= 'pull_request'`, which would also match any trigger added
   later (this bit mnci's own workflow once, via a hand-added `workflow_dispatch`).

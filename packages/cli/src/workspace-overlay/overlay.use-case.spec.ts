@@ -601,6 +601,34 @@ describe('withReleaseConfig', () => {
       },
     })
   })
+
+  it('starts the first GitHub Release changelog from the first commit (#243)', () => {
+    // Measured: on a repository with no release tag, nx release versions the
+    // project and then dies in the changelog step ("Unable to determine the
+    // previous git tag"), so the first release of every github workspace failed.
+    const github = withReleaseConfig({ $schema: 'x' }, 'github').release as {
+      changelog: Record<string, unknown>
+    }
+    expect(github.changelog.automaticFromRef).toBe(true)
+
+    // No GitHub Release, no project changelog, nothing that needs a from-ref.
+    for (const ci of ['azure', 'both'] as const) {
+      const release = withReleaseConfig({ $schema: 'x' }, ci).release as {
+        changelog: Record<string, unknown>
+      }
+      expect(release.changelog.automaticFromRef).toBeUndefined()
+    }
+  })
+
+  it('reaches an existing workspace on upgrade, alongside its own changelog keys', () => {
+    const release = withReleaseConfig(
+      { release: { changelog: { workspaceChangelog: false, renderOptions: { authors: false } } } },
+      'github',
+    ).release as { changelog: Record<string, unknown> }
+
+    expect(release.changelog.automaticFromRef).toBe(true)
+    expect(release.changelog.renderOptions).toEqual({ authors: false })
+  })
 })
 
 describe('poolBlock', () => {

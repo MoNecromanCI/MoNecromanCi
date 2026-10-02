@@ -515,6 +515,11 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
       ? {
           workspaceChangelog: false,
           projectChangelogs:  { createRelease: 'github', file: false },
+          // A GitHub Release needs a changelog, and a changelog needs a ref to start
+          // from. On the first release of a repository there is no tag to start from,
+          // and nx release dies after versioning (#243, measured). With this set it
+          // starts from the first commit; once a tag exists it is never consulted.
+          automaticFromRef:   true,
         }
       : { workspaceChangelog: false },
   } as const
