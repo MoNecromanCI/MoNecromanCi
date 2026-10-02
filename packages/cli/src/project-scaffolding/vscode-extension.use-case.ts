@@ -684,6 +684,30 @@ export interface VscodeExtensionOptions {
 }
 
 /**
+ * Re-syncs `package-lock.json` with the reshaped manifest.
+ *
+ * @remarks
+ * `apps/*` is an npm workspace, so the lock records each app under its manifest
+ * `name`. The generator installed under its scoped name, and
+ * {@link reshapeManifest} unscopes it, which `vsce` requires. Left alone, the lock
+ * still names the old package, and CI's `npm ci` refuses it ("Missing: <name> from
+ * lock file", #251, measured on a real workspace). A failure here only warns, as
+ * the root-dependency relocation does: the project exists, and `npm install` fixes
+ * the lock.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param name - The project name, for the message.
+ * @returns Nothing.
+ * @throws Never - a failed refresh is reported, not thrown.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function refreshLockFile (workspaceRoot: string, name: string): void {
+  if (runShell('npm', ['install', '--package-lock-only', '--no-audit', '--no-fund'], workspaceRoot) !== 0) {
+    logger.warn(`Could not refresh package-lock.json after reshaping ${name}'s manifest. Run 'npm install' before committing.`)
+  }
+}
+
+/**
  * Adds a VS Code extension: `@nx/node:application`, bundled, packaged with `vsce`.
  *
  * @remarks
@@ -732,4 +756,5 @@ export function addVscodeExtension (
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
   registerProjectCommands(workspaceRoot, name, { build: true })
   addDebugLaunch(workspaceRoot, name)
+  refreshLockFile(workspaceRoot, name)
 }

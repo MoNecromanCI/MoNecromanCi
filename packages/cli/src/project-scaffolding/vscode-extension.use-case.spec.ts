@@ -131,6 +131,17 @@ describe('runAdd vscode-extension', () => {
     )
   })
 
+  it('refreshes package-lock.json after unscoping the manifest, or npm ci refuses it (#251)', async () => {
+    await runAdd('vscode-extension', 'ext', {})
+
+    const refresh = mockRunShell.mock.calls.findIndex(([command, arguments_]) =>
+      command === 'npm' && arguments_.join(' ') === 'install --package-lock-only --no-audit --no-fund')
+    expect(refresh).toBeGreaterThan(-1)
+    // After the reshape, which is what changed the name the lock is keyed by.
+    const toolchain = mockRunShell.mock.calls.findIndex(([, arguments_]) => arguments_.includes('@types/vscode'))
+    expect(refresh).toBeGreaterThan(toolchain)
+  })
+
   it('writes an extension manifest vsce accepts', async () => {
     await runAdd('vscode-extension', 'ext', {})
 

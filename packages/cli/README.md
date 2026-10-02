@@ -1460,7 +1460,10 @@ extension:
   command. Tagged `type:vscode-extension`, and `nx.name` pins the Nx project name
   to the folder, so `name` (the Marketplace id is `<publisher>.<name>`) and
   `displayName` are yours to change: packages stay `<project>[-<target>].vsix`
-  and every script, task and launch entry keeps working.
+  and every script, task and launch entry keeps working. Run `npm install` after a
+  rename and commit the lock with it: `apps/*` is an npm workspace, the lock records
+  the app by `name`, and CI's `npm ci` refuses a lock that names a package no
+  manifest does (`mnci add` refreshes it for the name it writes, #251).
 - **`src/main.ts`**, not `extension.ts`: the slice rules allow only `index` and
   `main` at the root of `src`.
 - **Unit tests run against a stub of `vscode`**, `test/vscode.stub.ts`, mapped by
