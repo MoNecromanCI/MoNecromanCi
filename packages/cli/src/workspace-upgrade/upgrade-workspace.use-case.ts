@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { runFormatter } from '../nx-workspace'
+import { addGoPlatformTargets } from '../project-scaffolding'
 import {
   repairPublishableManifests,
   repairRollupSourceMaps,
@@ -314,6 +315,15 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (repairedManifests.length > 0) {
     logger.step('Repointing `types` at the real declaration file')
     for (const path of repairedManifests) {
+      logger.detail(`updated ${path}`)
+    }
+  }
+  // Go apps added before cross-compilation existed gain `build-all` and
+  // `package-all`; nothing they already have is touched.
+  const goApps = addGoPlatformTargets(workspaceRoot)
+  if (goApps.length > 0) {
+    logger.step('Adding the six-platform build to Go apps (build-all, package-all)')
+    for (const path of goApps) {
       logger.detail(`updated ${path}`)
     }
   }

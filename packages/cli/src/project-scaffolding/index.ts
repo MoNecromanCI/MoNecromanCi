@@ -8,3 +8,4 @@
 
 export * from './add-project.use-case'
 export * from './post-generation.use-case'
+export { addGoPlatformTargets, GO_PLATFORMS } from './go.use-case'

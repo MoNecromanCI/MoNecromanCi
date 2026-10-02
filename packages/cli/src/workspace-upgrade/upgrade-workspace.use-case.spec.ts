@@ -140,6 +140,23 @@ describe('runUpgrade: npm auth', () => {
 })
 
 describe('runUpgrade', () => {
+  it('gives a Go app added before cross-compilation its build-all and package-all targets', () => {
+    seedWorkspace()
+    applyOverlay(workspaceRoot, FIXTURE_OPTIONS)
+    mkdirSync(join(workspaceRoot, 'apps', 'engine'), { recursive: true })
+    writeFileSync(join(workspaceRoot, 'apps', 'engine', 'project.json'), JSON.stringify({ name: 'engine', tags: ['type:go-app'], targets: {} }))
+    const logged: string[] = []
+    jest.spyOn(console, 'log').mockImplementation((message: unknown) => {
+      logged.push(String(message))
+    })
+
+    runUpgrade(workspaceRoot, {})
+
+    const targets = (JSON.parse(readFileSync(join(workspaceRoot, 'apps', 'engine', 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets
+    expect(Object.keys(targets).sort((a, b) => a.localeCompare(b))).toEqual(['build-all', 'package-all'])
+    expect(logged.join('\n')).toContain('apps/engine/project.json')
+  })
+
   it('reports each file group it rewrites, and names the slow step before entering it', () => {
     // An upgrade used to print one line and then sit silent through
     // `eslint --fix` over the whole workspace — minutes on a large one, with no
