@@ -143,6 +143,44 @@ describe('adoptGeneratedWorkspace', () => {
     expect(existsSync(join(generated, 'package.json'))).toBe(true)
   })
 
+  it("keeps a repository's own agent files and .github, which the overlay would strip from the generated copy anyway", () => {
+    // Nx 23.2's create-nx-workspace writes its agent rules into every agent's
+    // conventional location and a .github of its own. Found adopting a repo whose
+    // planning CLAUDE.md predated the workspace: adoption refused outright.
+    write(join(generated, 'CLAUDE.md'), '<!-- nx configuration start-->\nnx rules\n')
+    write(join(generated, 'AGENTS.md'), '<!-- nx configuration start-->\nnx rules\n')
+    write(join(generated, '.claude/settings.json'), '{ "nx": true }\n')
+    write(join(generated, '.agents/skills/nx-workspace/SKILL.md'), 'nx skill\n')
+    write(join(generated, '.github/workflows/ci.yml'), 'name: nx\n')
+    write(join(generated, 'opencode.json'), '{}\n')
+
+    write(join(target, 'CLAUDE.md'), '# my project guide\n')
+    write(join(target, 'AGENTS.md'), '# my agent rules\n')
+    write(join(target, '.claude/agents/reviewer.md'), 'mine\n')
+    write(join(target, '.github/ISSUE_TEMPLATE/bug.md'), 'mine\n')
+
+    const result = adoptGeneratedWorkspace(generated, target)
+
+    expect(readFileSync(join(target, 'CLAUDE.md'), 'utf8')).toBe('# my project guide\n')
+    expect(readFileSync(join(target, 'AGENTS.md'), 'utf8')).toBe('# my agent rules\n')
+    expect(readFileSync(join(target, '.claude/agents/reviewer.md'), 'utf8')).toBe('mine\n')
+    expect(existsSync(join(target, '.claude/settings.json'))).toBe(false)
+    expect(readFileSync(join(target, '.github/ISSUE_TEMPLATE/bug.md'), 'utf8')).toBe('mine\n')
+    expect(existsSync(join(target, '.github/workflows/ci.yml'))).toBe(false)
+    expect(result.kept).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md', '.claude', '.github']))
+    // Entries the target does not have still travel, for the overlay to deal with.
+    expect(result.copied).toEqual(expect.arrayContaining(['.agents', 'opencode.json']))
+  })
+
+  it('still refuses a real project file even when the agent files would have been kept', () => {
+    write(join(generated, 'CLAUDE.md'), 'nx rules\n')
+    write(join(target, 'CLAUDE.md'), '# mine\n')
+    write(join(target, 'nx.json'), '{ "mine": true }\n')
+
+    expect(() => adoptGeneratedWorkspace(generated, target)).toThrow('nx.json')
+    expect(() => adoptGeneratedWorkspace(generated, target)).not.toThrow('CLAUDE.md')
+  })
+
   it('removes the staging tree once it has succeeded', () => {
     adoptGeneratedWorkspace(generated, target)
     expect(existsSync(generated)).toBe(false)

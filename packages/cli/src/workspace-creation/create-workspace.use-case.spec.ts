@@ -31,7 +31,8 @@ jest.mock('../terminal', () => ({
   promptText:     jest.fn(),
 }))
 
-import { rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runNpx, runFormatter, runShell } from '../nx-workspace'
 import { applyOverlay } from '../workspace-overlay'
@@ -406,6 +407,47 @@ describe('runNew', () => {
     await expect(runNew('demo', { yes: true })).rejects.toThrow('toolchain failed')
 
     expect(mockRunFormatter).not.toHaveBeenCalled()
+  })
+
+  describe('--into staging cleanup', () => {
+    const realRmSync = jest.requireActual<typeof NodeFs>('node:fs').rmSync
+    let adoptTarget: string
+
+    beforeEach(() => {
+      adoptTarget = mkdtempSync(join(tmpdir(), 'mnci-into-target-'))
+    })
+
+    afterEach(() => {
+      realRmSync(adoptTarget, { recursive: true, force: true })
+      // rmSync is mocked, so remove for real whatever staging tree runNew made.
+      for (const [path] of mockRmSync.mock.calls) {
+        if (String(path).includes('mnci-new-')) realRmSync(path, { recursive: true, force: true })
+      }
+    })
+
+    it('removes the staging tree when generation fails, instead of leaking it into the temp dir', async () => {
+      // A failed adoption used to leave a whole workspace, node_modules included,
+      // in the OS temp dir: the code assumed process exit would clean it up.
+      mockRunNpx.mockImplementationOnce(() => {
+        throw new Error('create-nx-workspace failed')
+      })
+
+      await expect(runNew('demo', { yes: true, into: adoptTarget })).rejects.toThrow('create-nx-workspace failed')
+
+      const stagingRemovals = mockRmSync.mock.calls.filter(([path]) => String(path).includes('mnci-new-'))
+      expect(stagingRemovals).toHaveLength(1)
+      expect(stagingRemovals[0]?.[1]).toEqual({ recursive: true, force: true })
+    })
+
+    it('never removes the working directory when there is no --into (it is the staging parent then)', async () => {
+      mockRunNpx.mockImplementationOnce(() => {
+        throw new Error('create-nx-workspace failed')
+      })
+
+      await expect(runNew('demo', { yes: true })).rejects.toThrow('create-nx-workspace failed')
+
+      expect(mockRmSync.mock.calls.map(([path]) => String(path))).not.toContain('/somewhere')
+    })
   })
 
   it('rejects an invalid workspace name before creating anything (no create-nx-workspace, no install)', async () => {
