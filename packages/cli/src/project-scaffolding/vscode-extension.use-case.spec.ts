@@ -14,6 +14,7 @@ import { readCodeWorkspace } from '../file-system'
 import { vscodeWorkspace } from '../workspace-overlay'
 import { runAdd } from './add-project.use-case'
 import {
+  pinVscodeExtensionProjectNames,
   refreshVscodeExtensionScript,
   VSCODE_EXTENSION_SCRIPT,
   VSCODE_EXTENSION_SCRIPT_PATH,
@@ -142,6 +143,8 @@ describe('runAdd vscode-extension', () => {
     expect(written.activationEvents).toEqual([])
     expect(written.contributes.commands).toEqual([{ command: 'ext.hello', title: 'ext: Hello' }])
     expect(written.nx.tags).toEqual(['type:vscode-extension'])
+    // Pins the Nx project name, so renaming the extension later breaks nothing (#247).
+    expect(written.nx.name).toBe('ext')
   })
 
   it('takes the publisher from --publisher', async () => {
@@ -291,6 +294,24 @@ describe('runAdd vscode-extension', () => {
   })
 })
 
+describe('pinVscodeExtensionProjectNames', () => {
+  it('pins nx.name on an extension that lacks it, and touches nothing else', () => {
+    const write = (name: string, manifest: object): void => {
+      mkdirSync(join(workspaceRoot, 'apps', name), { recursive: true })
+      writeFileSync(join(workspaceRoot, 'apps', name, 'package.json'), JSON.stringify(manifest))
+    }
+    write('old', { name: 'old', nx: { tags: ['type:vscode-extension'] } })
+    write('pinned', { name: 'renamed', nx: { name: 'pinned', tags: ['type:vscode-extension'] } })
+    write('api', { name: 'api', nx: { tags: [] } })
+
+    expect(pinVscodeExtensionProjectNames(workspaceRoot)).toEqual(['apps/old/package.json'])
+    expect(manifest('old').nx).toEqual({ name: 'old', tags: ['type:vscode-extension'] })
+    expect(manifest('pinned').nx.name).toBe('pinned')
+    expect(manifest('api').nx.name).toBeUndefined()
+    expect(pinVscodeExtensionProjectNames(workspaceRoot)).toEqual([])
+  })
+})
+
 describe('refreshVscodeExtensionScript', () => {
   it('writes nothing in a workspace without an extension', () => {
     mkdirSync(join(workspaceRoot, 'apps/api'), { recursive: true })
@@ -374,6 +395,17 @@ describe('tools/vscode-extension.cjs, executed', () => {
     expect(recorded.find(call => call.includes('--target win32-x64'))).toContain('bin=engine-windows-amd64')
     // The staging folder never outlives the run, so it cannot be committed.
     expect(existsSync(join(workspaceRoot, 'apps/ext/bin'))).toBe(false)
+  })
+
+  it('names the packages after the project folder, not a renamed manifest (#247)', () => {
+    writeFileSync(join(workspaceRoot, 'apps/ext/package.json'), JSON.stringify({ name: 'marketplace-id', version: '1.4.0' }))
+
+    runScript(['package', 'apps/ext', '--sidecar', 'engine'])
+    const result = runScript(['publish', 'apps/ext', '--sidecar', 'engine'], { VSCE_PAT: 'token' })
+
+    expect(existsSync(join(workspaceRoot, 'dist/drop/ext-linux-x64.vsix'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'dist/drop/marketplace-id-linux-x64.vsix'))).toBe(false)
+    expect(result.status).toBe(0)
   })
 
   it('fails, naming the platform, when build-all left one out', () => {

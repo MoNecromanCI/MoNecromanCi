@@ -1,7 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { runFormatter } from '../nx-workspace'
-import { addGoPlatformTargets, refreshVscodeExtensionScript, VSCODE_EXTENSION_SCRIPT_PATH } from '../project-scaffolding'
+import {
+  addGoPlatformTargets,
+  pinVscodeExtensionProjectNames,
+  refreshVscodeExtensionScript,
+  VSCODE_EXTENSION_SCRIPT_PATH,
+} from '../project-scaffolding'
 import {
   repairPublishableManifests,
   repairRollupSourceMaps,
@@ -329,6 +334,13 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   }
   // The packaging script is mnci's, like the overlay files: a fix to it reaches
   // every workspace with a VS Code extension, and only those.
+  const pinnedExtensions = pinVscodeExtensionProjectNames(workspaceRoot)
+  if (pinnedExtensions.length > 0) {
+    logger.step('Pinning the Nx project name of VS Code extensions (nx.name)')
+    for (const path of pinnedExtensions) {
+      logger.detail(`updated ${path}`)
+    }
+  }
   if (refreshVscodeExtensionScript(workspaceRoot)) {
     logger.step('Updating the VS Code extension packaging script')
     logger.detail(`updated ${VSCODE_EXTENSION_SCRIPT_PATH}`)

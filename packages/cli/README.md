@@ -1457,7 +1457,10 @@ extension:
   `engines.vscode` pinned to the installed `@types/vscode` (`vsce` refuses types
   newer than the engine range), `main: ./dist/main.js`, empty `activationEvents`
   (VS Code activates on a contributed command by itself since 1.74) and one sample
-  command. Tagged `type:vscode-extension`.
+  command. Tagged `type:vscode-extension`, and `nx.name` pins the Nx project name
+  to the folder, so `name` (the Marketplace id is `<publisher>.<name>`) and
+  `displayName` are yours to change: packages stay `<project>[-<target>].vsix`
+  and every script, task and launch entry keeps working.
 - **`src/main.ts`**, not `extension.ts`: the slice rules allow only `index` and
   `main` at the root of `src`.
 - **Unit tests run against a stub of `vscode`**, `test/vscode.stub.ts`, mapped by
