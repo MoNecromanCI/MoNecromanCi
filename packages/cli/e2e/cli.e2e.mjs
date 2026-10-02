@@ -2371,11 +2371,29 @@ section('go', ['alt stack'], () => {
       goLibProject.tags?.includes('type:go-lib'),
     )
 
+    // A Go library is a capability of slice packages, not one flat root package
+    // (russoedu/MoNecromanCi#227): the generator's root `<name>.go` is replaced by
+    // `doc.go`, and its sample code moves into one starter slice package.
+    for (const [directory, slice, stem] of [
+      ['libs/goutil', 'goutil', 'goutil'],
+      ['packages/gocore', 'gocore', 'gocore'],
+    ]) {
+      const rootGoFiles = readdirSync(path.join(altWorkspace, directory)).filter(name => name.endsWith('.go'))
+      enforce(
+        `go: ${directory} root holds only doc.go; the sample lives in the ${slice}/ slice package`,
+        rootGoFiles.length === 1 &&
+          rootGoFiles[0] === 'doc.go' &&
+          existsSync(path.join(altWorkspace, directory, slice, `${stem}_use_case.go`)) &&
+          existsSync(path.join(altWorkspace, directory, slice, `${stem}_use_case_test.go`)),
+        `root .go files: ${rootGoFiles.join(', ')}`,
+      )
+    }
+
     // THE payoff of one root module: a cross-project import needs no vendoring, no
     // `replace` directive and no per-project manifest — just the import path.
     writeFileSync(
       path.join(altWorkspace, 'apps/goapi/main.go'),
-      `package main\n\nimport (\n\t"fmt"\n\n\t"${goModule}/libs/goutil"\n)\n\n// Hello delegates across a project boundary through the single root module.\nfunc Hello(name string) string {\n\treturn goutil.Goutil(name)\n}\n\nfunc main() {\n\tfmt.Println(Hello("goapi"))\n}\n`,
+      `package main\n\nimport (\n\t"fmt"\n\n\t"${goModule}/libs/goutil/goutil"\n)\n\n// Hello delegates across a project boundary through the single root module.\nfunc Hello(name string) string {\n\treturn goutil.Goutil(name)\n}\n\nfunc main() {\n\tfmt.Println(Hello("goapi"))\n}\n`,
     )
     writeFileSync(
       path.join(altWorkspace, 'apps/goapi/main_test.go'),
@@ -2391,6 +2409,53 @@ section('go', ['alt stack'], () => {
       goVerify.ok,
       goVerify.output,
     )
+
+    // The Go test and lint targets carry no package list: @nx-go/nx-go appends
+    // `./...` and runs from the project root, so every slice package below it is
+    // covered (russoedu/MoNecromanCi#233). Pinned here because that recursion is
+    // the plugin's behaviour, not mnci's, and a lib whose slices silently fell out
+    // of `test` would report green while testing nothing.
+    const nestedSlice = path.join(altWorkspace, 'libs/goutil/greeting')
+    mkdirSync(nestedSlice, { recursive: true })
+    writeFileSync(
+      path.join(nestedSlice, 'greeting_policy.go'),
+      'package greeting\n\n// Polite reports whether a greeting is polite.\nfunc Polite(s string) bool { return s != "" }\n',
+    )
+    writeFileSync(
+      path.join(nestedSlice, 'greeting_policy_test.go'),
+      'package greeting\n\nimport "testing"\n\nfunc TestPolite(t *testing.T) {\n\tif !Polite("hi") {\n\t\tt.Fatal("hi is polite")\n\t}\n}\n',
+    )
+    const nestedTest = tryRunCapture('npx nx run goutil:test --skip-nx-cache', altWorkspace)
+    enforce(
+      'go: the test target reaches a nested slice package (go test ./... from the project root)',
+      nestedTest.ok && nestedTest.output.includes('libs/goutil/greeting'),
+      nestedTest.output,
+    )
+    const failingTest = path.join(nestedSlice, 'greeting_failing_test.go')
+    writeFileSync(
+      failingTest,
+      'package greeting\n\nimport "testing"\n\nfunc TestPlantedFailure(t *testing.T) {\n\tt.Fatal("planted by the e2e")\n}\n',
+    )
+    const plantedFailure = tryRunCapture('npx nx run goutil:test --skip-nx-cache', altWorkspace)
+    rmSync(failingTest)
+    enforce(
+      'go: a failing test in a nested slice package fails the project test target',
+      !plantedFailure.ok,
+      plantedFailure.output,
+    )
+    if (hasGolangciLint()) {
+      const lintPlant = path.join(nestedSlice, 'greeting_planted_policy.go')
+      writeFileSync(lintPlant, 'package greeting\n\nfunc plantedUnused() {}\n')
+      const plantedLint = tryRunCapture('npx nx run goutil:lint --skip-nx-cache', altWorkspace)
+      rmSync(lintPlant)
+      enforce(
+        'go: a golangci-lint finding in a nested slice package fails the project lint target',
+        !plantedLint.ok,
+        plantedLint.output,
+      )
+    } else {
+      skip('the nested-package lint assertion', 'golangci-lint is not on PATH')
+    }
 
     if (hasGolangciLint()) {
       const goLint = tryRunCapture(
