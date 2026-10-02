@@ -2897,6 +2897,11 @@ section('vscode extension', ['alt stack'], () => {
     run(`node ${CLI} add vscode-extension editor --publisher acme`, vsxWorkspace)
   }
 
+  // CI installs with `npm ci`, which refuses a lock that names a package the
+  // manifests no longer do: the reshape unscopes the extension's name (#251).
+  const vsxLockCheck = tryRunCapture('npm ci --dry-run --no-audit --no-fund', vsxWorkspace)
+  enforce('vscode: package-lock.json is in sync after the add (npm ci accepts it)', vsxLockCheck.ok, vsxLockCheck.output)
+
   const editorManifest = JSON.parse(readFileSync(path.join(vsxWorkspace, 'apps/editor/package.json'), 'utf8'))
   enforce(
     'vscode: a manifest vsce accepts (unscoped name, publisher, engines.vscode, main) tagged for release',
