@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { fileExists } from '../file-system'
+import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 import { addProjectJsonTargets, ensureAdmZip, hasPlugin, registerProjectCommands } from './post-generation.use-case'
 
@@ -280,6 +280,134 @@ function goStartTarget (name: string): Record<string, unknown> {
   }
 }
 
+/**
+ * The Go identifiers `@nx-go/nx-go:library` derives from a project name.
+ *
+ * @remarks
+ * Matches the plugin's own `normalizeOptions` for hyphenated names: the
+ * package clause is `names(projectName).propertyName.toLowerCase()` and the
+ * sample function is `names(projectName).className`. Re-derived here rather
+ * than imported because `@nx/devkit` is not a runtime dependency of the CLI.
+ * Project names are validated to lowercase letters, digits, `-` and `.`
+ * (`project-name.validator.ts`), and splitting on every non-alphanumeric
+ * character also covers the dotted names the plugin leaves as an invalid
+ * package clause (`my.lib` → `mylib`, not `my.lib`).
+ *
+ * `fileStem` is the snake-case form used for the role-suffixed file names
+ * (`markdown-workspace` → `markdown_workspace`), the Go spelling of the
+ * `<kebab>.<role>.ts` convention.
+ *
+ * @param projectName - The validated project name.
+ * @returns The package name, the exported function name and the file stem.
+ * @throws Never - pure string computation.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function goLibraryIdentifiers (projectName: string): {
+  packageName:  string
+  functionName: string
+  fileStem:     string
+} {
+  const words = projectName.split(/[^a-z0-9]+/i).filter(word => word.length > 0)
+
+  return {
+    packageName:  words.join('').toLowerCase(),
+    functionName: words.map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(''),
+    fileStem:     words.join('_').toLowerCase(),
+  }
+}
+
+/**
+ * Reshapes a freshly generated Go library into a capability with one slice.
+ *
+ * @remarks
+ * `@nx-go/nx-go:library` writes `<projectName>.go` and `<projectName>_test.go`
+ * at the project root, so the root package IS the library. That contradicts
+ * the vertical-slice shape mnci follows everywhere else (capability → flat
+ * slice → role-suffixed files, with only an entry point at the root), and a
+ * library that grows from it grows as one flat package that never splits.
+ * Found while bootstrapping Lore Master, whose three Go libraries are each
+ * several slice packages (russoedu/MoNecromanCi#227).
+ *
+ * After this runs, the root holds only `doc.go` (the capability's package
+ * comment) and the generator's sample code lives in one starter slice:
+ *
+ * ```
+ * libs/markdown-workspace/
+ * ├── doc.go                                   package markdownworkspace
+ * ├── project.json
+ * └── markdownworkspace/
+ *     ├── doc.go
+ *     ├── markdown_workspace_use_case.go       func MarkdownWorkspace(name string) string
+ *     └── markdown_workspace_use_case_test.go
+ * ```
+ *
+ * `use_case` is the role for the same reason the TypeScript placeholder is
+ * renamed to `.use-case.ts` (`renameScaffoldPlaceholder`): it is the generic
+ * role for a library's public behaviour. Unconditional for the same reason
+ * too — whether a workspace "uses" slices is not knowable from the files, and
+ * the shape costs nothing when ignored.
+ *
+ * The project's `test` and `lint` targets need no change: the plugin's
+ * executors run `go test ./...` and `<linter> run ./...` from the project
+ * root, so the slice package below it is covered (russoedu/MoNecromanCi#233).
+ *
+ * Idempotent: the root placeholders are removed with `force`, and the slice
+ * files are only written when absent, so a user's edits survive a re-run.
+ *
+ * @param projectRoot - Absolute path to the generated library.
+ * @param projectName - The project name the generator used for its files.
+ * @returns The import path suffix of the starter slice, relative to the module.
+ * @throws Propagates any `fs` error writing the new files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function reshapeGoLibraryScaffold (projectRoot: string, projectName: string): string {
+  const { packageName, functionName, fileStem } = goLibraryIdentifiers(projectName)
+
+  rmSync(join(projectRoot, `${projectName}.go`), { force: true })
+  rmSync(join(projectRoot, `${projectName}_test.go`), { force: true })
+
+  const files: ReadonlyArray<readonly [string, string]> = [
+    [
+      'doc.go',
+      `// Package ${packageName} is the ${projectName} capability. Its code lives in the\n` +
+        '// slice packages below this directory, one package per outcome.\n' +
+        `package ${packageName}\n`,
+    ],
+    [
+      join(packageName, 'doc.go'),
+      `// Package ${packageName} is the starter slice of ${projectName}: rename it after\n` +
+        '// the outcome it delivers, and add one package per further outcome.\n' +
+        `package ${packageName}\n`,
+    ],
+    [
+      join(packageName, `${fileStem}_use_case.go`),
+      `package ${packageName}\n\n` +
+        `// ${functionName} is the generator's sample behaviour, kept so the slice builds and tests.\n` +
+        `func ${functionName}(name string) string {\n` +
+        `\treturn "${functionName} " + name\n` +
+        '}\n',
+    ],
+    [
+      join(packageName, `${fileStem}_use_case_test.go`),
+      `package ${packageName}\n\n` +
+        'import "testing"\n\n' +
+        `func Test${functionName}(t *testing.T) {\n` +
+        `\tif got := ${functionName}("works"); got != "${functionName} works" {\n` +
+        '\t\tt.Fatalf("got %q", got)\n' +
+        '\t}\n' +
+        '}\n',
+    ],
+  ]
+  for (const [relativePath, content] of files) {
+    const path = join(projectRoot, relativePath)
+    if (!fileExists(path)) {
+      writeFileEnsured(path, content)
+    }
+  }
+
+  return packageName
+}
+
 /** Shared preflight for every Go kind: toolchain, plugin and root module. */
 function prepareGo (workspaceRoot: string): void {
   ensureGo(workspaceRoot)
@@ -413,11 +541,12 @@ export function addGoLib (workspaceRoot: string, name: string): void {
     test: goTestTarget(),
     lint: goLintTarget(),
   })
+  const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'packages', name), name)
   registerProjectCommands(workspaceRoot, name, { build: false })
 
   const module = goModulePath(workspaceRoot)
   if (module) {
-    logger.step(`Import it as ${module}/packages/${name}`)
+    logger.step(`Import its starter slice as ${module}/packages/${name}/${slice}`)
   }
 }
 
@@ -454,10 +583,11 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
     test: goTestTarget(),
     lint: goLintTarget(),
   })
+  const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'libs', name), name)
   registerProjectCommands(workspaceRoot, name, { build: false })
 
   const module = goModulePath(workspaceRoot)
   if (module) {
-    logger.step(`Import it as ${module}/libs/${name}`)
+    logger.step(`Import its starter slice as ${module}/libs/${name}/${slice}`)
   }
 }

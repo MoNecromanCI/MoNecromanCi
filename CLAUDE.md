@@ -122,6 +122,11 @@ committing an upgrade.
   Bootstraps one root `go.mod` via the plugin's `init` + `convert-to-one-mod`,
   then writes build/test/lint targets explicitly. Lint is pinned to
   `golangci-lint`; the plugin's own default is `go fmt`, which only reformats.
+- Go libraries are shaped as slice packages: `reshapeGoLibraryScaffold()`
+  replaces the plugin's root `<name>.go` with a root `doc.go` and moves the
+  sample into one starter slice (`libs/<name>/<pkg>/<snake>_use_case.go`).
+  The plugin's `test`/`lint` executors already run `./...` from the project
+  root (measured, #233), so every slice package is covered with no target change.
 - `go-lib` is deliberately **excluded from `release.projects`** via
   `!tag:type:go-lib`. Not tuning — a bug fix: a `go-lib` lands in `packages/`
   but has no per-project manifest, so Nx's default `versionActions` looks for a

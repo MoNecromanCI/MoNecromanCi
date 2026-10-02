@@ -9,11 +9,12 @@ jest.mock('../terminal', () => ({
 }))
 jest.mock('@inquirer/prompts', () => ({ select: jest.fn(), input: jest.fn() }))
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { runAdd } from './add-project.use-case'
+import { goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
@@ -290,5 +291,85 @@ describe('runAdd go', () => {
     } finally {
       delete process.env.MNCI_NX_GO_SPEC
     }
+  })
+  it('reshapes a Go lib into a capability: only doc.go at the root, the sample code in one slice package', async () => {
+    writeFileSync(join(workspaceRoot, 'go.mod'), 'module demo\n\ngo 1.24\n')
+    seedProjectJson('libs/markdown-workspace', 'markdown-workspace')
+    // What `@nx-go/nx-go:library` writes at the root (the generator is mocked here).
+    writeFileSync(join(workspaceRoot, 'libs/markdown-workspace/markdown-workspace.go'), 'package markdownworkspace\n')
+    writeFileSync(join(workspaceRoot, 'libs/markdown-workspace/markdown-workspace_test.go'), 'package markdownworkspace\n')
+
+    await runAdd('go-internal-lib', 'markdown-workspace', {})
+
+    const root = join(workspaceRoot, 'libs/markdown-workspace')
+    expect(readdirSync(root).toSorted((a, b) => a.localeCompare(b))).toEqual(['doc.go', 'markdownworkspace', 'project.json'])
+    expect(readFileSync(join(root, 'doc.go'), 'utf8')).toMatch(/^package markdownworkspace$/m)
+    expect(readdirSync(join(root, 'markdownworkspace')).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'doc.go',
+      'markdown_workspace_use_case_test.go',
+      'markdown_workspace_use_case.go',
+    ])
+    const useCase = readFileSync(join(root, 'markdownworkspace/markdown_workspace_use_case.go'), 'utf8')
+    expect(useCase).toMatch(/^package markdownworkspace$/m)
+    expect(useCase).toContain('func MarkdownWorkspace(name string) string {')
+    expect(readFileSync(join(root, 'markdownworkspace/markdown_workspace_use_case_test.go'), 'utf8')).toContain(
+      'func TestMarkdownWorkspace(t *testing.T) {',
+    )
+  })
+
+  it('reshapes a publishable Go lib the same way', async () => {
+    writeFileSync(join(workspaceRoot, 'go.mod'), 'module demo\n\ngo 1.24\n')
+    seedProjectJson('packages/core', 'core')
+
+    await runAdd('go-lib', 'core', {})
+
+    expect(existsSync(join(workspaceRoot, 'packages/core/doc.go'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'packages/core/core/core_use_case.go'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'packages/core/core.go'))).toBe(false)
+  })
+
+  it('leaves Go test and lint targets without a package list, because the executors already recurse with ./...', async () => {
+    writeFileSync(join(workspaceRoot, 'go.mod'), 'module demo\n\ngo 1.24\n')
+    seedProjectJson('libs/util', 'util')
+
+    await runAdd('go-internal-lib', 'util', {})
+
+    // @nx-go/nx-go 4.1.1 appends `./...` itself and runs from the project root
+    // (russoedu/MoNecromanCi#233), so the slice packages below the root are
+    // tested and linted. Passing a package list here would override that.
+    const { targets } = readProjectJson('libs/util')
+    expect(targets.test).toEqual({ executor: '@nx-go/nx-go:test' })
+    expect(targets.lint?.options).toEqual({ linter: 'golangci-lint', args: ['run'] })
+  })
+})
+
+describe('reshapeGoLibraryScaffold', () => {
+  let projectRoot: string
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), 'mnci-go-lib-'))
+  })
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true })
+  })
+
+  it('is idempotent and never overwrites a slice file the user already edited', () => {
+    reshapeGoLibraryScaffold(projectRoot, 'util')
+    const edited = join(projectRoot, 'util/util_use_case.go')
+    writeFileSync(edited, 'package util\n\n// edited\n')
+
+    expect(reshapeGoLibraryScaffold(projectRoot, 'util')).toBe('util')
+    expect(readFileSync(edited, 'utf8')).toBe('package util\n\n// edited\n')
+  })
+
+  it.each([
+    ['util', { packageName: 'util', functionName: 'Util', fileStem: 'util' }],
+    ['markdown-workspace', { packageName: 'markdownworkspace', functionName: 'MarkdownWorkspace', fileStem: 'markdown_workspace' }],
+    ['lore-master-engine2', { packageName: 'loremasterengine2', functionName: 'LoreMasterEngine2', fileStem: 'lore_master_engine2' }],
+    // The plugin itself leaves a dotted name as an invalid package clause.
+    ['my.lib', { packageName: 'mylib', functionName: 'MyLib', fileStem: 'my_lib' }],
+  ])('derives Go identifiers for %s', (name, expected) => {
+    expect(goLibraryIdentifiers(name)).toEqual(expected)
   })
 })

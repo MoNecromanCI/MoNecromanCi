@@ -1371,8 +1371,21 @@ pipeline installs `golangci-lint` itself (see below).
   generators, in that order — `convert-to-one-mod` refuses once `go.work`
   lists any module, so it has to happen before the first Go project exists.
   Every Go project then shares that module and imports its siblings as
-  `<module>/libs/<name>`, with no per-project manifests and no `replace`
-  directives.
+  `<module>/libs/<name>/<slice>`, with no per-project manifests and no
+  `replace` directives.
+- **A Go library is a capability of slice packages.** The plugin's library
+  generator writes `<name>.go` at the project root, which makes the root
+  package the whole library. mnci replaces it with a root `doc.go` and moves
+  the sample into one starter slice package (`libs/markdown-workspace/
+  markdownworkspace/markdown_workspace_use_case.go`), the Go spelling of the
+  `<kebab>.<role>.ts` files the TypeScript scaffolds get. Rename the starter
+  after the outcome it delivers and add one package per further outcome.
+- **`test` and `lint` reach every slice package.** The plugin's executors run
+  `go test ./...` and `golangci-lint run ./...` from the project root
+  (measured on `@nx-go/nx-go` 4.1.1), so mnci passes no package list. The e2e
+  plants a failing test and a lint finding in a nested package and asserts
+  both fail the project target, so a plugin change that stopped recursing
+  would surface there rather than as a silently green lib.
 - **The `go.work` multi-module layout was rejected deliberately.** Besides
   splitting dependencies across per-project manifests, it is brittle: a
   single stale `use` entry — a project directory removed by hand — makes

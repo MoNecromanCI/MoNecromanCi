@@ -1,5 +1,5 @@
 import { existsSync, globSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   fileExists,
   markExecutable,
@@ -1132,6 +1132,19 @@ export const NX_PEER_OVERRIDES = {
  * not independently required by each `@nx/*` package the audit names, so there is
  * no sibling edge for a per-parent override to reach — verified by running the
  * real `NPM_AUDIT_STEP` against a workspace carrying only this one entry.
+ *
+ * **`nx` → `axios` is the third instance, on the same day mnci fixed it for
+ * itself.** `nx@23.2.x` depends on `axios ^1.18.1`, and every `axios` below
+ * `1.20.0` carries twelve high advisories (prototype-pollution gadgets, ReDoS,
+ * proxy and redirect bypasses; the widest, GHSA-9fr6-4gfg-395g and
+ * GHSA-j8rh-479h-cp32, cover `>=1.0.0 <1.20.0`). This repo's own lockfile moved
+ * to `1.20.0` in a8a27bb; a workspace generated an hour later still resolved
+ * `1.18.1` and failed its first CI run, with `nx` and four `@nx/*` packages
+ * flagged only for inheriting it. `axios` is reached through `nx` alone (in a
+ * fresh workspace, `npm ls axios` shows one path), so it nests under the `nx`
+ * entry exactly as `smol-toml` does. Found bootstrapping Lore Master
+ * (russoedu/MarkDoc). Check `npm ls axios` before assuming a second path ever
+ * appears, and drop the entry once the `nx` mnci installs requires `^1.20.0`.
  */
 export const ESLINT_PEER_OVERRIDES = {
   'eslint-plugin-jsx-a11y': { eslint: '$eslint' },
@@ -1148,7 +1161,7 @@ export const ESLINT_PEER_OVERRIDES = {
   // both — and forcing those to v5 breaks them. So the blast radius is one
   // dependency edge per named parent, and a test asserts there is no top-level
   // entry.
-  'nx':                     { 'brace-expansion': '^5.0.9', 'smol-toml': '^1.7.1' },
+  'nx':                     { 'brace-expansion': '^5.0.9', 'smol-toml': '^1.7.1', 'axios': '^1.20.0' },
   '@nx/js':                 { 'brace-expansion': '^5.0.9' },
   '@nx/eslint':             { 'brace-expansion': '^5.0.9' },
   '@nx/eslint-plugin':      { 'brace-expansion': '^5.0.9' },
@@ -1819,7 +1832,10 @@ export function vscodeWorkspace (
   // anything it has no opinion about survives.
   const settings = { ...existingSettings, ...vscodeSettings() }
 
-  return JSON.stringify(
+  // `toJson`, like every other JSON file mnci writes: it ends with a newline.
+  // Bare JSON.stringify did not, while `mnci new`'s format pass adds one, so
+  // every `mnci upgrade` showed the same one-character diff on this file.
+  return toJson(
     {
       folders:    [{ path: '.', name: workspaceName }],
       settings,
@@ -1833,8 +1849,6 @@ export function vscodeWorkspace (
         configurations: [...launchConfigurations(workspaceName), ...userConfigurations],
       },
     },
-    null,
-    2,
   )
 }
 
@@ -4278,6 +4292,14 @@ function removeNxAuthoredAgentFiles (workspaceRoot: string): void {
   // Nx writes this one in full, to register its plugin marketplace. The rest
   // of `.claude` - agents, commands - is the user's and is left alone.
   rmSync(join(workspaceRoot, NX_CLAUDE_SETTINGS), { force: true })
+  // ...but when settings.json was all there was, the directory goes too. An
+  // empty `.claude/` is still AI-agent scaffolding to every tool that probes
+  // for the directory, and the e2e's "no AI-agent scaffolding: .claude" check
+  // failed on every fresh workspace because of exactly this leftover.
+  const claudeDirectory = join(workspaceRoot, dirname(NX_CLAUDE_SETTINGS))
+  if (existsSync(claudeDirectory) && readdirSync(claudeDirectory).length === 0) {
+    rmSync(claudeDirectory, { recursive: true, force: true })
+  }
 
   for (const name of NX_AUTHORED_AGENT_FILES) {
     const path = join(workspaceRoot, name)

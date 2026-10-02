@@ -233,31 +233,37 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
   const stagingParent =
     adoptTarget === undefined ? process.cwd() : mkdtempSync(join(tmpdir(), 'mnci-new-'))
 
-  logger.step(`Creating Nx workspace '${workspaceName}' (preset: ts)`)
-  runNpx(
-    [
-      '--yes',
-      'create-nx-workspace@latest',
-      workspaceName,
-      '--preset=ts',
-      '--pm=npm',
-      nxCloud ? `--nxCloud=${nxCloudProviderValue(ci)}` : '--nxCloud=skip',
-      '--no-interactive',
-    ],
-    stagingParent,
-  )
-
   let workspaceRoot = join(stagingParent, workspaceName)
-  if (adoptTarget !== undefined) {
-    logger.step(`Adopting ${adoptTarget} (keeping its .git)`)
-    // Throws on any collision it cannot resolve, having written nothing. The
-    // staging tree is removed either way — on the failure path by the process
-    // exiting, on the success path by the adoption itself.
-    const adoption = adoptGeneratedWorkspace(workspaceRoot, adoptTarget)
-    for (const kept of adoption.kept) logger.detail(`kept the existing ${kept}`)
-    if (adoption.mergedGitignore) logger.detail('merged the generated .gitignore into the existing one')
-    rmSync(stagingParent, { recursive: true, force: true })
-    workspaceRoot = adoptTarget
+  try {
+    logger.step(`Creating Nx workspace '${workspaceName}' (preset: ts)`)
+    runNpx(
+      [
+        '--yes',
+        'create-nx-workspace@latest',
+        workspaceName,
+        '--preset=ts',
+        '--pm=npm',
+        nxCloud ? `--nxCloud=${nxCloudProviderValue(ci)}` : '--nxCloud=skip',
+        '--no-interactive',
+      ],
+      stagingParent,
+    )
+
+    if (adoptTarget !== undefined) {
+      logger.step(`Adopting ${adoptTarget} (keeping its .git)`)
+      // Throws on any collision it cannot resolve, having written nothing.
+      const adoption = adoptGeneratedWorkspace(workspaceRoot, adoptTarget)
+      for (const kept of adoption.kept) logger.detail(`kept the existing ${kept}`)
+      if (adoption.mergedGitignore) logger.detail('merged the generated .gitignore into the existing one')
+      workspaceRoot = adoptTarget
+    }
+  } finally {
+    // The staging tree goes on EVERY path. An earlier comment here claimed the
+    // failure path cleaned up "by the process exiting", which a temp directory
+    // never does: a refused adoption left a full workspace, node_modules
+    // included, in the OS temp dir on every attempt. Only the temp tree is
+    // removed - without `--into`, `stagingParent` is the user's cwd.
+    if (adoptTarget !== undefined) rmSync(stagingParent, { recursive: true, force: true })
   }
 
   logger.step(

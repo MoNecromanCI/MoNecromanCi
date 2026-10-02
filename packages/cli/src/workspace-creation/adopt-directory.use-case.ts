@@ -27,8 +27,46 @@ import { join } from 'node:path'
 const NEVER_COPIED: ReadonlySet<string> = new Set(['.git', 'node_modules'])
 
 /**
+ * Entries the generator writes only for the overlay to strip or replace, so an
+ * existing copy can always win.
+ *
+ * @remarks
+ * `create-nx-workspace` (Nx 23.2) writes its AI-agent rules and skills into
+ * every agent's conventional location: `CLAUDE.md` and `AGENTS.md` (inside a
+ * marked block), `.claude/settings.json`, `.agents`, `.codex`, `.cursor`,
+ * `.gemini`, `.opencode`, `opencode.json`, plus `.github/agents`,
+ * `.github/prompts`, `.github/skills` and a `.github/workflows/ci.yml`. The
+ * overlay that runs straight
+ * after adoption removes or replaces every one of them
+ * (`NX_SCAFFOLDING_TO_REMOVE`, `removeNxAuthoredAgentFiles`, and the CI file
+ * it writes itself), so the generated copy never survives anyway.
+ *
+ * Treating them as collisions therefore rejected the case `--into` exists
+ * for while protecting nothing: a repository with its own `CLAUDE.md` could
+ * not be adopted at all. Found adopting Lore Master (russoedu/MarkDoc),
+ * whose planning `CLAUDE.md` predates the workspace. The same holds for a
+ * repository's own `.github` (issue templates, workflows): mnci's CI file is
+ * written by the overlay, not copied from the generator, so keeping the
+ * existing directory loses only Nx's agent skills.
+ *
+ */
+const AGENT_AND_CI_ENTRIES: readonly string[] = [
+  'AGENTS.md',
+  'CLAUDE.md',
+  '.claude',
+  '.agents',
+  '.codex',
+  '.cursor',
+  '.gemini',
+  '.opencode',
+  'opencode.json',
+  '.github',
+]
+
+/**
  * Files where an existing copy WINS, because they belong to whoever created
- * the repository rather than to the generator.
+ * the repository rather than to the generator, or because the generator's
+ * copy is stripped by the overlay anyway ({@link AGENT_AND_CI_ENTRIES}).
  *
  * @remarks
  * A host-created repository routinely arrives with a README and a licence
@@ -38,7 +76,13 @@ const NEVER_COPIED: ReadonlySet<string> = new Set(['.git', 'node_modules'])
  * repository. Neither is right, so the existing file stays and the result says
  * so.
  */
-const EXISTING_WINS: ReadonlySet<string> = new Set(['README.md', 'LICENSE', 'LICENSE.md', 'LICENSE.txt'])
+const EXISTING_WINS: ReadonlySet<string> = new Set([
+  'README.md',
+  'LICENSE',
+  'LICENSE.md',
+  'LICENSE.txt',
+  ...AGENT_AND_CI_ENTRIES,
+])
 
 /**
  * Entries whose presence is fatal, checked BEFORE generating anything.
