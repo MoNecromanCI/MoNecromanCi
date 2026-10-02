@@ -372,6 +372,17 @@ ${feedShortKey}:email=npm-requires-this-and-never-uses-it
 }
 
 /**
+ * The Nx tag a `vscode-extension` project carries, and what `release.projects` matches it by.
+ *
+ * @remarks
+ * An extension lives in `apps/`, which no release glob covers, and a path added to
+ * `release.projects` by hand would be lost on the next `mnci upgrade`, which
+ * rewrites the array (#229). A tag matcher needs no array merging: every upgrade
+ * writes the same list, and it matches every extension there will ever be.
+ */
+export const VSCODE_EXTENSION_TAG = 'type:vscode-extension'
+
+/**
  * Builds the `release` block merged into a generated workspace's `nx.json`.
  *
  * @remarks
@@ -474,7 +485,7 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
 
   return {
     projectsRelationship: 'independent',
-    projects:             ['packages/*', 'python-packages/*', '!tag:type:go-lib'],
+    projects:             ['packages/*', 'python-packages/*', `tag:${VSCODE_EXTENSION_TAG}`, '!tag:type:go-lib'],
     releaseTag:           { pattern: '{projectName}@{version}' },
     git:                  { commit: false, tag: true, push: githubReleases },
     version:              {
@@ -486,7 +497,7 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
       // Set here at `new` time it wins: the generator only fills this in when
       // absent (it spreads the existing release.version over its default). Both
       // globs are listed; `nx run-many` no-ops cleanly when one matches nothing.
-      preVersionCommand:              'npx nx run-many -t build --projects=packages/*,python-packages/*',
+      preVersionCommand:              `npx nx run-many -t build --projects=packages/*,python-packages/*,tag:${VSCODE_EXTENSION_TAG}`,
       // The lock file resync is OFF, and the reason is that it cannot succeed
       // on the one release where it would matter.
       //
@@ -515,6 +526,11 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
       ? {
           workspaceChangelog: false,
           projectChangelogs:  { createRelease: 'github', file: false },
+          // A GitHub Release needs a changelog, and a changelog needs a ref to start
+          // from. On the first release of a repository there is no tag to start from,
+          // and nx release dies after versioning (#243, measured). With this set it
+          // starts from the first commit; once a tag exists it is never consulted.
+          automaticFromRef:   true,
         }
       : { workspaceChangelog: false },
   } as const
@@ -2967,6 +2983,11 @@ const SHALLOW_CLONE_GUARD = 'node -e "const r=require(\'node:child_process\').sp
  * at all (Azure Artifacts has no pub feed, so publishing IS the git tag),
  * which is exactly why nothing downstream would ever have surfaced the miss.
  *
+ * A `vscode-extension` is the one releasable project outside those folders: it
+ * lives in `apps/` and is in scope through its tag (#229), so it is counted by the
+ * same tag, read from its `package.json`. Without it an extension-only workspace
+ * would log "Nothing to release" for ever, the Dart failure again.
+ *
  * The same count also feeds the `RELEASE_SPECIFIER` keyword check below, so
  * under-counting weakened that guard too: one npm lib plus one flutter lib
  * counted as 1, and a bare keyword — the input that silently under-bumps
@@ -2981,7 +3002,7 @@ const SHALLOW_CLONE_GUARD = 'node -e "const r=require(\'node:child_process\').sp
  * @typeParam None - this function has no generic type parameters.
  */
 function releaseGuard (pythonPublishEnv: string, nugetPublishEnv: string): string {
-  return String.raw`node -e "const fs=require('node:fs'),cp=require('node:child_process');const npmCount=fs.globSync('packages/*/package.json').length;const csharpCount=fs.globSync('packages/*/*.csproj').length;const pythonCount=fs.globSync('python-packages/*/pyproject.toml').length;const dartCount=fs.globSync('packages/*/pubspec.yaml').length;const hasNpm=npmCount>0;const hasPython=pythonCount>0;const hasCsharp=csharpCount>0;const hasDart=dartCount>0;if(!hasNpm&&!hasPython&&!hasCsharp&&!hasDart){console.log('Nothing to release - skipping.');process.exit(0)}const specifier=process.env.RELEASE_SPECIFIER||'';let releaseCmd='npx nx release --yes';if(specifier){if(!/^(major|minor|patch|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/.test(specifier)){console.error('RELEASE_SPECIFIER value \''+specifier+'\' is invalid - use major, minor, patch, or an exact version like 1.2.3.');process.exit(1)}const releaseProjectCount=npmCount+csharpCount+pythonCount+dartCount;if(/^(major|minor|patch)$/.test(specifier)&&releaseProjectCount>1){console.error('RELEASE_SPECIFIER is a keyword (\''+specifier+'\') but this workspace has '+releaseProjectCount+' releasable packages - a keyword under-bumps interdependent packages, because nx computes the dependency-bump pass from a stale cached version. Set RELEASE_SPECIFIER to an exact version instead, or clear it.');process.exit(1)}releaseCmd='npx nx release '+specifier+' --yes'}const env={...process.env};${pythonPublishEnv}${nugetPublishEnv}process.exit(cp.spawnSync(releaseCmd,{stdio:'inherit',shell:true,env}).status ?? 1)"`
+  return String.raw`node -e "const fs=require('node:fs'),cp=require('node:child_process');const npmCount=fs.globSync('packages/*/package.json').length;const csharpCount=fs.globSync('packages/*/*.csproj').length;const pythonCount=fs.globSync('python-packages/*/pyproject.toml').length;const dartCount=fs.globSync('packages/*/pubspec.yaml').length;const vscodeCount=fs.globSync('apps/*/package.json').filter(p=>{try{return(JSON.parse(fs.readFileSync(p,'utf8')).nx?.tags||[]).includes('${VSCODE_EXTENSION_TAG}')}catch{return false}}).length;const hasNpm=npmCount>0;const hasPython=pythonCount>0;const hasCsharp=csharpCount>0;const hasDart=dartCount>0;const hasVscode=vscodeCount>0;if(!hasNpm&&!hasPython&&!hasCsharp&&!hasDart&&!hasVscode){console.log('Nothing to release - skipping.');process.exit(0)}const specifier=process.env.RELEASE_SPECIFIER||'';let releaseCmd='npx nx release --yes';if(specifier){if(!/^(major|minor|patch|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/.test(specifier)){console.error('RELEASE_SPECIFIER value \''+specifier+'\' is invalid - use major, minor, patch, or an exact version like 1.2.3.');process.exit(1)}const releaseProjectCount=npmCount+csharpCount+pythonCount+dartCount+vscodeCount;if(/^(major|minor|patch)$/.test(specifier)&&releaseProjectCount>1){console.error('RELEASE_SPECIFIER is a keyword (\''+specifier+'\') but this workspace has '+releaseProjectCount+' releasable packages - a keyword under-bumps interdependent packages, because nx computes the dependency-bump pass from a stale cached version. Set RELEASE_SPECIFIER to an exact version instead, or clear it.');process.exit(1)}releaseCmd='npx nx release '+specifier+' --yes'}const env={...process.env};${pythonPublishEnv}${nugetPublishEnv}process.exit(cp.spawnSync(releaseCmd,{stdio:'inherit',shell:true,env}).status ?? 1)"`
 }
 
 /**
@@ -3595,11 +3616,14 @@ ${
   # the run rather than under-bumping silently: clear the variable back to
   # '' once the override is no longer needed.
   - script: ${releaseGuard(pythonPublishEnvFragment(pythonPublishUrl, registryKind), nugetPublishEnvFragment(nugetFeedUrl))}
-    displayName: Release — version, tag and publish (npm + Python + C#)
+    displayName: Release — version, tag and publish (npm + Python + C# + VS Code)
     condition: ${onMain}
     env:
       ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `$(${name})`, ' '.repeat(6))}
       RELEASE_SPECIFIER: $(RELEASE_SPECIFIER)
+      # A VS Code extension publishes with it; tools/vscode-extension.cjs skips the
+      # Marketplace when it is unset, including when Azure leaves it as '$(VSCE_PAT)'.
+      VSCE_PAT: $(VSCE_PAT)
 
   # nx release's own git push (release.git.push) is deliberately left off: it
   # only runs when a remote GitHub/GitLab Release is configured, which this
@@ -3928,11 +3952,14 @@ ${
           : ''
       }
       - run: ${releaseGuard(pythonPublishEnvFragment(pythonPublishUrl, registryKind), nugetPublishEnvFragment(nugetFeedUrl))}
-        name: Release — version, tag${githubReleases ? ', publish and GitHub Release' : ' and publish'} (npm + Python + C#)
+        name: Release — version, tag${githubReleases ? ', publish and GitHub Release' : ' and publish'} (npm + Python + C# + VS Code)
         if: \${{ ${onMain} }}
         env:
           ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `\${{ secrets.${name} }}`, ' '.repeat(10))}
-          RELEASE_SPECIFIER: \${{ vars.RELEASE_SPECIFIER }}${
+          RELEASE_SPECIFIER: \${{ vars.RELEASE_SPECIFIER }}
+          # A VS Code extension publishes with it; tools/vscode-extension.cjs
+          # skips the Marketplace when it is unset.
+          VSCE_PAT: \${{ secrets.VSCE_PAT }}${
             githubReleases
               ? `
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}`

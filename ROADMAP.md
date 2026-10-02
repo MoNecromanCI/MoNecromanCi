@@ -460,6 +460,32 @@ projects in four languages, with a publishable `react-lib` importing a private
 **inlined** into the published bundle, and `@demo/design` absent from both the
 bundle and the published manifest's dependencies.
 
+### 8b. `vscode-extension` — ✅ done (GitHub #225, #229)
+
+There was no way to scaffold a VS Code extension: the nearest kind, `node-app`, is
+un-bundled, and a `.vsix` ships no `node_modules`. `mnci add vscode-extension` now
+reshapes `@nx/node:application` into a bundled extension, packages it with `vsce`
+(one universal `.vsix`, or one per Marketplace target with a `--sidecar` go-app's
+binary in `bin/`), and publishes it through `nx release` when `VSCE_PAT` is set. It
+lives in `apps/` and is released by tag (`tag:type:vscode-extension`) rather than by
+a path that `mnci upgrade` would overwrite.
+
+Three defects found on the way, each its own issue:
+
+1. The first GitHub Release of a repository with no tags died in the changelog step
+   (#243): fixed with `release.changelog.automaticFromRef`.
+2. The C# publish target ignores `nx release --dry-run --yes` and would push to
+   NuGet for real (#245): open. The extension's script honours both signals Nx
+   sends (`--dryRun=true`, `NX_DRY_RUN`), measured.
+3. `@vscode/test-cli` integration tests need a VS Code download and a display, so
+   they are split out (#244): open.
+
+Verified on a generated workspace: lint (with `verticalSlices` on, and a planted
+violation failing), test against the `vscode` stub, typecheck, build, eight
+platform packages with the sidecar at mode 0755 and the right `TargetPlatform`,
+`mnci upgrade` leaving `git status` empty, and `nx release --dry-run --yes`
+versioning the extension in a workspace with nothing in `packages/`.
+
 ### 9. Container / Docker kind — P2
 
 Nothing in `packages/cli/src` mentions a Dockerfile. Without one, nothing reaches

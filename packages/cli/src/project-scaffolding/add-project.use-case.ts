@@ -19,6 +19,7 @@ import {
 } from './python.use-case'
 import { addReactApp } from './react-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
+import { addVscodeExtension } from './vscode-extension.use-case'
 import { syncProjectReferences } from '../dependency-management'
 import {
   ensureNxPeerOverrides,
@@ -40,7 +41,8 @@ export type { AddOptions } from './post-generation.use-case'
  * @remarks
  * Each maps to an official (or established first-party) Nx plugin generator;
  * this CLI itself writes no project files (bar thin overlays). Layout convention
- * drives release scoping: `apps/` (never released), `packages/` (publishable
+ * drives release scoping: `apps/` (never released, except a `vscode-extension`,
+ * matched by its tag), `packages/` (publishable
  * npm, released by `nx release`), `libs/` (internal, never released),
  * `python-packages/` (publishable Python, published by `twine`).
  *
@@ -99,6 +101,12 @@ export type { AddOptions } from './post-generation.use-case'
  * `python-vendor` below): there is nothing to weave in at build time. Apps
  * build for **web** only, which keeps the Android SDK off every build agent.
  *
+ * `vscode-extension` is `@nx/node:application` turned into a Marketplace
+ * extension: bundled with `vscode` external, packaged by `vsce` into one `.vsix`
+ * (or one per platform with a `--sidecar` Go app's binaries in it), published by
+ * `nx release` when `VSCE_PAT` is set. It lives in `apps/` and is released anyway,
+ * through the `type:vscode-extension` tag in `release.projects`.
+ *
  * `python-vendor` is the one kind that generates nothing: plain pip has no
  * bundled-local-dependency feature, so wiring an internal Python library
  * into a consumer's built wheel is a hand-edit of the consumer's
@@ -131,7 +139,8 @@ export type ProjectKind =
   'csharp-app' |
   'csharp-function-app' |
   'csharp-lib' |
-  'csharp-internal-lib'
+  'csharp-internal-lib' |
+  'vscode-extension'
 
 /**
  * Every kind {@link runAdd} accepts, in menu order.
@@ -165,6 +174,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'csharp-function-app',
   'csharp-lib',
   'csharp-internal-lib',
+  'vscode-extension',
 ]
 
 /**
@@ -335,6 +345,13 @@ export async function runAdd (
     }
     case 'csharp-internal-lib': {
       addCsharpInternalLib(workspaceRoot, resolvedName)
+      break
+    }
+    case 'vscode-extension': {
+      addVscodeExtension(workspaceRoot, resolvedName, stack, {
+        publisher: options.publisher,
+        sidecar:   options.sidecar,
+      })
       break
     }
     case 'python-vendor': {

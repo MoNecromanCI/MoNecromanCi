@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { runFormatter } from '../nx-workspace'
-import { addGoPlatformTargets } from '../project-scaffolding'
+import { addGoPlatformTargets, refreshVscodeExtensionScript, VSCODE_EXTENSION_SCRIPT_PATH } from '../project-scaffolding'
 import {
   repairPublishableManifests,
   repairRollupSourceMaps,
@@ -326,6 +326,12 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
     for (const path of goApps) {
       logger.detail(`updated ${path}`)
     }
+  }
+  // The packaging script is mnci's, like the overlay files: a fix to it reaches
+  // every workspace with a VS Code extension, and only those.
+  if (refreshVscodeExtensionScript(workspaceRoot)) {
+    logger.step('Updating the VS Code extension packaging script')
+    logger.detail(`updated ${VSCODE_EXTENSION_SCRIPT_PATH}`)
   }
   const upgradedDtsPlugins = upgradeDeclarationSpecifierPlugins(workspaceRoot)
   if (upgradedDtsPlugins.length > 0) {

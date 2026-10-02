@@ -48,6 +48,7 @@ import {
   rootScripts,
   SHARED_GLOBAL_INPUTS,
   type StackConfig,
+  VSCODE_EXTENSION_TAG,
   VSCODE_RECOMMENDED_EXTENSIONS,
   LAUNCH_CONFIGURATIONS,
   vscodeSettings,
@@ -512,7 +513,9 @@ describe('withReleaseConfig', () => {
       // default versionActions looks for a package.json that is not there and
       // aborts the release for the WHOLE workspace. Verified: without this,
       // one `mnci add go-lib` made `nx release` exit 1 for every project.
-      projects:             ['packages/*', 'python-packages/*', '!tag:type:go-lib'],
+      // `tag:type:vscode-extension`: an extension lives in apps/ and is released
+      // anyway; a tag matcher survives `mnci upgrade`, a hand-added path does not.
+      projects:             ['packages/*', 'python-packages/*', 'tag:type:vscode-extension', '!tag:type:go-lib'],
       releaseTag:           { pattern: '{projectName}@{version}' },
       // Tag-only model: nothing is ever committed to main; the tag is pushed.
       // Top-level (not version.git) — Nx rejects granular git config for the
@@ -527,7 +530,7 @@ describe('withReleaseConfig', () => {
         fallbackCurrentVersionResolver: 'disk',
         // Releasing packages must not require building apps; both globs listed
         // (nx run-many no-ops on an empty one).
-        preVersionCommand:              'npx nx run-many -t build --projects=packages/*,python-packages/*',
+        preVersionCommand:              'npx nx run-many -t build --projects=packages/*,python-packages/*,tag:type:vscode-extension',
         // The first release of two NEW interdependent packages 404s without
         // this: @nx/js resyncs package-lock.json against the registry after
         // versioning, and one of the two packages does not exist there yet.
@@ -600,6 +603,64 @@ describe('withReleaseConfig', () => {
         projectChangelogs:  { createRelease: 'github', file: false },
       },
     })
+  })
+
+  it('starts the first GitHub Release changelog from the first commit (#243)', () => {
+    // Measured: on a repository with no release tag, nx release versions the
+    // project and then dies in the changelog step ("Unable to determine the
+    // previous git tag"), so the first release of every github workspace failed.
+    const github = withReleaseConfig({ $schema: 'x' }, 'github').release as {
+      changelog: Record<string, unknown>
+    }
+    expect(github.changelog.automaticFromRef).toBe(true)
+
+    // No GitHub Release, no project changelog, nothing that needs a from-ref.
+    for (const ci of ['azure', 'both'] as const) {
+      const release = withReleaseConfig({ $schema: 'x' }, ci).release as {
+        changelog: Record<string, unknown>
+      }
+      expect(release.changelog.automaticFromRef).toBeUndefined()
+    }
+  })
+
+  it('reaches an existing workspace on upgrade, alongside its own changelog keys', () => {
+    const release = withReleaseConfig(
+      { release: { changelog: { workspaceChangelog: false, renderOptions: { authors: false } } } },
+      'github',
+    ).release as { changelog: Record<string, unknown> }
+
+    expect(release.changelog.automaticFromRef).toBe(true)
+    expect(release.changelog.renderOptions).toEqual({ authors: false })
+  })
+
+  it('releases VS Code extensions by tag and builds them before versioning (#229)', () => {
+    const release = withReleaseConfig({ $schema: 'x' }, 'azure').release as {
+      projects: string[]
+      version:  { preVersionCommand: string }
+    }
+
+    expect(release.projects).toContain(`tag:${VSCODE_EXTENSION_TAG}`)
+    expect(release.version.preVersionCommand).toContain(`tag:${VSCODE_EXTENSION_TAG}`)
+    // A path an extension owner added by hand is replaced (arrays are owned), which
+    // is exactly why the scope is a tag matcher: the same list on every upgrade.
+    const upgraded = withReleaseConfig(
+      { release: { projects: ['packages/*', 'apps/my-extension'] } },
+      'azure',
+    ).release as { projects: string[] }
+    expect(upgraded.projects).toContain(`tag:${VSCODE_EXTENSION_TAG}`)
+  })
+})
+
+describe('VSCE_PAT in the release step', () => {
+  it('reaches the release step in both providers, gated in the script rather than the YAML', () => {
+    // Unconditional: the publish target exists in every extension and skips by
+    // itself when the secret is unset (Nx throws when no project in a release
+    // group carries nx-release-publish, so the target cannot be conditional).
+    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
+    const workflow = githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github')
+
+    expect(pipeline).toContain('VSCE_PAT: $(VSCE_PAT)')
+    expect(workflow).toContain('VSCE_PAT: ${{ secrets.VSCE_PAT }}')
   })
 })
 
@@ -918,7 +979,7 @@ describe('azurePipelinesYaml', () => {
     const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build', url)
 
     // One unified release step (npm + Python), not a separate publish step.
-    expect(pipeline).toContain('Release — version, tag and publish (npm + Python + C#)')
+    expect(pipeline).toContain('Release — version, tag and publish (npm + Python + C# + VS Code)')
     expect(pipeline).not.toContain('nx run-many -t publish')
     // The release step exports twine publish creds when there are Python packages.
     expect(pipeline).toContain(`TWINE_REPOSITORY_URL='${url}'`)
@@ -1351,7 +1412,7 @@ describe('githubActionsYaml', () => {
     const url = 'https://pkgs.dev.azure.com/org/proj/_packaging/feed/pypi/upload/'
     const workflow = githubActionsYaml('ubuntu-latest', url)
 
-    expect(workflow).toContain('Release — version, tag, publish and GitHub Release (npm + Python + C#)')
+    expect(workflow).toContain('Release — version, tag, publish and GitHub Release (npm + Python + C# + VS Code)')
     expect(workflow).not.toContain('nx run-many -t publish')
     expect(workflow).toContain(`TWINE_REPOSITORY_URL='${url}'`)
     expect(workflow).toContain('Buffer.from(process.env.PAT,\'base64\')')

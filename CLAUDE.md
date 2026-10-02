@@ -147,6 +147,28 @@ committing an upgrade.
   semantically right call: one root `go.mod` means one module, so its packages
   have no independent versions to bump.
 
+### VS Code extensions (`vscode-extension`)
+
+- **`packages/cli/src/project-scaffolding/vscode-extension.use-case.ts`** — `@nx/node:application`
+  reshaped into a Marketplace extension (#225): bundled (`bundle`, `thirdParty`,
+  `external: ['vscode']`, `generatePackageJson: false`), unscoped `name`, `publisher`,
+  `engines.vscode` pinned to the installed `@types/vscode`, `src/main.ts` (the slice rules
+  reject `extension.ts`), a `vscode` stub for unit tests (`test/vscode.stub.ts`, mapped by
+  Jest `moduleNameMapper` or Vitest `alias`), and an `<name>: debug` `extensionHost` launch
+  entry (never `mnci: …`, which the overlay replaces on upgrade).
+- `package` and `nx-release-publish` both run **`tools/vscode-extension.cjs`**, a workspace
+  file mnci owns (written on add, rewritten by `mnci upgrade` via
+  `refreshVscodeExtensionScript`). `--sidecar <go-app>` packages one `.vsix` per Marketplace
+  target with that platform's binary from `build-all` in `bin/`, stamped with the
+  extension's version. Publish is gated on `VSCE_PAT` (Azure's literal `$(VSCE_PAT)` counts
+  as unset), uses `--skip-duplicate`, and **never publishes in a dry run**:
+  `nx release --dry-run --yes` still runs every `nx-release-publish` target, passing
+  `--dryRun=true` and `NX_DRY_RUN` (measured; the C# target does not honour it yet, #245).
+- **Released from `apps/` by tag** (#229): `release.projects` and `preVersionCommand`
+  carry `tag:type:vscode-extension`, and the CI release guard counts tagged `apps/*`
+  manifests, or an extension-only workspace would log "Nothing to release" for ever.
+- Integration tests through `@vscode/test-cli` are #244.
+
 ### C# (third-party plugin, inference-only)
 
 - **`packages/cli/src/project-scaffolding/csharp.use-case.ts`** — the four C# kinds
@@ -471,6 +493,9 @@ to one is mirrored in the other by construction:
   `git merge-base`, not `nrwl/nx-set-shas`), everything otherwise. Every fallback
   path (missing ref, unresolvable merge-base, non-PR run) verifies **everything**,
   never nothing.
+- **The first GitHub Release of a repository** needs `release.changelog.automaticFromRef:
+  true` (`--ci github` only): with no tag to start a changelog from, `nx release`
+  versioned the project and then died before tagging (#243, measured).
 - **Release steps** fire only on `event_name == 'push' && ref_name == 'main'` — the
   positive form, not `!= 'pull_request'`, which would also match any trigger added
   later (this bit mnci's own workflow once, via a hand-added `workflow_dispatch`).

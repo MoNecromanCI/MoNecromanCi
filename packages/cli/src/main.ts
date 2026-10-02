@@ -144,6 +144,14 @@ export function buildProgram (cliVersion: string): Command {
       '--lib <name>',
       'python-vendor only: the internal Python library (libs/<name>) to vendor into <name>',
     )
+    .option(
+      '--publisher <id>',
+      'vscode-extension only: the Marketplace publisher id (defaults to the workspace scope without @)',
+    )
+    .option(
+      '--sidecar <go-app>',
+      'vscode-extension only: a go-app whose six-platform build ships in the extension, one .vsix per platform',
+    )
     .action(
       async (kind: ProjectKind | undefined, name: string | undefined, options: AddOptions) => {
         await runAdd(kind, name, options)

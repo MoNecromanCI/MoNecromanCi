@@ -61,7 +61,7 @@ function ensurePlugin (workspaceRoot: string, packageName: string): void {
  * @throws Error when the generator exits non-zero.
  * @typeParam None - this function has no generic type parameters.
  */
-function runNodeApp (
+export function runNodeApp (
   workspaceRoot: string,
   name: string,
   stack: WorkspaceStack,
