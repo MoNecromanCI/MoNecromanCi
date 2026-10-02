@@ -3113,11 +3113,14 @@ describe('applyOverlay', () => {
     // `@nx/*` package independently, so ONE entry (not five) is the real fix. A
     // fresh generated workspace's own audit step caught it never having shipped
     // here, exactly the same dogfooding drift as `brace-expansion` above.
-    expect(overrides.nx).toEqual({ 'brace-expansion': '^5.0.9', 'smol-toml': '^1.7.1' })
+    // And `axios` (twelve high advisories below 1.20.0, reached through `nx`
+    // alone): a fresh workspace on nx 23.2 failed its own audit gate without it.
+    expect(overrides.nx).toEqual({ 'brace-expansion': '^5.0.9', 'smol-toml': '^1.7.1', 'axios': '^1.20.0' })
     // NOT top-level: a tree with minimatch@3 legitimately carries
     // brace-expansion@1.x, and forcing that to v5 breaks it.
     expect(overrides['brace-expansion']).toBeUndefined()
     expect(overrides['smol-toml']).toBeUndefined()
+    expect(overrides.axios).toBeUndefined()
   })
 
   it('gives the root project a lint target, since nothing else lints root-level files', () => {
