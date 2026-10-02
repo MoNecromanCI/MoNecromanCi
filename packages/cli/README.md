@@ -1420,9 +1420,12 @@ build` links statically, so the binary in the drop already contains
 - **CI** runs Go through the same `nx run-many -t lint,test,build` as
   everything else. Two guarded steps precede it: `go mod download` (so a
   network failure reads as a dependency failure rather than a confusing
-  build error), and a `golangci-lint` install via `go install` — no package
-  manager, no sudo, same command on every agent OS — whose `GOPATH/bin` is
-  then added to `PATH` for later steps. All three skip cleanly when the
+  build error), and a `golangci-lint` install whose `GOPATH/bin` is then added
+  to `PATH` for later steps. The linter is **pinned** (`GOLANGCI_LINT_VERSION`)
+  and installed from its prebuilt release, verified against the release's
+  SHA-256 checksums, in about a second; compiling it with `go install` took
+  over a minute per run. Any download or verification failure falls back to
+  `go install` at the same pinned version. All three skip cleanly when the
   workspace has no root `go.mod`, and the linter install also skips when the
   agent already provides it.
 
@@ -1486,7 +1489,7 @@ build agents, so the generated pipeline installs it itself (see below).
   under the agent's home directory: the SDK ships dozens of its own
   `pubspec.yaml` files, which inside the tree would pollute pub's resolution and
   give Nx thousands of extra files to glob. The SDK version is **pinned**
-  (unlike `golangci-lint`'s `@latest`) because it determines the Dart version,
+  (as is `golangci-lint`'s) because it determines the Dart version,
   and pub workspaces need Dart 3.6+. Three guarded steps precede the build —
   install, add to `PATH`, and one root `flutter pub get` — and all three skip
   cleanly when the workspace has no root `pubspec.yaml`; the install also skips

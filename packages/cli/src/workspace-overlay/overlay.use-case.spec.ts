@@ -26,6 +26,7 @@ import {
   ESLINT_USER_CONFIG,
   FLUTTER_SDK_VERSION,
   FORMATTED_LANGUAGES,
+  GOLANGCI_LINT_VERSION,
   generatorDefaults,
   githubActionsYaml,
   isUnmodifiedMnciEslintConfig,
@@ -1131,6 +1132,26 @@ describe('azurePipelinesYaml', () => {
     expect(pipeline).toContain('golangci-lint')
     // Skips the install when the agent already provides the binary.
     expect(pipeline).toContain('golangci-lint already installed - skipping.')
+  })
+
+  it.each([
+    ['azure', azurePipelinesYaml('ubuntu-latest', 'Build')],
+    ['github', githubActionsYaml('ubuntu-latest')],
+  ])('%s: installs a PINNED golangci-lint from its checksum-verified prebuilt release, with go install as the fallback', (_provider, pipeline) => {
+    // `@latest` made CI non-reproducible (a golangci-lint release could turn every
+    // workspace red overnight), and compiling it cost 68 s of a ~2 min job, where
+    // the prebuilt archive takes ~1 s. russoedu/MoNecromanCi#239.
+    expect(pipeline).not.toContain('golangci-lint@latest')
+    expect(pipeline).toContain(`const v='${GOLANGCI_LINT_VERSION}'`)
+    expect(pipeline).toContain('https://github.com/golangci/golangci-lint/releases/download/v')
+    // Never executes an archive it could not verify.
+    expect(pipeline).toContain("-checksums.txt'")
+    expect(pipeline).toContain("crypto.createHash('sha256')")
+    // Windows ships a .zip, which a Git-for-Windows GNU tar cannot read, so the
+    // Windows path is the system bsdtar by absolute path (and never PowerShell).
+    expect(pipeline).toContain("path.join(process.env.SystemRoot||'','System32','tar.exe')")
+    // Any failure degrades to a compile of the SAME pinned version, never @latest.
+    expect(pipeline).toContain("'github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v'+v")
   })
 
   it('installs the Flutter SDK itself, unlike Python and Go which ship on the agent', () => {

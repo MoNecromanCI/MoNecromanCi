@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as yaml from 'js-yaml'
-import { ACTION_VERSIONS, DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, githubActionsYaml, nugetFeedUrl, pythonPublishUrl, readMnciConfig } from './workspace-overlay'
+import { ACTION_VERSIONS, DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT_VERSION, githubActionsYaml, nugetFeedUrl, pythonPublishUrl, readMnciConfig } from './workspace-overlay'
 
 /**
  * This repo's own CI must actually run the pipeline mnci ships.
@@ -211,6 +211,15 @@ describe('the e2e job provisions the toolchains its own suite needs', () => {
     // published plugin — had never once been exercised end to end.
     expect(names.some(name => name.includes('golangci-lint'))).toBe(true)
     expect(names.some(name => name.includes('Flutter SDK'))).toBe(true)
+  })
+
+  it('installs the SAME pinned golangci-lint the generated workspaces get', () => {
+    // The e2e's Go lint assertions must run the linter users run. An `@latest`
+    // here would let the nightly drift onto a version whose new default linters
+    // no generated workspace has, and report that as an mnci failure.
+    const install = steps.find(step => (step.name ?? '').includes('golangci-lint'))?.run ?? ''
+    expect(install).toContain(`golangci-lint@v${GOLANGCI_LINT_VERSION}`)
+    expect(install).not.toContain('@latest')
   })
 
   it('provisions them UNCONDITIONALLY, not through the marker-gated ci guards', () => {
