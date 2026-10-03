@@ -30,6 +30,11 @@ function seedProjectJson (relativeDirectory: string, name: string): void {
   )
 }
 
+/** The plugins `nx.json` lists. */
+function nxJsonPlugins (): unknown[] {
+  return (JSON.parse(readFileSync(join(workspaceRoot, 'nx.json'), 'utf8')) as { plugins?: unknown[] }).plugins ?? []
+}
+
 /** Reads a generated project.json back. */
 function readProjectJson (relativeDirectory: string): {
   targets: Record<
@@ -104,6 +109,52 @@ describe('runAdd go', () => {
     const calls = nxCalls()
     expect(calls.some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
     expect(calls.some(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))).toBe(false)
+  })
+
+  describe('onto a repository that already has its own go.mod (#261)', () => {
+    const ADOPTED_GO_MOD = 'module youtube-downloader\n\ngo 1.24\n\nrequire github.com/charmbracelet/bubbletea v1.3.4\n'
+
+    it('registers the Go plugin, which only the skipped bootstrap used to do, so Nx has a Go project graph', async () => {
+      writeFileSync(join(workspaceRoot, 'go.mod'), ADOPTED_GO_MOD)
+      writeFileSync(join(workspaceRoot, 'nx.json'), JSON.stringify({ plugins: ['@nx/js/typescript'] }))
+      seedProjectJson('apps/cli', 'cli')
+
+      await runAdd('go-app', 'cli', {})
+
+      expect(nxJsonPlugins()).toEqual(['@nx/js/typescript', '@nx-go/nx-go'])
+    })
+
+    it('leaves the module path and its requirements alone, and creates no go.work', async () => {
+      writeFileSync(join(workspaceRoot, 'go.mod'), ADOPTED_GO_MOD)
+      seedProjectJson('apps/cli', 'cli')
+
+      await runAdd('go-app', 'cli', {})
+
+      expect(readFileSync(join(workspaceRoot, 'go.mod'), 'utf8')).toBe(ADOPTED_GO_MOD)
+      expect(existsSync(join(workspaceRoot, 'go.work'))).toBe(false)
+      // Not run, rather than run and undone: init writes the go.work this layout rejects.
+      expect(nxCalls().some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
+    })
+
+    it('registers it once however many Go projects are added', async () => {
+      writeFileSync(join(workspaceRoot, 'go.mod'), ADOPTED_GO_MOD)
+      seedProjectJson('apps/cli', 'cli')
+      seedProjectJson('libs/core', 'core')
+
+      await runAdd('go-app', 'cli', {})
+      await runAdd('go-internal-lib', 'core', {})
+
+      expect(nxJsonPlugins().filter(entry => entry === '@nx-go/nx-go')).toHaveLength(1)
+    })
+
+    it('says what it did, so the nx.json change is not a surprise', async () => {
+      writeFileSync(join(workspaceRoot, 'go.mod'), ADOPTED_GO_MOD)
+      seedProjectJson('apps/cli', 'cli')
+
+      await runAdd('go-app', 'cli', {})
+
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Registering the Go plugin in nx.json'))
+    })
   })
 
   it('adds a Go app under apps/ with build, test, lint and package targets', async () => {

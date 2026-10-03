@@ -139,6 +139,22 @@ describe('runUpgrade: npm auth', () => {
   })
 })
 
+/** The plugins `nx.json` lists. */
+function listedPlugins (): unknown[] {
+  return (JSON.parse(readFileSync(join(workspaceRoot, 'nx.json'), 'utf8')) as { plugins?: unknown[] }).plugins ?? []
+}
+
+/** A workspace that adopted a Go module: a Go app exists and `nx.json` does not list the plugin. */
+function seedAdoptedGoWorkspace (): void {
+  seedWorkspace()
+  applyOverlay(workspaceRoot, FIXTURE_OPTIONS)
+  mkdirSync(join(workspaceRoot, 'apps', 'cli'), { recursive: true })
+  writeFileSync(
+    join(workspaceRoot, 'apps', 'cli', 'project.json'),
+    JSON.stringify({ name: 'cli', tags: ['type:go-app'], targets: { 'build-all': {}, 'package-all': {} } }),
+  )
+}
+
 describe('runUpgrade', () => {
   it('gives a Go app added before cross-compilation its build-all and package-all targets', () => {
     seedWorkspace()
@@ -155,6 +171,40 @@ describe('runUpgrade', () => {
     const targets = (JSON.parse(readFileSync(join(workspaceRoot, 'apps', 'engine', 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets
     expect(Object.keys(targets).sort((a, b) => a.localeCompare(b))).toEqual(['build-all', 'package-all'])
     expect(logged.join('\n')).toContain('apps/engine/project.json')
+  })
+
+  describe('a workspace whose Go plugin was never registered (#261)', () => {
+    it('registers it, which restores the Go project graph, and says so', () => {
+      seedAdoptedGoWorkspace()
+      expect(listedPlugins()).not.toContain('@nx-go/nx-go')
+      const logged: string[] = []
+      jest.spyOn(console, 'log').mockImplementation((message: unknown) => {
+        logged.push(String(message))
+      })
+
+      runUpgrade(workspaceRoot, {})
+
+      expect(listedPlugins()).toContain('@nx-go/nx-go')
+      expect(logged.join('\n')).toContain('Registering the Go plugin in nx.json')
+    })
+
+    it('registers it once, however many upgrades follow', () => {
+      seedAdoptedGoWorkspace()
+
+      runUpgrade(workspaceRoot, {})
+      runUpgrade(workspaceRoot, {})
+
+      expect(listedPlugins().filter(entry => entry === '@nx-go/nx-go')).toHaveLength(1)
+    })
+
+    it('does not add it to a workspace with no Go project', () => {
+      seedWorkspace()
+      applyOverlay(workspaceRoot, FIXTURE_OPTIONS)
+
+      runUpgrade(workspaceRoot, {})
+
+      expect(listedPlugins()).not.toContain('@nx-go/nx-go')
+    })
   })
 
   it('reports each file group it rewrites, and names the slow step before entering it', () => {

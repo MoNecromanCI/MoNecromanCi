@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
+import { registerNxGoPlugin } from '../go-workspace'
 import { GO_CGO_TAG } from '../workspace-overlay'
 import { makeGoAppReleasable } from './go-release.use-case'
 import { addProjectJsonTargets, ensureAdmZip, hasPlugin, registerProjectCommands } from './post-generation.use-case'
@@ -590,12 +591,23 @@ export function reshapeGoLibraryScaffold (projectRoot: string, projectName: stri
   return packageName
 }
 
-/** Shared preflight for every Go kind: toolchain, plugin and root module. */
+/**
+ * Shared preflight for every Go kind: toolchain, plugin, root module and the plugin's registration.
+ *
+ * @remarks
+ * The registration is its own step, after the module, because the bootstrap that used to do
+ * it is skipped when a `go.mod` already exists (an adopted flat Go module), which left Nx
+ * with no Go project graph and `affected` silently wrong. It is a no-op when the bootstrap
+ * ran, since `init` registered the plugin.
+ */
 function prepareGo (workspaceRoot: string): void {
   ensureGo(workspaceRoot)
   warnIfNoGolangciLint(workspaceRoot)
   ensureNxGoPlugin(workspaceRoot)
   ensureGoModule(workspaceRoot)
+  if (registerNxGoPlugin(workspaceRoot)) {
+    logger.step('Registering the Go plugin in nx.json, so Nx can see which Go project imports which')
+  }
 }
 
 /**

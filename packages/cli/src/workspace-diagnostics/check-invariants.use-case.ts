@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
 import { runShell } from '../nx-workspace'
 import {
   ESLINT_MNCI_FILENAME,
@@ -825,6 +826,35 @@ function hasCCompiler (): boolean {
 }
 
 /**
+ * Checks that the Go plugin is registered, once the workspace has a Go project.
+ *
+ * @remarks
+ * It is what gives Nx the Go project graph. Without it every target still works, since
+ * mnci writes them explicitly, but `nx affected` knows no edge between a Go app and the
+ * library it imports, so a change to the library passes CI without testing the app, and
+ * nothing reports it. A repository that adopted its own `go.mod` got exactly this, because
+ * the bootstrap that registers the plugin only runs when mnci creates the module.
+ * Nothing for a workspace without a Go project, so nobody else sees the line.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The finding, or `undefined` for a workspace without a Go project.
+ * @throws Error when `nx.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkGoPluginRegistered (workspaceRoot: string): Finding | undefined {
+  if (!hasGoProject(workspaceRoot)) {
+    return undefined
+  }
+
+  return {
+    check:  `${NX_GO_PLUGIN} is registered in nx.json, so Nx knows which Go project imports which`,
+    ok:     isNxGoPluginRegistered(workspaceRoot),
+    detail: `${NX_GO_PLUGIN} is not in nx.json plugins: the project graph has no Go edge, so \`nx affected\` skips an app that imports a changed library`,
+    remedy: 'run `mnci upgrade`',
+  }
+}
+
+/**
  * Checks what a workspace with a native (cgo) Go app needs to build it.
  *
  * @remarks
@@ -1112,6 +1142,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkVersionActions(workspaceRoot),
     ...checkTargetFilesExist(workspaceRoot),
     checkSync(workspaceRoot),
+    checkGoPluginRegistered(workspaceRoot),
     ...checkNativeApps(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }

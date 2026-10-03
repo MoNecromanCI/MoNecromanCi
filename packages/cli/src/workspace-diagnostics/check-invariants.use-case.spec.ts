@@ -1208,3 +1208,51 @@ describe('doctor: native (cgo) apps (#263)', () => {
     expect(mockSpawnSync).toHaveBeenCalledTimes(1)
   })
 })
+
+/** Seeds a healthy workspace with a Go app, with the given plugins in `nx.json`. */
+function seedGoWorkspace (plugins: unknown[]): void {
+  seedHealthyWorkspace()
+  writeFileSync(
+    join(workspaceRoot, 'nx.json'),
+    JSON.stringify({ plugins: [{ plugin: '@nx/eslint/plugin', options: { targetName: 'lint' } }, ...plugins], mnci: { registry: { kind: 'npm' }, scope: '@demo' } }),
+  )
+  mkdirSync(join(workspaceRoot, 'apps/cli'), { recursive: true })
+  writeFileSync(join(workspaceRoot, 'apps/cli/project.json'), JSON.stringify({ tags: ['type:go-app'] }))
+}
+
+/** The finding about the Go plugin's registration, among all of them. */
+function goPlugin (findings: Finding[]): Finding | undefined {
+  return findings.find(finding => finding.check.includes('@nx-go/nx-go is registered'))
+}
+
+describe('doctor: the Go plugin is registered (#261)', () => {
+  it('says nothing in a workspace with no Go project, so nobody else sees the line', () => {
+    seedHealthyWorkspace()
+
+    expect(goPlugin(collectFindings(workspaceRoot))).toBeUndefined()
+  })
+
+  it('passes when the plugin is listed, as a bare name or with options', () => {
+    seedGoWorkspace(['@nx-go/nx-go'])
+    expect(goPlugin(collectFindings(workspaceRoot))?.ok).toBe(true)
+
+    seedGoWorkspace([{ plugin: '@nx-go/nx-go', options: { skipGoDependencyCheck: true } }])
+    expect(goPlugin(collectFindings(workspaceRoot))?.ok).toBe(true)
+  })
+
+  it('fails, naming the cost and the fix, when Go projects exist and the plugin is not listed', () => {
+    seedGoWorkspace([])
+
+    const finding = goPlugin(collectFindings(workspaceRoot))
+
+    expect(finding?.ok).toBe(false)
+    expect(finding?.detail).toContain('nx affected')
+    expect(finding?.remedy).toBe('run `mnci upgrade`')
+  })
+
+  it('does not fail a healthy workspace that has Go projects and the plugin', () => {
+    seedGoWorkspace(['@nx-go/nx-go'])
+
+    expect(collectFindings(workspaceRoot).filter(finding => !finding.ok && finding.check.includes('@nx-go'))).toEqual([])
+  })
+})
