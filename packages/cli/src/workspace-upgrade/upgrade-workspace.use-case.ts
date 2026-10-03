@@ -3,7 +3,9 @@ import { basename, join } from 'node:path'
 import { runFormatter } from '../nx-workspace'
 import {
   addGoPlatformTargets,
+  GO_RELEASE_SCRIPT_PATH,
   pinVscodeExtensionProjectNames,
+  refreshGoReleaseScript,
   refreshVscodeExtensionScript,
   VSCODE_EXTENSION_SCRIPT_PATH,
 } from '../project-scaffolding'
@@ -344,6 +346,10 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (refreshVscodeExtensionScript(workspaceRoot)) {
     logger.step('Updating the VS Code extension packaging script')
     logger.detail(`updated ${VSCODE_EXTENSION_SCRIPT_PATH}`)
+  }
+  if (refreshGoReleaseScript(workspaceRoot)) {
+    logger.step('Updating the releasable Go app script')
+    logger.detail(`updated ${GO_RELEASE_SCRIPT_PATH}`)
   }
   const upgradedDtsPlugins = upgradeDeclarationSpecifierPlugins(workspaceRoot)
   if (upgradedDtsPlugins.length > 0) {

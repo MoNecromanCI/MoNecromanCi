@@ -383,6 +383,18 @@ ${feedShortKey}:email=npm-requires-this-and-never-uses-it
 export const VSCODE_EXTENSION_TAG = 'type:vscode-extension'
 
 /**
+ * The Nx tag a releasable `go-app` carries, and what `release.projects` matches it by.
+ *
+ * @remarks
+ * A separate tag from `type:go-app`, not a reuse of it: most Go apps are internal
+ * tools and must stay unreleased, so releasing is an opt-in
+ * (`mnci add go-app <name> --release`). Matched by tag for the reason
+ * {@link VSCODE_EXTENSION_TAG} is: an app lives in `apps/`, which no release glob
+ * covers, and the array is rewritten on every `mnci upgrade`.
+ */
+export const GO_RELEASE_TAG = 'release:go'
+
+/**
  * Builds the `release` block merged into a generated workspace's `nx.json`.
  *
  * @remarks
@@ -473,6 +485,13 @@ export const VSCODE_EXTENSION_TAG = 'type:vscode-extension'
  * per-project version would be a fiction. Go's "publishing" is that
  * repo-level tag, which is not a per-project release concern.
  *
+ * A `go-app` is the opposite case, and is released only when it opts in: an
+ * executable has its own version, the one its users download. `tag:release:go`
+ * selects it, and the app's own `project.json` carries the version config that
+ * keeps Nx from looking for a `package.json` (see `GO_RELEASE_SCRIPT`), so it
+ * does not reintroduce the abort `go-lib` hit. `!tag:type:go-lib` is unaffected: an
+ * app is never tagged `type:go-lib`.
+ *
  * @param ci - Which CI provider(s) the workspace generates a pipeline for —
  * only `'github'` (GitHub Actions and nothing else) turns on GitHub Release
  * creation; see the remarks above for why `'azure'` and `'both'` do not.
@@ -485,7 +504,7 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
 
   return {
     projectsRelationship: 'independent',
-    projects:             ['packages/*', 'python-packages/*', `tag:${VSCODE_EXTENSION_TAG}`, '!tag:type:go-lib'],
+    projects:             ['packages/*', 'python-packages/*', `tag:${VSCODE_EXTENSION_TAG}`, `tag:${GO_RELEASE_TAG}`, '!tag:type:go-lib'],
     releaseTag:           { pattern: '{projectName}@{version}' },
     git:                  { commit: false, tag: true, push: githubReleases },
     version:              {
@@ -3013,7 +3032,7 @@ const SHALLOW_CLONE_GUARD = 'node -e "const r=require(\'node:child_process\').sp
  * @typeParam None - this function has no generic type parameters.
  */
 function releaseGuard (pythonPublishEnv: string, nugetPublishEnv: string): string {
-  return String.raw`node -e "const fs=require('node:fs'),cp=require('node:child_process');const npmCount=fs.globSync('packages/*/package.json').length;const csharpCount=fs.globSync('packages/*/*.csproj').length;const pythonCount=fs.globSync('python-packages/*/pyproject.toml').length;const dartCount=fs.globSync('packages/*/pubspec.yaml').length;const vscodeCount=fs.globSync('apps/*/package.json').filter(p=>{try{return(JSON.parse(fs.readFileSync(p,'utf8')).nx?.tags||[]).includes('${VSCODE_EXTENSION_TAG}')}catch{return false}}).length;const hasNpm=npmCount>0;const hasPython=pythonCount>0;const hasCsharp=csharpCount>0;const hasDart=dartCount>0;const hasVscode=vscodeCount>0;if(!hasNpm&&!hasPython&&!hasCsharp&&!hasDart&&!hasVscode){console.log('Nothing to release - skipping.');process.exit(0)}const specifier=process.env.RELEASE_SPECIFIER||'';let releaseCmd='npx nx release --yes';if(specifier){if(!/^(major|minor|patch|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/.test(specifier)){console.error('RELEASE_SPECIFIER value \''+specifier+'\' is invalid - use major, minor, patch, or an exact version like 1.2.3.');process.exit(1)}const releaseProjectCount=npmCount+csharpCount+pythonCount+dartCount+vscodeCount;if(/^(major|minor|patch)$/.test(specifier)&&releaseProjectCount>1){console.error('RELEASE_SPECIFIER is a keyword (\''+specifier+'\') but this workspace has '+releaseProjectCount+' releasable packages - a keyword under-bumps interdependent packages, because nx computes the dependency-bump pass from a stale cached version. Set RELEASE_SPECIFIER to an exact version instead, or clear it.');process.exit(1)}releaseCmd='npx nx release '+specifier+' --yes'}const env={...process.env};${pythonPublishEnv}${nugetPublishEnv}process.exit(cp.spawnSync(releaseCmd,{stdio:'inherit',shell:true,env}).status ?? 1)"`
+  return String.raw`node -e "const fs=require('node:fs'),cp=require('node:child_process');const npmCount=fs.globSync('packages/*/package.json').length;const csharpCount=fs.globSync('packages/*/*.csproj').length;const pythonCount=fs.globSync('python-packages/*/pyproject.toml').length;const dartCount=fs.globSync('packages/*/pubspec.yaml').length;const vscodeCount=fs.globSync('apps/*/package.json').filter(p=>{try{return(JSON.parse(fs.readFileSync(p,'utf8')).nx?.tags||[]).includes('${VSCODE_EXTENSION_TAG}')}catch{return false}}).length;const goCount=fs.globSync('apps/*/project.json').filter(p=>{try{return(JSON.parse(fs.readFileSync(p,'utf8')).tags||[]).includes('${GO_RELEASE_TAG}')}catch{return false}}).length;const hasNpm=npmCount>0;const hasPython=pythonCount>0;const hasCsharp=csharpCount>0;const hasDart=dartCount>0;const hasVscode=vscodeCount>0;const hasGo=goCount>0;if(!hasNpm&&!hasPython&&!hasCsharp&&!hasDart&&!hasVscode&&!hasGo){console.log('Nothing to release - skipping.');process.exit(0)}const specifier=process.env.RELEASE_SPECIFIER||'';let releaseCmd='npx nx release --yes';if(specifier){if(!/^(major|minor|patch|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/.test(specifier)){console.error('RELEASE_SPECIFIER value \''+specifier+'\' is invalid - use major, minor, patch, or an exact version like 1.2.3.');process.exit(1)}const releaseProjectCount=npmCount+csharpCount+pythonCount+dartCount+vscodeCount+goCount;if(/^(major|minor|patch)$/.test(specifier)&&releaseProjectCount>1){console.error('RELEASE_SPECIFIER is a keyword (\''+specifier+'\') but this workspace has '+releaseProjectCount+' releasable packages - a keyword under-bumps interdependent packages, because nx computes the dependency-bump pass from a stale cached version. Set RELEASE_SPECIFIER to an exact version instead, or clear it.');process.exit(1)}releaseCmd='npx nx release '+specifier+' --yes'}const env={...process.env};${pythonPublishEnv}${nugetPublishEnv}process.exit(cp.spawnSync(releaseCmd,{stdio:'inherit',shell:true,env}).status ?? 1)"`
 }
 
 /**
@@ -4000,7 +4019,18 @@ ${
           }
 ${
   githubReleases
-    ? ''
+    ? `
+      # A releasable Go app (mnci add go-app --release) is versioned by its git
+      # tag, and its per-platform zips are attached to the GitHub Release the step
+      # above just created. Built here, after tagging, with VERSION set to the tag's
+      # version so the binary reports it. A run that released no Go app uploads
+      # nothing, and a workspace without one skips the step.
+      - run: node tools/go-app-release.cjs assets
+        name: Attach the per-platform zips to the GitHub Release (releasable Go apps)
+        if: \${{ ${onMain} && hashFiles('tools/go-app-release.cjs') != '' }}
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+`
     : `
       # nx release's own git push (release.git.push) is deliberately left off: it
       # only runs when a remote GitHub/GitLab Release is configured, which this

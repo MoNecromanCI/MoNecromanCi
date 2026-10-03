@@ -131,6 +131,39 @@ describe('runAdd go', () => {
     expect(JSON.stringify(targets.package)).toContain('dist/drop/go-app-api.zip')
   })
 
+  it('keeps a Go app out of nx release unless --release is given (#259)', async () => {
+    seedProjectJson('apps/api', 'api')
+
+    await runAdd('go-app', 'api', {})
+
+    const project = JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/project.json'), 'utf8')) as { tags?: string[]; release?: unknown }
+    expect(project.tags ?? []).not.toContain('release:go')
+    expect(project.release).toBeUndefined()
+    expect(existsSync(join(workspaceRoot, 'tools/go-app-release.cjs'))).toBe(false)
+  })
+
+  it('makes the app releasable with --release: tag, manifest-less version config and the script (#259)', async () => {
+    seedProjectJson('apps/api', 'api')
+
+    await runAdd('go-app', 'api', { release: true })
+
+    const project = JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/project.json'), 'utf8')) as {
+      tags:    string[]
+      release: { version: Record<string, unknown> }
+    }
+    expect(project.tags).toContain('release:go')
+    expect(project.release.version).toEqual({ versionActions: 'tools/go-app-release.cjs', currentVersionResolver: 'git-tag' })
+    expect(existsSync(join(workspaceRoot, 'tools/go-app-release.cjs'))).toBe(true)
+    // The build, package and start targets are unchanged by opting in.
+    expect(readProjectJson('apps/api').targets['package-all'].executor).toBe('nx:run-commands')
+  })
+
+  it('rejects --release for a kind that cannot be released, before anything is generated (#259)', async () => {
+    await expect(runAdd('go-lib', 'core', { release: true })).rejects.toThrow('--release applies to go-app only, not go-lib.')
+
+    expect(mockRunNx).not.toHaveBeenCalled()
+  })
+
   it('cross-compiles for six platforms into dist/platforms, outside the cached build output', async () => {
     seedProjectJson('apps/api', 'api')
 

@@ -516,7 +516,9 @@ describe('withReleaseConfig', () => {
       // one `mnci add go-lib` made `nx release` exit 1 for every project.
       // `tag:type:vscode-extension`: an extension lives in apps/ and is released
       // anyway; a tag matcher survives `mnci upgrade`, a hand-added path does not.
-      projects:             ['packages/*', 'python-packages/*', 'tag:type:vscode-extension', '!tag:type:go-lib'],
+      // `tag:release:go`: a Go app is released only when it opts in
+      // (`mnci add go-app --release`), by tag, for the same reason.
+      projects:             ['packages/*', 'python-packages/*', 'tag:type:vscode-extension', 'tag:release:go', '!tag:type:go-lib'],
       releaseTag:           { pattern: '{projectName}@{version}' },
       // Tag-only model: nothing is ever committed to main; the tag is pushed.
       // Top-level (not version.git) — Nx rejects granular git config for the
@@ -1707,6 +1709,94 @@ describe('githubActionsYaml', () => {
 // a `.cmd` shim, and the harness is not worth duplicating for a platform whose
 // only job here runs e2e rather than unit tests.
 const describeOnPosix = process.platform === 'win32' ? describe.skip : describe
+
+describe('a releasable Go app in the release step (#259)', () => {
+  const guard = extractGuard(githubActionsYaml('ubuntu-latest', undefined, 'npm'), 'Nothing to release - skipping.')
+  let workspace: string
+
+  /** Writes `apps/<name>/project.json` with the given tags. */
+  function goApp (name: string, tags: string[]): void {
+    mkdirSync(join(workspace, 'apps', name), { recursive: true })
+    writeFileSync(join(workspace, 'apps', name, 'project.json'), JSON.stringify({ name, tags }))
+  }
+
+  /**
+   * Runs the guard. Every case here ends before `nx release` would start (nothing to
+   * release, an invalid specifier, a keyword refused), so no `nx` is needed.
+   */
+  function run (specifier: string): { status: number | null; out: string } {
+    const result = spawnSync(guard, {
+      cwd:      workspace,
+      shell:    true,
+      encoding: 'utf8',
+      env:      { ...process.env, RELEASE_SPECIFIER: specifier },
+    })
+
+    return { status: result.status, out: `${result.stdout}${result.stderr}` }
+  }
+
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), 'mnci-go-release-guard-'))
+  })
+
+  afterEach(() => rmSync(workspace, { force: true, recursive: true }))
+
+  it('finds the release guard in the generated workflow', () => {
+    expect(guard).not.toBe('')
+  })
+
+  it('has nothing to release for a Go app that did not opt in', () => {
+    goApp('tool', ['type:go-app'])
+    const result = run('')
+
+    expect(result.status).toBe(0)
+    expect(result.out).toContain('Nothing to release - skipping.')
+  })
+
+  it('does not skip a workspace whose only releasable project is a tagged Go app', () => {
+    // An invalid specifier is refused AFTER the nothing-to-release check, so reaching
+    // it proves the Go app was counted. Without the count this logged "Nothing to
+    // release" for ever, the failure a Flutter-only workspace once had.
+    goApp('tool', ['type:go-app', 'release:go'])
+    const result = run('not-a-version')
+
+    expect(result.status).toBe(1)
+    expect(result.out).not.toContain('Nothing to release')
+    expect(result.out).toContain("RELEASE_SPECIFIER value 'not-a-version' is invalid")
+  })
+
+  it('counts a Go app towards the keyword guard, since it is a releasable project', () => {
+    goApp('tool', ['type:go-app', 'release:go'])
+    mkdirSync(join(workspace, 'packages/lib'), { recursive: true })
+    writeFileSync(join(workspace, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }))
+    const result = run('minor')
+
+    expect(result.status).toBe(1)
+    expect(result.out).toContain('this workspace has 2 releasable packages')
+  })
+})
+
+describe('the Go release assets step (#259)', () => {
+  it('attaches the platform zips after the release step, on main, for a GitHub-only workflow', () => {
+    const document_ = yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm')) as {
+      jobs: { ci: { steps: { name?: string; run?: string; if?: string; env?: Record<string, string> }[] } }
+    }
+    const { steps } = document_.jobs.ci
+    const release = steps.findIndex(step => step.name?.startsWith('Release — version, tag'))
+    const assets = steps.findIndex(step => step.run === 'node tools/go-app-release.cjs assets')
+
+    expect(release).toBeGreaterThan(-1)
+    expect(assets).toBe(release + 1)
+    expect(steps[assets].if).toContain("github.ref_name == 'main'")
+    // Skipped, not failed, in a workspace without a releasable Go app.
+    expect(steps[assets].if).toContain("hashFiles('tools/go-app-release.cjs') != ''")
+    expect(steps[assets].env?.GH_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}')
+  })
+
+  it('is not in an Azure Pipelines workflow, which has no GitHub Release to attach to', () => {
+    expect(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'azure-artifacts')).not.toContain('go-app-release.cjs')
+  })
+})
 
 describe('the PyPI release preflight, executed', () => {
   // Executed, not string-matched, for the reason the note above gives: this is

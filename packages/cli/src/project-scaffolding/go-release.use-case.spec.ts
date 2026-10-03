@@ -1,0 +1,179 @@
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  GO_RELEASE_SCRIPT,
+  GO_RELEASE_SCRIPT_PATH,
+  makeGoAppReleasable,
+  refreshGoReleaseScript,
+} from './go-release.use-case'
+
+let workspaceRoot: string
+
+/** Writes a Go app's `project.json`, as `@nx-go/nx-go:application` and `addGoApp` leave it. */
+function goApp (name: string, extra: Record<string, unknown> = {}): void {
+  mkdirSync(join(workspaceRoot, 'apps', name), { recursive: true })
+  writeFileSync(
+    join(workspaceRoot, 'apps', name, 'project.json'),
+    JSON.stringify({ name, tags: ['type:go-app'], targets: { build: { executor: 'x' } }, ...extra }),
+  )
+}
+
+/** Reads a Go app's `project.json` back. */
+function project (name: string): { tags: string[]; targets: unknown; release?: { version: Record<string, unknown> } } {
+  return JSON.parse(readFileSync(join(workspaceRoot, 'apps', name, 'project.json'), 'utf8')) as ReturnType<typeof project>
+}
+
+beforeEach(() => {
+  workspaceRoot = mkdtempSync(join(tmpdir(), 'mnci-go-release-'))
+})
+
+afterEach(() => {
+  rmSync(workspaceRoot, { recursive: true, force: true })
+})
+
+describe('makeGoAppReleasable', () => {
+  it('tags the app and points Nx at the manifest-less version actions, resolving versions from git tags', () => {
+    goApp('tool')
+
+    makeGoAppReleasable(workspaceRoot, 'tool')
+
+    expect(project('tool').tags).toEqual(['type:go-app', 'release:go'])
+    expect(project('tool').release?.version).toEqual({
+      versionActions:         'tools/go-app-release.cjs',
+      currentVersionResolver: 'git-tag',
+    })
+  })
+
+  it('writes the script into the workspace', () => {
+    goApp('tool')
+
+    makeGoAppReleasable(workspaceRoot, 'tool')
+
+    expect(readFileSync(join(workspaceRoot, GO_RELEASE_SCRIPT_PATH), 'utf8')).toBe(GO_RELEASE_SCRIPT)
+  })
+
+  it('adds a publish target that publishes nothing, so the publish phase cannot abort after tagging', () => {
+    goApp('tool')
+
+    makeGoAppReleasable(workspaceRoot, 'tool')
+
+    // Measured: with no `nx-release-publish` target, `nx release` tagged and then exited 1.
+    const targets = project('tool').targets as Record<string, { executor: string; options: { command: string } }>
+    expect(targets.build).toEqual({ executor: 'x' })
+    expect(targets['nx-release-publish'].executor).toBe('nx:run-commands')
+    expect(targets['nx-release-publish'].options.command).toContain('Published by its git tag')
+  })
+
+  it('keeps a publish target the app already had', () => {
+    goApp('tool', { targets: { 'nx-release-publish': { executor: 'mine' } } })
+
+    makeGoAppReleasable(workspaceRoot, 'tool')
+
+    expect(project('tool').targets).toEqual({ 'nx-release-publish': { executor: 'mine' } })
+  })
+
+  it('is safe to run twice, and keeps release config the user already had', () => {
+    goApp('tool', { release: { version: { preserveLocalDependencyProtocols: true } } })
+
+    makeGoAppReleasable(workspaceRoot, 'tool')
+    makeGoAppReleasable(workspaceRoot, 'tool')
+
+    expect(project('tool').tags).toEqual(['type:go-app', 'release:go'])
+    expect(project('tool').release?.version).toEqual({
+      preserveLocalDependencyProtocols: true,
+      versionActions:                   'tools/go-app-release.cjs',
+      currentVersionResolver:           'git-tag',
+    })
+  })
+
+  it('names the missing app instead of writing a script for nothing', () => {
+    expect(() => makeGoAppReleasable(workspaceRoot, 'nope')).toThrow('No Go app at apps/nope')
+    expect(existsSync(join(workspaceRoot, GO_RELEASE_SCRIPT_PATH))).toBe(false)
+  })
+})
+
+describe('refreshGoReleaseScript', () => {
+  it('does nothing, and writes no file, when no app is releasable', () => {
+    goApp('tool')
+
+    expect(refreshGoReleaseScript(workspaceRoot)).toBe(false)
+    expect(existsSync(join(workspaceRoot, GO_RELEASE_SCRIPT_PATH))).toBe(false)
+  })
+
+  it('does nothing in a workspace with no apps folder', () => {
+    expect(refreshGoReleaseScript(workspaceRoot)).toBe(false)
+  })
+
+  it('rewrites a stale script, and leaves an up-to-date one alone', () => {
+    goApp('tool', { tags: ['type:go-app', 'release:go'] })
+    mkdirSync(join(workspaceRoot, 'tools'), { recursive: true })
+    writeFileSync(join(workspaceRoot, GO_RELEASE_SCRIPT_PATH), '// old')
+
+    expect(refreshGoReleaseScript(workspaceRoot)).toBe(true)
+    expect(readFileSync(join(workspaceRoot, GO_RELEASE_SCRIPT_PATH), 'utf8')).toBe(GO_RELEASE_SCRIPT)
+    expect(refreshGoReleaseScript(workspaceRoot)).toBe(false)
+  })
+
+  it('creates the script for an app that was made releasable before the script existed', () => {
+    goApp('tool', { tags: ['type:go-app', 'release:go'] })
+
+    expect(refreshGoReleaseScript(workspaceRoot)).toBe(true)
+    expect(existsSync(join(workspaceRoot, GO_RELEASE_SCRIPT_PATH))).toBe(true)
+  })
+})
+
+/** The script as a class Nx would load, written to disk beside the repo's own `nx`. */
+function load (): new (...arguments_: unknown[]) => Record<string, (...arguments_: unknown[]) => Promise<unknown>> & { validManifestFilenames: unknown } {
+  const path = join(__dirname, `go-release-${process.pid}.generated.cjs`)
+  writeFileSync(path, GO_RELEASE_SCRIPT)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- a CommonJS file written a moment ago.
+    return require(path)
+  } finally {
+    rmSync(path, { force: true })
+  }
+}
+
+describe('the generated script', () => {
+  it('is valid JavaScript', () => {
+    const path = join(workspaceRoot, 'go-app-release.cjs')
+    writeFileSync(path, GO_RELEASE_SCRIPT)
+
+    expect(spawnSync(process.execPath, ['--check', path], { encoding: 'utf8' }).status).toBe(0)
+  })
+
+  it('declares no manifest, so Nx never looks for a package.json', () => {
+    const actions = new (load())({}, {}, {})
+
+    expect(actions.validManifestFilenames).toBeNull()
+  })
+
+  it('answers the first release, before any tag, with a 0.0.0 base to bump from', async () => {
+    const actions = new (load())({}, { name: 'tool' }, { adjustSemverBumpsForZeroMajorVersion: false })
+
+    await expect(actions.readCurrentVersionFromSourceManifest()).resolves.toMatchObject({ currentVersion: '0.0.0' })
+    await expect(actions.calculateNewVersion('0.0.0', 'patch', 'CONVENTIONAL_COMMITS', {}, '')).resolves.toMatchObject({
+      newVersion: '0.0.1',
+    })
+  })
+
+  it('writes nothing: the version lives in the git tag alone', async () => {
+    const actions = new (load())({}, {}, {})
+
+    await expect(actions.updateProjectVersion({}, '1.2.3')).resolves.toEqual([])
+    await expect(actions.updateProjectDependencies({}, {}, {})).resolves.toEqual([])
+    await expect(actions.readCurrentVersionFromRegistry()).resolves.toBeNull()
+  })
+
+  it('refuses any command but assets when run directly', () => {
+    const path = join(workspaceRoot, 'go-app-release.cjs')
+    writeFileSync(path, GO_RELEASE_SCRIPT)
+
+    const result = spawnSync(process.execPath, [path, 'nonsense'], { encoding: 'utf8', cwd: workspaceRoot, env: { ...process.env, NODE_PATH: join(__dirname, '../../../../node_modules') } })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('Usage: node tools/go-app-release.cjs assets')
+  })
+})

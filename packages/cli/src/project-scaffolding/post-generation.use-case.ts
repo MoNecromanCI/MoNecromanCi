@@ -44,6 +44,8 @@ export interface AddOptions {
   publisher?: string
   /** `vscode-extension` only: a `go-app` whose six-platform build ships inside the extension. */
   sidecar?:   string
+  /** `go-app` only: release the app (versioned from its git tag, per-platform zips on its GitHub Release). */
+  release?:   boolean
 }
 
 /**
