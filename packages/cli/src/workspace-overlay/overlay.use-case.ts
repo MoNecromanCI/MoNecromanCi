@@ -2702,12 +2702,22 @@ const FLUTTER_PUB_GET_GUARD = 'node -e "const fs=require(\'node:fs\');if(!fs.exi
  * So the split is **actionable vs not**, which is a property `npm audit --json`
  * reports per advisory (`fixAvailable`) rather than a severity guess:
  *
- * - A published fix exists, at `moderate` or above → **exit 1**. The remedy is a
- *   reviewed `overrides` entry, and leaving it to a human who never sees a red
- *   build is how a fix sits unapplied for weeks.
+ * - A published, **applyable** fix exists, at `moderate` or above → **exit 1**.
+ *   The remedy is a reviewed `overrides` entry, and leaving it to a human who
+ *   never sees a red build is how a fix sits unapplied for weeks.
  * - No fix exists upstream → printed, exit 0. This preserves the whole of the
  *   original concern: going red for something nobody in this workspace can fix
  *   is a gate that only teaches people to ignore it.
+ * - **A fix npm marks `isSemVerMajor` → printed, exit 0.** `npm audit` sets
+ *   `fixAvailable` to a `{name,version,isSemVerMajor:true}` object even when the
+ *   only "fix" is a semver-**major** change to a *parent* that drops the
+ *   dependency path — frequently a downgrade, not a patch to the vulnerable
+ *   package at all (measured: `braces`/`http-cache-semantics` advisories whose
+ *   leaf was already at the newest published version, "fixed" by downgrading
+ *   `verdaccio` and `@swc/cli`). Blocking on that taught the gate to fire on
+ *   advisories nobody can actually clear with an override. A semver-major upgrade
+ *   is a deliberate, reviewed bump, never an automatic CI gate; it is reported so
+ *   it is not forgotten, but it does not go red.
  *
  * Three deliberate choices worth not undoing:
  *
@@ -2727,7 +2737,7 @@ const FLUTTER_PUB_GET_GUARD = 'node -e "const fs=require(\'node:fs\');if(!fs.exi
  * this monorepo's fixed tree exits 0, and the pre-fix tree exits 1 listing all
  * nine. The unit tests drive the remaining branches with a stub `npm` on PATH.
  */
-const NPM_AUDIT_STEP = 'node -e "const cp=require(\'node:child_process\');const r=cp.spawnSync(\'npm\',[\'audit\',\'--json\'],{encoding:\'utf8\',shell:process.platform===\'win32\',maxBuffer:33554432});let d;try{d=JSON.parse(r.stdout)}catch{console.log(\'npm audit produced no JSON (exit \'+r.status+\') - not blocking on a broken audit.\');process.exit(0)}const all=Object.values(d.vulnerabilities||{});const BLOCK=[\'critical\',\'high\',\'moderate\'];const act=all.filter(v=>v.fixAvailable&&BLOCK.includes(v.severity));const rest=all.filter(v=>!act.includes(v));for(const v of rest)console.log(\'  note [\'+v.severity+\'] \'+v.name+(v.fixAvailable?\' - fix available, below the blocking threshold\':\' - NO fix available upstream, nothing to do here\'));if(act.length===0){console.log(\'npm audit - \'+all.length+\' advisory(ies), none actionable at moderate or above.\');process.exit(0)}for(const v of act)console.log(\'  BLOCKING [\'+v.severity+\'] \'+v.name+\' - fix available\'+(v.fixAvailable&&v.fixAvailable.isSemVerMajor?\' (semver-major)\':\'\'));console.log(\'Each has a published fix. Add a targeted overrides entry in package.json rather than npm audit fix --force.\');process.exit(1)"'
+const NPM_AUDIT_STEP = 'node -e "const cp=require(\'node:child_process\');const r=cp.spawnSync(\'npm\',[\'audit\',\'--json\'],{encoding:\'utf8\',shell:process.platform===\'win32\',maxBuffer:33554432});let d;try{d=JSON.parse(r.stdout)}catch{console.log(\'npm audit produced no JSON (exit \'+r.status+\') - not blocking on a broken audit.\');process.exit(0)}const all=Object.values(d.vulnerabilities||{});const BLOCK=[\'critical\',\'high\',\'moderate\'];const major=v=>v.fixAvailable&&typeof v.fixAvailable===\'object\'&&v.fixAvailable.isSemVerMajor;const act=all.filter(v=>v.fixAvailable&&BLOCK.includes(v.severity)&&!major(v));const rest=all.filter(v=>!act.includes(v));for(const v of rest)console.log(\'  note [\'+v.severity+\'] \'+v.name+(!v.fixAvailable?\' - NO fix available upstream, nothing to do here\':major(v)?\' - only a semver-major change would remove it (often a parent downgrade), not applied automatically\':\' - fix available, below the blocking threshold\'));if(act.length===0){console.log(\'npm audit - \'+all.length+\' advisory(ies), none actionable at moderate or above.\');process.exit(0)}for(const v of act)console.log(\'  BLOCKING [\'+v.severity+\'] \'+v.name+\' - fix available\');console.log(\'Each has a published fix. Add a targeted overrides entry in package.json rather than npm audit fix --force.\');process.exit(1)"'
 
 /**
  * The Nx targets every CI run verifies.
