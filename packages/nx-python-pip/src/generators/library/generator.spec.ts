@@ -34,6 +34,13 @@ describe('libraryGenerator', () => {
     )
   })
 
+  it('marks the package typed (PEP 561), so a sibling importing it is not handed Any under mypy --strict', async () => {
+    await libraryGenerator(tree, { name: 'shared', directory: 'python-packages/shared' })
+
+    expect(tree.exists('python-packages/shared/shared/py.typed')).toBe(true)
+    expect(tree.read('python-packages/shared/shared/py.typed', 'utf8')).toBe('')
+  })
+
   it('defaults to libs/<name> when no directory is given', async () => {
     await libraryGenerator(tree, { name: 'shared' })
 

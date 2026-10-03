@@ -5,6 +5,7 @@ import {
   pythonReadme,
   pythonSampleModule,
   pythonSampleTest,
+  pythonTypedMarkerPath,
 } from './python-project.algorithm'
 
 /** The `nx-release-publish` target for a publishable Python library (twine). */
@@ -90,6 +91,9 @@ export function generateBuildableProject (tree: Tree, options: BuildableProjectO
   tree.write(`${root}/README.md`, pythonReadme(options.name, moduleDirectory))
   tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleModule(moduleDirectory))
   tree.write(`${root}/tests/test_${moduleDirectory}.py`, pythonSampleTest(moduleDirectory))
+  if (options.projectType === 'library') {
+    tree.write(`${root}/${pythonTypedMarkerPath(moduleDirectory)}`, '')
+  }
 }
 
 export { formatFiles } from '@nx/devkit'

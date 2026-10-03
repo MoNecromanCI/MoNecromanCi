@@ -180,6 +180,37 @@ export function pythonSampleModule (moduleDirectory: string): string {
 }
 
 /**
+ * Where a library's PEP 561 `py.typed` marker lives, relative to the project root.
+ *
+ * @remarks
+ * The marker is an empty file in the package directory. Without it a type
+ * checker treats an installed package as **untyped**, however thoroughly it is
+ * annotated, and every symbol imported from it becomes `Any`.
+ *
+ * That is not hypothetical here. Libraries in a workspace are installed
+ * editable and imported by their siblings, and the generated `[tool.mypy]`
+ * disables `import-untyped` (so an un-stubbed third-party package does not fail
+ * code the user cannot change). Together that means a sibling's
+ * `return core_hello()` is `Any`, and `strict` rejects it as `no-any-return`
+ * even though `hello()` is annotated `-> str`. Measured: adding the marker to the
+ * imported library is the whole difference between `Found 1 error` and
+ * `Success: no issues found`.
+ *
+ * Only libraries get it. An application is not imported by anything, and
+ * claiming an app's package is typed would promise a consumer that does not
+ * exist. For a publishable library the marker also ships in the wheel, so the
+ * people installing it get its types too.
+ *
+ * @param moduleDirectory - The project's module directory basename.
+ * @returns The marker's path (e.g. `core/py.typed`).
+ * @throws Never - pure string build.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function pythonTypedMarkerPath (moduleDirectory: string): string {
+  return `${moduleDirectory}/py.typed`
+}
+
+/**
  * The sample pytest proving a generated Python project's `test` target runs.
  *
  * @remarks

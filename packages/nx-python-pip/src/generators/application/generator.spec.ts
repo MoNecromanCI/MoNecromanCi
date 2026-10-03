@@ -29,6 +29,12 @@ describe('appGenerator', () => {
     expect(tree.read('apps/svc/tests/test_svc.py', 'utf8')).toContain('from svc import hello')
   })
 
+  it('does not mark an application as typed — nothing imports an app, so there is no consumer to promise types to', async () => {
+    await appGenerator(tree, { name: 'svc' })
+
+    expect(tree.exists('apps/svc/svc/py.typed')).toBe(false)
+  })
+
   it('honours an explicit directory, and derives the module directory from hyphenated names', async () => {
     await appGenerator(tree, { name: 'my-svc', directory: 'custom/my-svc' })
 
