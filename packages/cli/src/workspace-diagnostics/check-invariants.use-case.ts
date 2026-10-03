@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runShell } from '../nx-workspace'
@@ -5,6 +6,7 @@ import {
   ESLINT_MNCI_FILENAME,
   ESLINT_USER_FILENAME,
   ESLINT_VERSION,
+  hasNativeGoApp,
   RETIRED_FORMATTER_FILES,
   type RegistryConfig,
 } from '../workspace-overlay'
@@ -806,6 +808,68 @@ function checkSync (workspaceRoot: string): Finding {
 }
 
 /**
+ * Whether this machine has a C compiler cgo can use.
+ *
+ * @remarks
+ * Honours `CC`, which is what cgo itself reads, then the three names a compiler goes
+ * by. Only the command is probed, not its flags: `CC="gcc -m64"` is a valid setting.
+ *
+ * @returns True when one of them answers `--version`.
+ * @throws Never - a command that cannot be run counts as absent.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function hasCCompiler (): boolean {
+  const candidates = [process.env.CC?.split(' ', 1)[0], 'gcc', 'clang', 'cc']
+
+  return candidates.some(command => command !== undefined && command !== '' && spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0)
+}
+
+/**
+ * Checks what a workspace with a native (cgo) Go app needs to build it.
+ *
+ * @remarks
+ * Empty for a workspace with no such app, so nobody else sees these lines. Two
+ * invariants, both of which `mnci add go-app --cgo` leaves for the user to satisfy:
+ *
+ * - **The pipelines carry the native job.** The jobs are written when the pipeline
+ *   file is, so an app added since the last `mnci upgrade` has none, and CI would
+ *   verify it on the one agent that cannot build it.
+ * - **A C compiler is installed here.** `nx run <app>:build-native` fails without one.
+ *   It is the only check in this file that reads the machine rather than the
+ *   workspace, which is the point of it.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The findings, none for a workspace without a native app.
+ * @throws Never - a pipeline file is only read after `fileExists` found it.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkNativeApps (workspaceRoot: string): Finding[] {
+  if (!hasNativeGoApp(workspaceRoot)) {
+    return []
+  }
+  const pipelines = [
+    { file: '.github/workflows/ci.yml', marker: 'native (${{ matrix.os }})' },
+    { file: 'azure-pipelines.yml', marker: '- job: native' },
+  ]
+  const findings: Finding[] = pipelines
+    .filter(({ file }) => fileExists(join(workspaceRoot, file)))
+    .map(({ file, marker }) => ({
+      check:  `${file} builds the native apps on every OS`,
+      ok:     readFileSync(join(workspaceRoot, file), 'utf8').includes(marker),
+      detail: `${file} has no native job: CI would verify a cgo app on the one agent that cannot build it`,
+      remedy: 'run `mnci upgrade`',
+    }))
+  findings.push({
+    check:  'a C compiler is installed (cgo needs one)',
+    ok:     hasCCompiler(),
+    detail: 'none of CC, gcc, clang or cc answered --version, so nx run <app>:build-native cannot build here',
+    remedy: 'install one: Xcode command line tools on macOS, build-essential on Linux, MinGW-w64 (gcc) on Windows',
+  })
+
+  return findings
+}
+
+/**
  * Checks that no runtime dependency is declared in the root manifest.
  *
  * @remarks
@@ -1048,6 +1112,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkVersionActions(workspaceRoot),
     ...checkTargetFilesExist(workspaceRoot),
     checkSync(workspaceRoot),
+    ...checkNativeApps(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 

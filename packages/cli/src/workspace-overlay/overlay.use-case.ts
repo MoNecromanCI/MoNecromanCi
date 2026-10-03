@@ -395,6 +395,42 @@ export const VSCODE_EXTENSION_TAG = 'type:vscode-extension'
 export const GO_RELEASE_TAG = 'release:go'
 
 /**
+ * The Nx tag a `go-app` that needs a C toolchain carries (`mnci add go-app <name> --cgo`).
+ *
+ * @remarks
+ * Such an app cannot be cross-compiled from one machine (a tray icon needs Cocoa on
+ * macOS and GTK on Linux), so it is built on a runner of each OS by a separate CI
+ * job, and kept out of the single-agent verify. The tag is what both are keyed on.
+ */
+export const GO_CGO_TAG = 'build:cgo'
+
+/**
+ * Whether the workspace has an app that needs the native CI job.
+ *
+ * @remarks
+ * Read at generation time, not detected by the pipeline at run time, so a workspace
+ * without such an app gets a pipeline byte-identical to the one it had before this
+ * existed. A job cannot be skipped on a file's existence at the job level on either
+ * provider, so the choice has to be made when the file is written.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns True when an `apps/*` project is tagged {@link GO_CGO_TAG}.
+ * @throws Never - an unreadable or malformed project file counts as not tagged.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function hasNativeGoApp (workspaceRoot: string): boolean {
+  return globSync('apps/*/project.json', { cwd: workspaceRoot }).some((projectJson) => {
+    try {
+      const { tags } = JSON.parse(readFileSync(join(workspaceRoot, projectJson), 'utf8')) as { tags?: string[] }
+
+      return (tags ?? []).includes(GO_CGO_TAG)
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
  * Builds the `release` block merged into a generated workspace's `nx.json`.
  *
  * @remarks
@@ -2809,8 +2845,207 @@ const VERIFY_TARGETS = 'lint,typecheck,test,build'
  * (Azure sends the full ref, GitHub the bare branch name): this whole command
  * has to survive quoting under both `cmd.exe` and POSIX `sh`, and a regex
  * literal would drag backslashes into that.
+ *
+ * `exclude` is for a workspace with a native (cgo) app, which this single agent
+ * cannot build: it is added to both the full and the affected command. Empty, the
+ * command is exactly the one every workspace had before it existed.
+ *
+ * @param exclude - An Nx `--exclude=...` argument, or `''` for none.
+ * @returns The full `node -e` verify one-liner.
+ * @throws Never - pure string building.
+ * @typeParam None - this function has no generic type parameters.
  */
-const AFFECTED_OR_ALL_GUARD = `node -e "const cp=require('node:child_process');const T='${VERIFY_TARGETS}';const all=()=>process.exit(cp.spawnSync('npx nx run-many -t '+T,{stdio:'inherit',shell:true}).status ?? 1);const ref=process.env.GITHUB_BASE_REF||process.env.SYSTEM_PULLREQUEST_TARGETBRANCH||'';if(!ref){console.log('Not a pull request - verifying EVERY project.');all()}const target=ref.replace('refs/heads/','');const mergeBase=r=>{const o=cp.spawnSync('git',['merge-base',r,'HEAD'],{encoding:'utf8'});return o.status===0?o.stdout.trim():''};let base=mergeBase('origin/'+target);if(!base){console.log('No origin/'+target+' ref - fetching it to resolve a merge-base.');cp.spawnSync('git',['fetch','--no-tags','origin',target],{stdio:'inherit'});base=mergeBase('FETCH_HEAD')}if(!base){console.log('Could not resolve a merge-base with '+target+' - verifying EVERY project.');all()}console.log('Pull request against '+target+' - verifying projects affected since '+base);process.exit(cp.spawnSync('npx nx affected -t '+T+' --base='+base,{stdio:'inherit',shell:true}).status ?? 1)"`
+function affectedOrAllGuard (exclude = ''): string {
+  const extra = exclude === '' ? '' : `+' ${exclude}'`
+
+  return `node -e "const cp=require('node:child_process');const T='${VERIFY_TARGETS}';const all=()=>process.exit(cp.spawnSync('npx nx run-many -t '+T${extra},{stdio:'inherit',shell:true}).status ?? 1);const ref=process.env.GITHUB_BASE_REF||process.env.SYSTEM_PULLREQUEST_TARGETBRANCH||'';if(!ref){console.log('Not a pull request - verifying EVERY project.');all()}const target=ref.replace('refs/heads/','');const mergeBase=r=>{const o=cp.spawnSync('git',['merge-base',r,'HEAD'],{encoding:'utf8'});return o.status===0?o.stdout.trim():''};let base=mergeBase('origin/'+target);if(!base){console.log('No origin/'+target+' ref - fetching it to resolve a merge-base.');cp.spawnSync('git',['fetch','--no-tags','origin',target],{stdio:'inherit'});base=mergeBase('FETCH_HEAD')}if(!base){console.log('Could not resolve a merge-base with '+target+' - verifying EVERY project.');all()}console.log('Pull request against '+target+' - verifying projects affected since '+base);process.exit(cp.spawnSync('npx nx affected -t '+T+' --base='+base${extra},{stdio:'inherit',shell:true}).status ?? 1)"`
+}
+
+/** The verify step of a workspace with no native app: the one every workspace had. */
+const AFFECTED_OR_ALL_GUARD = affectedOrAllGuard()
+
+/** The same, leaving out the apps that need a C toolchain, which the native job builds. */
+const AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE = affectedOrAllGuard(`--exclude=tag:${GO_CGO_TAG}`)
+
+/**
+ * What a native job runs on each OS: lint, test, then build and package for that host.
+ *
+ * @remarks
+ * `package-native` depends on `build-native`, so naming both is for the reader. The
+ * apps are selected by {@link GO_CGO_TAG}, the same tag the single-agent verify
+ * leaves out, so every cgo app is built by exactly one of the two jobs' steps.
+ */
+const NATIVE_BUILD_COMMAND = `npx nx run-many -t lint,test,build-native,package-native --projects=tag:${GO_CGO_TAG}`
+
+/**
+ * The Linux prerequisites of a native build, as the one line both providers run.
+ *
+ * @remarks
+ * Only what every cgo build needs: a C compiler and `pkg-config`. mnci cannot know
+ * which libraries an app links (a tray icon wants GTK and appindicator, a database
+ * driver wants something else), so the `-dev` packages are the workspace's to add,
+ * at the marked place in the job. macOS needs nothing here (Xcode's tools ship on the
+ * hosted runner) and Windows relies on the runner's bundled MinGW.
+ */
+const NATIVE_LINUX_PREREQUISITES = 'sudo apt-get update && sudo apt-get install -y gcc pkg-config'
+
+/**
+ * The GitHub Actions `native` job: one leg per OS, for apps that need a C toolchain.
+ *
+ * @remarks
+ * `needs: ci`, so on a push to main the release has already tagged by the time the
+ * legs run, which is what lets each one attach its own platform's zip to the GitHub
+ * Release (`tools/go-app-release.cjs assets --native`). `fail-fast` is off because a
+ * Linux packaging failure says nothing about the macOS leg.
+ *
+ * @param npmAuthName - The environment variable `npm ci` reads its registry token from.
+ * @param npmAuthValue - The GitHub Actions expression that supplies it.
+ * @param onMain - The condition that is true on a push to main, and only then.
+ * @returns The job, as YAML starting with a newline, to append under `jobs:`.
+ * @throws Never - pure string building.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function githubNativeJob (npmAuthName: string, npmAuthValue: string, onMain: string): string {
+  return `
+  # Apps that need a C toolchain (mnci add go-app --cgo) cannot be cross-compiled
+  # from the job above, so each is linted, tested, built and packaged here, on a
+  # runner of every OS it ships for, and is left out of that job's verify step.
+  native:
+    name: native (\${{ matrix.os }})
+    needs: ci
+    runs-on: \${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@${ACTION_VERSIONS['actions/checkout']}
+        with:
+          fetch-depth: 0
+
+      # The release tags name the version a native build is stamped with.
+      - run: git fetch --all --prune --tags
+        name: Fetch branches and release tags
+
+      - uses: actions/setup-node@${ACTION_VERSIONS['actions/setup-node']}
+        with:
+          node-version: ${NODE_VERSION}
+          cache: npm
+
+      - run: npm install -g npm@${NPM_VERSION}
+        name: Pin npm to the major mnci verifies against
+
+      - run: npm ci
+        name: Install dependencies
+        env:
+          ${npmAuthName}: ${npmAuthValue}
+
+      - run: ${GO_MODULE_DOWNLOAD_GUARD}
+        name: Download Go module dependencies
+
+      - run: ${GOLANGCI_LINT_INSTALL_GUARD}
+        name: Install golangci-lint
+
+      - run: ${GO_TOOL_PATH_GITHUB}
+        name: Add Go tool bin to PATH
+
+      # A C compiler and pkg-config, which is all mnci can know a cgo app needs.
+      # Add the -dev packages your app links to this line, for example
+      # libgtk-3-dev and libayatana-appindicator3-dev for a system-tray icon.
+      # macOS and Windows runners ship their toolchains.
+      - run: ${NATIVE_LINUX_PREREQUISITES}
+        name: Install native prerequisites (Linux)
+        if: \${{ runner.os == 'Linux' }}
+
+      - run: ${NATIVE_BUILD_COMMAND}
+        name: Lint, test, build and package the native apps
+
+      - uses: actions/upload-artifact@${ACTION_VERSIONS['actions/upload-artifact']}
+        with:
+          name: native-\${{ matrix.os }}
+          path: dist/drop
+          if-no-files-found: ignore
+
+      # A releasable native app (--cgo with --release) gets this OS's zip attached to
+      # the GitHub Release the ci job just created, stamped with the tag's version.
+      - run: node tools/go-app-release.cjs assets --native
+        name: Attach this OS's zip to the GitHub Release (releasable native apps)
+        if: \${{ ${onMain} && hashFiles('tools/go-app-release.cjs') != '' }}
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+`
+}
+
+/**
+ * Indents every non-blank line of a YAML fragment.
+ *
+ * @param text - The fragment.
+ * @param spaces - How many spaces to add.
+ * @returns The fragment with blank lines left empty, so no trailing whitespace appears.
+ * @throws Never - pure string building.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function indentYaml (text: string, spaces: number): string {
+  const pad = ' '.repeat(spaces)
+
+  return text.split('\n').map(line => (line === '' ? line : pad + line)).join('\n')
+}
+
+/**
+ * Rewrites a single-job Azure pipeline as two jobs: the original, then the native one.
+ *
+ * @remarks
+ * The generated pipeline has `pool:` and `steps:` at the top level, which Azure
+ * reads as one implicit job. A second job needs the explicit form, so the three
+ * top-level blocks (`pool`, `variables`, `steps`) are cut out and the first and last
+ * moved under `- job: ci`, untouched but for the indentation. Only a workspace with a
+ * native app takes this path, so every other workspace keeps the file it has.
+ *
+ * @param document - The single-job pipeline from {@link azurePipelinesYaml}.
+ * @param nativeSteps - The native job's steps, written at the top-level steps indentation.
+ * @returns The two-job pipeline.
+ * @throws Error when the pipeline no longer has its `pool:`, `variables:` and `steps:` blocks in that order.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function withAzureNativeJob (document: string, nativeSteps: string): string {
+  const poolAt = document.indexOf('\npool:\n')
+  const variablesAt = document.indexOf('\nvariables:\n')
+  const stepsAt = document.indexOf('\nsteps:\n')
+  if (poolAt === -1 || variablesAt < poolAt || stepsAt < variablesAt) {
+    throw new Error('The Azure pipeline no longer has its pool, variables and steps blocks in that order.')
+  }
+  const head = document.slice(0, poolAt + 1)
+  const pool = document.slice(poolAt + '\npool:\n'.length, variablesAt).replace(/\n+$/, '')
+  const variables = document.slice(variablesAt + 1, stepsAt).replace(/\n+$/, '')
+  const steps = document.slice(stepsAt + '\nsteps:\n'.length).replace(/\n+$/, '')
+  const matrix = Object.entries({ windows: 'windows-latest', macos: 'macos-latest', linux: 'ubuntu-latest' })
+    .map(([leg, image]) => `        ${leg}:\n          legName: ${leg}\n          vmImage: ${image}`)
+    .join('\n')
+
+  return `${head}${variables}
+
+jobs:
+  - job: ci
+    pool:
+${indentYaml(pool, 4)}
+    steps:
+${indentYaml(steps, 4)}
+
+  # Apps that need a C toolchain (mnci add go-app --cgo) cannot be cross-compiled
+  # from the job above, so each is linted, tested, built and packaged here, on an
+  # agent of every OS it ships for, and is left out of that job's verify step.
+  - job: native
+    displayName: Native apps (cgo)
+    dependsOn: ci
+    strategy:
+      matrix:
+${matrix}
+    pool:
+      vmImage: $(vmImage)
+    steps:
+${indentYaml(nativeSteps, 4)}
+`
+}
 
 /**
  * The portable `node -e` one-liner that packs every app into
@@ -3307,6 +3542,7 @@ export function azurePipelinesYaml (
   registryKind: RegistryConfig['kind'] = 'azure-artifacts',
   nugetFeedUrl?: string,
   npmAuth: NpmAuthMode = 'pat',
+  nativeApps = false,
 ): string {
   // ENUMERATED CI reasons, never "not a pull request" — the Azure half of the
   // fix #22 made for GitHub, and the more exposed of the two.
@@ -3354,7 +3590,7 @@ export function azurePipelinesYaml (
     env:
       ${npmAuthName}: ${npmAuthValue}`
 
-  return `name: monorepo-ci-$(Date:yyyyMMdd)$(Rev:.r)
+  const document = `name: monorepo-ci-$(Date:yyyyMMdd)$(Rev:.r)
 
 # Generated by MoNecromanCI. Deliberately thin: Nx builds, 'nx release'
 # versions from conventional commits and pushes ONLY a tag to main, and each
@@ -3565,7 +3801,7 @@ ${npmAuthenticateStep}  - script: npm ci
   # 'npm run lint' is 'nx run-many -t lint', a strict subset of the targets
   # below, so adding it back as its own step would only duplicate work — and on
   # a pull request it would re-lint every project, discarding the point of this.
-  - script: ${AFFECTED_OR_ALL_GUARD}
+  - script: ${nativeApps ? AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE : AFFECTED_OR_ALL_GUARD}
     displayName: Verify (affected on a PR, every project on main)
 
   # Pack every app into dist/drop/<type>-<name>.zip via each app's 'package'
@@ -3664,6 +3900,58 @@ ${
     displayName: Push release tags (nx release's own push never runs without a remote Release configured)
     condition: ${onMain}
 `
+  if (!nativeApps) {
+    return document
+  }
+  // Written at the top-level steps indentation, like the steps above, and moved under
+  // its job by withAzureNativeJob. Azure has no GitHub Release to attach to, so the
+  // legs publish their zips as pipeline artifacts and stop there.
+  const nativeSteps = `  - checkout: self
+    fetchDepth: 0
+
+  - task: UseNode@1
+    inputs:
+      version: 24.x
+
+  - task: Cache@2
+    displayName: Cache npm packages
+    inputs:
+      key: 'npm | "$(Agent.OS)" | package-lock.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: $(npm_config_cache)
+
+${npmAuthenticateStep}  - script: npm ci
+    displayName: Install dependencies${npmCiEnv}
+
+  - script: ${GO_MODULE_DOWNLOAD_GUARD}
+    displayName: Download Go module dependencies
+
+  - script: ${GOLANGCI_LINT_INSTALL_GUARD}
+    displayName: Install golangci-lint
+
+  - script: ${GO_TOOL_PATH_AZURE}
+    displayName: Add Go tool bin to PATH
+
+  # A C compiler and pkg-config, which is all mnci can know a cgo app needs. Add the
+  # -dev packages your app links to this line, for example libgtk-3-dev and
+  # libayatana-appindicator3-dev for a system-tray icon. macOS and Windows agents
+  # ship their toolchains.
+  - script: ${NATIVE_LINUX_PREREQUISITES}
+    displayName: Install native prerequisites (Linux)
+    condition: eq(variables['Agent.OS'], 'Linux')
+
+  - script: ${NATIVE_BUILD_COMMAND}
+    displayName: Lint, test, build and package the native apps
+
+  - task: PublishBuildArtifacts@1
+    displayName: Publish this OS's native zips
+    inputs:
+      PathtoPublish: $(Build.SourcesDirectory)/dist/drop
+      ArtifactName: native-$(legName)
+`
+
+  return withAzureNativeJob(document, nativeSteps)
 }
 
 /**
@@ -3715,6 +4003,7 @@ export function githubActionsYaml (
   registryKind: RegistryConfig['kind'] = 'azure-artifacts',
   ci: CiProvider = 'github',
   nugetFeedUrl?: string,
+  nativeApps = false,
 ): string {
   // `== 'push'`, not `!= 'pull_request'`. Identical today — the generated workflow
   // has exactly two triggers, `push` and `pull_request` — but the negative form
@@ -3899,7 +4188,7 @@ jobs:
       # below, so adding it back as its own step would only duplicate work — and
       # on a pull request it would re-lint every project, discarding the point
       # of this.
-      - run: ${AFFECTED_OR_ALL_GUARD}
+      - run: ${nativeApps ? AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE : AFFECTED_OR_ALL_GUARD}
         name: Verify (affected on a PR, every project on main)
 
       # Pack every app into dist/drop/<type>-<name>.zip via each app's 'package'
@@ -4041,7 +4330,7 @@ ${
         name: Push release tags (nx release's own push never runs without a remote Release configured)
         if: \${{ ${onMain} }}
 `
-}`
+}${nativeApps ? githubNativeJob(npmAuthName, npmAuthValue, onMain) : ''}`
 }
 
 /** Where a `pip` project's manifest can live, relative to the workspace root. */
@@ -4907,6 +5196,9 @@ export function applyOverlay (
   // the unused Azure file entirely instead of carrying dead CI config.
   const publishUrl = pythonPublishUrl(options.registry)
   const nugetUrl = nugetFeedUrl(options.registry)
+  // Decided here, when the file is written: neither provider can skip a whole job
+  // on a file's existence, and a workspace with no native app keeps its pipeline as is.
+  const nativeApps = hasNativeGoApp(workspaceRoot)
   if (options.ci === 'azure' || options.ci === 'both') {
     onProgress('azure-pipelines.yml — build, verify, pack and release')
     writeFileEnsured(
@@ -4918,6 +5210,7 @@ export function applyOverlay (
         options.registry.kind,
         nugetUrl,
         options.npmAuth,
+        nativeApps,
       ),
     )
   }
@@ -4925,7 +5218,7 @@ export function applyOverlay (
     onProgress('.github/workflows/ci.yml and dependabot.yml')
     writeFileEnsured(
       join(workspaceRoot, '.github/workflows/ci.yml'),
-      githubActionsYaml(options.agent, publishUrl, options.registry.kind, options.ci, nugetUrl),
+      githubActionsYaml(options.agent, publishUrl, options.registry.kind, options.ci, nugetUrl, nativeApps),
     )
     writeFileEnsured(join(workspaceRoot, '.github/dependabot.yml'), dependabotConfig(workspaceRoot))
   }

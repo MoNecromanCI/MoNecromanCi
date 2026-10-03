@@ -32,7 +32,10 @@ export const GO_RELEASE_SCRIPT_PATH = 'tools/go-app-release.cjs'
  *   builds `package-all` with `VERSION` set to the tag's version, so the binary
  *   reports it, and attaches the per-platform zips to that tag's GitHub Release.
  *   Tags are read from `HEAD`, so a run that released nothing uploads nothing, and
- *   `--clobber` makes a re-run harmless.
+ *   `--clobber` makes a re-run harmless. With `--native` it does the same for the
+ *   apps tagged `build:cgo`, which cannot be cross-compiled: each native CI leg runs
+ *   it on its own OS and builds `package-native`, so the one release collects a zip
+ *   from every runner.
  *
  * `nx` is run through its own `package.json` `bin` entry with the current `node`,
  * not through a shell, so a workspace path with a space in it works on Windows.
@@ -44,10 +47,11 @@ export const GO_RELEASE_SCRIPT = String.raw`#!/usr/bin/env node
 // A releasable Go app (tag release:go) is versioned from its git tag, with no
 // manifest, and its per-platform zips are attached to its GitHub Release:
 //   release.version.versionActions   this file, loaded by 'nx release'
-//   node tools/go-app-release.cjs assets
+//   node tools/go-app-release.cjs assets            the apps built for all six platforms
+//   node tools/go-app-release.cjs assets --native   the apps that need a C toolchain, this OS only
 'use strict'
 const { spawnSync } = require('node:child_process')
-const { existsSync, readdirSync } = require('node:fs')
+const { existsSync, readdirSync, readFileSync } = require('node:fs')
 const { dirname, join } = require('node:path')
 const { VersionActions } = require('nx/release')
 
@@ -104,17 +108,28 @@ function nx (args, env) {
   return run(process.execPath, [join(dirname(manifest), entry), ...args], env)
 }
 
-function releasableApps () {
-  return JSON.parse(nx(['show', 'projects', '--projects', 'tag:release:go', '--json'])).filter(Boolean)
+function releasableApps (native) {
+  const names = existsSync('apps') ? readdirSync('apps') : []
+
+  return names.filter(name => {
+    try {
+      const tags = JSON.parse(readFileSync(join('apps', name, 'project.json'), 'utf8')).tags || []
+
+      return tags.includes('release:go') && tags.includes('build:cgo') === native
+    } catch {
+      return false
+    }
+  })
 }
 
-function attachAssets () {
-  const apps = releasableApps()
+function attachAssets (native) {
+  const apps = releasableApps(native)
   if (apps.length === 0) {
-    console.log('No releasable Go app - nothing to attach.')
+    console.log('No releasable ' + (native ? 'native ' : '') + 'Go app - nothing to attach.')
 
     return
   }
+  const target = native ? 'package-native' : 'package-all'
   const tags = run('git', ['tag', '--points-at', 'HEAD']).split(/\r?\n/).filter(Boolean)
   let attached = 0
   for (const app of apps) {
@@ -124,11 +139,11 @@ function attachAssets () {
       continue
     }
     const version = tag.slice(app.length + 1)
-    console.log(app + ': building the six platforms as ' + version)
-    nx(['run', app + ':package-all'], { VERSION: version })
+    console.log(app + ': ' + (native ? 'building for this OS' : 'building the six platforms') + ' as ' + version)
+    nx(['run', app + ':' + target], { VERSION: version })
     const prefix = 'go-app-' + app + '-'
     const zips = existsSync('dist/drop') ? readdirSync('dist/drop').filter(each => each.startsWith(prefix) && each.endsWith('.zip')) : []
-    if (zips.length === 0) fail(app + ': package-all produced no ' + prefix + '*.zip in dist/drop.')
+    if (zips.length === 0) fail(app + ': ' + target + ' produced no ' + prefix + '*.zip in dist/drop.')
     const upload = spawnSync('gh', ['release', 'upload', tag, ...zips.map(each => join('dist/drop', each)), '--clobber'], { stdio: 'inherit', shell: process.platform === 'win32' })
     if (upload.status !== 0) fail(app + ': could not attach the zips to the ' + tag + ' release (exit ' + upload.status + ').')
     console.log(app + ': attached ' + zips.length + ' zips to ' + tag)
@@ -138,8 +153,8 @@ function attachAssets () {
 }
 
 if (require.main === module) {
-  if (process.argv[2] !== 'assets') fail('Usage: node tools/go-app-release.cjs assets')
-  attachAssets()
+  if (process.argv[2] !== 'assets' || (process.argv[3] !== undefined && process.argv[3] !== '--native')) fail('Usage: node tools/go-app-release.cjs assets [--native]')
+  attachAssets(process.argv[3] === '--native')
 }
 `
 

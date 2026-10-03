@@ -177,3 +177,49 @@ describe('the generated script', () => {
     expect(result.stderr).toContain('Usage: node tools/go-app-release.cjs assets')
   })
 })
+
+/** Runs `assets` with the given extra argument in the temporary workspace. */
+function assets (...extra: string[]): { status: number | null; stdout: string; stderr: string } {
+  const path = join(workspaceRoot, 'go-app-release.cjs')
+  writeFileSync(path, GO_RELEASE_SCRIPT)
+
+  return spawnSync(process.execPath, [path, 'assets', ...extra], {
+    encoding: 'utf8',
+    cwd:      workspaceRoot,
+    env:      { ...process.env, NODE_PATH: join(__dirname, '../../../../node_modules') },
+  })
+}
+
+describe('the generated script\'s assets command, for native apps (#263)', () => {
+  it('leaves a native app to the native legs when run for the cross-compiled apps', () => {
+    goApp('tray', { tags: ['type:go-app', 'build:cgo', 'release:go'] })
+
+    const result = assets()
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('No releasable Go app - nothing to attach.')
+  })
+
+  it('leaves a cross-compiled app to the ubuntu job when run with --native', () => {
+    goApp('tool', { tags: ['type:go-app', 'release:go'] })
+
+    const result = assets('--native')
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('No releasable native Go app - nothing to attach.')
+  })
+
+  it('ignores an app that is native but not releasable, in either mode', () => {
+    goApp('tray', { tags: ['type:go-app', 'build:cgo'] })
+
+    expect(assets('--native').stdout).toContain('nothing to attach')
+    expect(assets().stdout).toContain('nothing to attach')
+  })
+
+  it('refuses an unknown flag, naming the two it knows', () => {
+    const result = assets('--nonsense')
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('Usage: node tools/go-app-release.cjs assets [--native]')
+  })
+})
