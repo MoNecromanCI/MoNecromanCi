@@ -65,7 +65,7 @@ named here because the next reader deserves to know before opening them:
 
 | Path | Rule waived | Why, and removal condition |
 |---|---|---|
-| `workspace-overlay/overlay.use-case.ts` | one responsibility per file | ~3.5k lines covering CI YAML for two providers, `.npmrc`, `nuget.config`, the VS Code workspace, release config and the CI guard scripts. Splitting it is a decomposition, not a move, so it was deliberately kept out of the change that created these slices. **Temporary** — removed when that decomposition lands. |
+| `workspace-overlay/overlay.use-case.ts` | one responsibility per file | ~5k lines covering CI YAML for two providers (including the native-app job), `.npmrc`, `nuget.config`, the VS Code workspace, release config and the CI guard scripts. Splitting it is a decomposition, not a move, so it was deliberately kept out of the change that created these slices. **Temporary** — removed when that decomposition lands. |
 | `rollup-library/repair-rollup-config.use-case.spec.ts` | a test takes its subject's basename | It also holds the `withUpgradedDeclarationSpecifierPlugin` describe, whose subject is `rollup-config.algorithm.ts`. That transform shares three fixtures with the repairs that apply it (`OLD_DTS_PLUGIN_CONFIG`, `EXTENSION_ONLY_DTS_PLUGIN_CONFIG`, `loadWriteBundle`), and duplicating them across two spec files is the worse trade. **Permanent** unless those fixtures stop being shared. |
 
 `rollup-library/` exists because of the own-the-concept rule. Its contents used
