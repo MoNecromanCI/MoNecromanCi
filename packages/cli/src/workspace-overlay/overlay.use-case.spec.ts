@@ -2171,11 +2171,23 @@ describeOnPosix('the npm audit step, executed', () => {
     expect(out).toContain('NO fix available upstream')
   })
 
-  it('flags a fix that needs a semver-major bump, rather than implying a one-liner', () => {
+  it('does NOT block on a fix npm marks semver-major, and says why', () => {
+    // npm sets fixAvailable to a semver-major object even when the only "fix" is
+    // downgrading a parent that drops the path, not a patch to the vulnerable
+    // package (measured: braces/http-cache-semantics, leaf already newest). A
+    // semver-major upgrade is a deliberate bump, never an automatic gate.
     const { status, out } = run(auditReport(advisory('big', 'high', { isSemVerMajor: true })))
 
+    expect(status).toBe(0)
+    expect(out).toContain('note [high] big')
+    expect(out).toContain('semver-major')
+  })
+
+  it('still blocks on a fix that needs a specific non-major version', () => {
+    const { status, out } = run(auditReport(advisory('pinnable', 'high', { isSemVerMajor: false })))
+
     expect(status).toBe(1)
-    expect(out).toContain('(semver-major)')
+    expect(out).toContain('BLOCKING [high] pinnable')
   })
 
   it('passes a clean report', () => {
