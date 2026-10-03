@@ -1410,6 +1410,16 @@ pipeline installs `golangci-lint` itself (see below).
   per-project `go.mod` — which single-module mode does not have, so nothing
   is inferred. mnci writes them into `project.json` instead, as it already
   does for most kinds.
+- **The project graph is still inferred, so `affected` is correct.** What the
+  plugin does not infer is targets; it still derives the _graph_ from imports.
+  An app that imports `libs/<name>/<slice>` depends on that lib, transitively,
+  and every app sharing a lib is affected when it changes (measured on
+  `@nx-go/nx-go` 4.1.1 with Nx 23.2.0, including a dependency created only by a
+  test file's import). That matters because the pipeline verifies only the
+  affected projects on a pull request: a missing edge would let a lib change
+  pass without testing the apps that use it. The e2e pins the edges and the
+  affected sets (russoedu/MoNecromanCi#260), since they are the plugin's
+  behaviour rather than mnci's.
 - **Lint is `golangci-lint`, pinned deliberately.** The plugin's `lint`
   executor defaults to `go fmt`, which only reformats — a green lint step
   with that default would mean nothing. The generated target passes

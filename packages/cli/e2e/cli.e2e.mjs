@@ -2410,6 +2410,107 @@ section('go', ['alt stack'], () => {
       goVerify.output,
     )
 
+    /* -------------------------------------------------------------------------
+     * The project graph carries the app -> lib edge, and `affected` follows it
+     * (russoedu/MoNecromanCi#260).
+     *
+     * The pipeline verifies only the AFFECTED projects on a pull request, and
+     * `@nx-go/nx-go` infers no targets in the single-module layout, so nothing said
+     * it still infers the edges. If it stopped, a change to a lib would affect
+     * nothing: CI would run next to nothing, report green, and have tested none of
+     * the apps that import it. Measured to hold on `@nx-go/nx-go` 4.1.1 with Nx
+     * 23.2.0, for a direct import, a transitive one, two apps sharing one lib and
+     * an import that appears only in a test file. Pinned here because the edges are
+     * the plugin's behaviour, not mnci's.
+     *
+     * Changed files are named with `--files` instead of read from git: every Go
+     * file in this workspace is still uncommitted, so `--uncommitted` would mark
+     * all of them and prove nothing.
+     *
+     * A package that only bridges goutil to gocore gives the chain
+     * goapi -> goutil -> gocore a second hop without touching any file the
+     * assertions below depend on.
+     * ----------------------------------------------------------------------- */
+    const bridge = path.join(altWorkspace, 'libs/goutil/bridge')
+    mkdirSync(bridge, { recursive: true })
+    writeFileSync(
+      path.join(bridge, 'bridge_use_case.go'),
+      `package bridge\n\nimport "${goModule}/packages/gocore/gocore"\n\n// Bridge routes goutil to gocore so the project graph has a second hop.\nfunc Bridge(name string) string {\n\treturn gocore.Gocore(name)\n}\n`,
+    )
+
+    /** Projects named by a `nx show projects` result (a JSON array when piped). */
+    const projectsIn = output => {
+      const start = output.indexOf('[')
+      const end = output.lastIndexOf(']')
+      try {
+        return JSON.parse(output.slice(start, end + 1))
+      } catch {
+        return output.split(/\s+/).filter(Boolean)
+      }
+    }
+    const affectedBy = file => {
+      const result = tryRunCapture(`npx nx show projects --affected --files=${file}`, altWorkspace)
+
+      return { ...result, projects: projectsIn(result.output) }
+    }
+
+    const goGraph = tryRunCapture('npx nx graph --print', altWorkspace)
+    let goDependencies = {}
+    try {
+      goDependencies = JSON.parse(
+        goGraph.output.slice(goGraph.output.indexOf('{'), goGraph.output.lastIndexOf('}') + 1),
+      ).graph.dependencies
+    } catch {
+      // Left empty: the assertions below report the unparsable output.
+    }
+    const goEdges = project => (goDependencies[project] ?? []).map(dependency => dependency.target)
+    const goProjects = new Set(['goapi', 'goutil', 'gocore', 'gofn'])
+
+    enforce(
+      'go: the project graph has goapi -> goutil, inferred from the import alone',
+      goGraph.ok && goEdges('goapi').includes('goutil'),
+      `goapi edges: ${goEdges('goapi').join(', ')}\n${goGraph.output.slice(0, 600)}`,
+    )
+    enforce(
+      'go: the project graph has goutil -> gocore (the hop the bridge package adds)',
+      goGraph.ok && goEdges('goutil').includes('gocore'),
+      `goutil edges: ${goEdges('goutil').join(', ')}`,
+    )
+    enforce(
+      'go: a Go project that imports no other project has no edge to one (gofn, gocore)',
+      goGraph.ok &&
+        ['gofn', 'gocore'].every(project => goEdges(project).every(target => !goProjects.has(target))),
+      ['gofn', 'gocore'].map(project => `${project}: ${goEdges(project).join(', ')}`).join('\n'),
+    )
+
+    const libAffected = affectedBy('libs/goutil/goutil/goutil_use_case.go')
+    enforce(
+      'go: changing goutil marks goutil and the goapi that imports it, not the unrelated gofn or gocore',
+      libAffected.ok &&
+        libAffected.projects.includes('goutil') &&
+        libAffected.projects.includes('goapi') &&
+        !libAffected.projects.includes('gofn') &&
+        !libAffected.projects.includes('gocore'),
+      libAffected.output,
+    )
+    const transitiveAffected = affectedBy('packages/gocore/gocore/gocore_use_case.go')
+    enforce(
+      'go: changing gocore marks goutil and goapi too, two hops up the chain',
+      transitiveAffected.ok &&
+        ['gocore', 'goutil', 'goapi'].every(project => transitiveAffected.projects.includes(project)) &&
+        !transitiveAffected.projects.includes('gofn'),
+      transitiveAffected.output,
+    )
+    const appAffected = affectedBy('apps/goapi/main.go')
+    enforce(
+      'go: changing the app marks the app alone; its lib is not dragged in',
+      appAffected.ok &&
+        appAffected.projects.includes('goapi') &&
+        !appAffected.projects.includes('goutil') &&
+        !appAffected.projects.includes('gocore'),
+      appAffected.output,
+    )
+
     // The Go test and lint targets carry no package list: @nx-go/nx-go appends
     // `./...` and runs from the project root, so every slice package below it is
     // covered (russoedu/MoNecromanCi#233). Pinned here because that recursion is
