@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { hasGoProject, registerNxGoPlugin } from '../go-workspace'
+import { declareSidecarDependencies, hasGoProject, registerNxGoPlugin } from '../go-workspace'
 import { runFormatter } from '../nx-workspace'
 import {
   addGoPlatformTargets,
@@ -341,6 +341,15 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (pinnedExtensions.length > 0) {
     logger.step('Pinning the Nx project name of VS Code extensions (nx.name)')
     for (const path of pinnedExtensions) {
+      logger.detail(`updated ${path}`)
+    }
+  }
+  // An extension generated before it depended on its sidecar was never released when only
+  // a Go library the sidecar imports changed: nx release saw no change to the extension.
+  const sidecarDependencies = declareSidecarDependencies(workspaceRoot)
+  if (sidecarDependencies.length > 0) {
+    logger.step('Making each VS Code extension depend on the Go app it ships, so changes to its libraries release it')
+    for (const path of sidecarDependencies) {
       logger.detail(`updated ${path}`)
     }
   }

@@ -155,7 +155,56 @@ function seedAdoptedGoWorkspace (): void {
   )
 }
 
+/** An extension generated before it depended on its sidecar: the `package` target names the Go app, the `nx` block does not. */
+function seedExtensionWithoutSidecarEdge (): void {
+  seedWorkspace()
+  applyOverlay(workspaceRoot, FIXTURE_OPTIONS)
+  mkdirSync(join(workspaceRoot, 'apps', 'ext'), { recursive: true })
+  writeFileSync(
+    join(workspaceRoot, 'apps', 'ext', 'package.json'),
+    JSON.stringify({
+      name: 'ext',
+      nx:   {
+        name:    'ext',
+        tags:    ['type:vscode-extension'],
+        targets: { package: { options: { command: 'node tools/vscode-extension.cjs package apps/ext --sidecar engine' } } },
+      },
+    }),
+  )
+}
+
+/** The implicit dependencies of the seeded extension. */
+function extensionDependencies (): string[] | undefined {
+  return (JSON.parse(readFileSync(join(workspaceRoot, 'apps', 'ext', 'package.json'), 'utf8')) as { nx: { implicitDependencies?: string[] } }).nx.implicitDependencies
+}
+
 describe('runUpgrade', () => {
+  describe('an extension that never depended on its Go sidecar', () => {
+    it('makes it depend on the sidecar, so a change to the sidecar\'s libraries releases it, and says so', () => {
+      seedExtensionWithoutSidecarEdge()
+      expect(extensionDependencies()).toBeUndefined()
+      const logged: string[] = []
+      jest.spyOn(console, 'log').mockImplementation((message: unknown) => {
+        logged.push(String(message))
+      })
+
+      runUpgrade(workspaceRoot, {})
+
+      expect(extensionDependencies()).toEqual(['engine'])
+      expect(logged.join('\n')).toContain('depend on the Go app it ships')
+      expect(logged.join('\n')).toContain('apps/ext/package.json')
+    })
+
+    it('does so once, however many upgrades follow', () => {
+      seedExtensionWithoutSidecarEdge()
+
+      runUpgrade(workspaceRoot, {})
+      runUpgrade(workspaceRoot, {})
+
+      expect(extensionDependencies()).toEqual(['engine'])
+    })
+  })
+
   it('gives a Go app added before cross-compilation its build-all and package-all targets', () => {
     seedWorkspace()
     applyOverlay(workspaceRoot, FIXTURE_OPTIONS)

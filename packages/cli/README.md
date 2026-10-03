@@ -1635,6 +1635,16 @@ extension:
   `darwin-x64`, `darwin-arm64`, plus `alpine-x64`/`alpine-arm64` from the static
   Linux binaries. Unix file modes survive into the package, so the binary stays
   executable. Resolve it at runtime from `context.extensionPath` + `bin/`.
+  - **The extension depends on its sidecar in the project graph**
+    (`nx.implicitDependencies`), so a release follows the Go app's libraries: a commit
+    that touches only a Go library the sidecar imports versions, tags and publishes
+    the extension. It used to be only a string in a command, so `nx release` saw
+    "no changes" for the extension and never published it, though the engine inside
+    had changed (found in a real workspace; the e2e measures it). `mnci upgrade` adds
+    the dependency to an extension generated before, reading the sidecar back from its
+    `package` target, and `mnci doctor` fails while it is missing. This needs the Go
+    plugin registered in `nx.json` for the edge from the sidecar to its libraries,
+    which `mnci doctor` also checks (see _Adopting a flat Go module_).
 - **`nx-release-publish`** runs `vsce publish --packagePath <every vsix>
   --skip-duplicate` with a Marketplace credential, and skips with a message without
   one. It depends on `package`, so it ships the version `nx release` just wrote. Two

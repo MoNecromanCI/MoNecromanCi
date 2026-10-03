@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
+import { findVscodeSidecars, hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
 import { runShell } from '../nx-workspace'
 import {
   ESLINT_MNCI_FILENAME,
@@ -826,6 +826,31 @@ function hasCCompiler (): boolean {
 }
 
 /**
+ * Checks that each VS Code extension depends on the Go app it ships.
+ *
+ * @remarks
+ * `--sidecar` was only ever a string in a command, so the project graph had no edge from
+ * the extension to its sidecar. `nx release` counts the commits that touch a project and its
+ * graph dependencies, so a change confined to a Go library the sidecar imports left the
+ * extension with "no changes", and it was never versioned, tagged or published: the engine
+ * inside it changed and its users never got it. One finding per extension with a sidecar,
+ * and none for a workspace without one.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The findings, in the order the extensions are found.
+ * @throws Error when an extension's `package.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkSidecarDependencies (workspaceRoot: string): Finding[] {
+  return findVscodeSidecars(workspaceRoot).map(({ extension, sidecar, declared }) => ({
+    check:  `${extension} depends on its sidecar ${sidecar}, so a change to that app's libraries releases it`,
+    ok:     declared,
+    detail: `${extension} has no edge to ${sidecar}: a commit that only touches a Go library it imports leaves \`nx release\` seeing no change to the extension, so it is never published`,
+    remedy: 'run `mnci upgrade`',
+  }))
+}
+
+/**
  * Checks that the Go plugin is registered, once the workspace has a Go project.
  *
  * @remarks
@@ -1143,6 +1168,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkTargetFilesExist(workspaceRoot),
     checkSync(workspaceRoot),
     checkGoPluginRegistered(workspaceRoot),
+    ...checkSidecarDependencies(workspaceRoot),
     ...checkNativeApps(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
