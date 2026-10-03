@@ -366,7 +366,7 @@ function runScript (arguments_: string[], env: Record<string, string | undefined
   const result = spawnSync(process.execPath, [VSCODE_EXTENSION_SCRIPT_PATH, ...arguments_], {
     cwd:      workspaceRoot,
     encoding: 'utf8',
-    env:      { ...process.env, VSCE_PAT: undefined, NX_DRY_RUN: undefined, ...env },
+    env:      { ...process.env, VSCE_PAT: undefined, VSCE_AUTH: undefined, NX_DRY_RUN: undefined, ...env },
   })
 
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
@@ -429,14 +429,43 @@ describe('tools/vscode-extension.cjs, executed', () => {
     expect(existsSync(join(workspaceRoot, 'apps/ext/bin'))).toBe(false)
   })
 
-  it('skips the publish when VSCE_PAT is unset, or is the literal Azure macro', () => {
-    for (const token of [undefined, '', '$(VSCE_PAT)']) {
-      const result = runScript(['publish', 'apps/ext'], { VSCE_PAT: token })
+  it('skips the publish, naming both routes, with no Entra ID and VSCE_PAT unset or the literal Azure macro', () => {
+    for (const env of [{}, { VSCE_PAT: '' }, { VSCE_PAT: '$(VSCE_PAT)' }, { VSCE_AUTH: '' }, { VSCE_AUTH: 'pat' }]) {
+      const result = runScript(['publish', 'apps/ext'], env)
 
       expect(result.status).toBe(0)
-      expect(result.stdout).toContain('VSCE_PAT is not set - skipping the Marketplace publish of ext')
+      expect(result.stdout).toContain('No Marketplace credential - skipping the Marketplace publish of ext')
+      expect(result.stdout).toContain('AZURE_CLIENT_ID and AZURE_TENANT_ID variables (Microsoft Entra ID) or the VSCE_PAT secret')
     }
     expect(calls()).toEqual([])
+  })
+
+  it('publishes with Microsoft Entra ID when the release step says so, with no token (#253)', () => {
+    runScript(['package', 'apps/ext', '--sidecar', 'engine'])
+
+    const result = runScript(['publish', 'apps/ext', '--sidecar', 'engine'], { VSCE_AUTH: 'entra' })
+
+    expect(result.status).toBe(0)
+    const publish = calls().find(call => call.startsWith('vsce publish'))!
+    expect(publish).toMatch(/^vsce publish --azure-credential --packagePath /)
+    expect(publish).toContain('--skip-duplicate')
+    expect(publish.match(/\.vsix/g)).toHaveLength(8)
+  })
+
+  it('prefers Entra ID over a token when both are configured', () => {
+    runScript(['package', 'apps/ext'])
+
+    runScript(['publish', 'apps/ext'], { VSCE_AUTH: 'entra', VSCE_PAT: 'token' })
+
+    expect(calls().find(call => call.startsWith('vsce publish'))).toContain('--azure-credential')
+  })
+
+  it('publishes with the token, and no --azure-credential, without Entra ID', () => {
+    runScript(['package', 'apps/ext'])
+
+    runScript(['publish', 'apps/ext'], { VSCE_PAT: 'token' })
+
+    expect(calls().find(call => call.startsWith('vsce publish'))).not.toContain('--azure-credential')
   })
 
   it('publishes every packaged vsix in one call, tolerating a version already there', () => {
@@ -450,12 +479,14 @@ describe('tools/vscode-extension.cjs, executed', () => {
     expect(publish.match(/\.vsix/g)).toHaveLength(8)
   })
 
-  it('never publishes under nx release --dry-run, even with a token', () => {
+  it('never publishes under nx release --dry-run, even with a token or Entra ID', () => {
     runScript(['package', 'apps/ext'])
 
     for (const [arguments_, env] of [
       [['publish', 'apps/ext', '--dryRun=true'], { VSCE_PAT: 'token' }],
       [['publish', 'apps/ext'], { VSCE_PAT: 'token', NX_DRY_RUN: 'true' }],
+      [['publish', 'apps/ext', '--dryRun=true'], { VSCE_AUTH: 'entra' }],
+      [['publish', 'apps/ext'], { VSCE_AUTH: 'entra', NX_DRY_RUN: 'true' }],
     ] as const) {
       const result = runScript([...arguments_], env)
 

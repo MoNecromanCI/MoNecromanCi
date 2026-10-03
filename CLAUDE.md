@@ -162,8 +162,11 @@ committing an upgrade.
   file mnci owns (written on add, rewritten by `mnci upgrade` via
   `refreshVscodeExtensionScript`). `--sidecar <go-app>` packages one `.vsix` per Marketplace
   target with that platform's binary from `build-all` in `bin/`, stamped with the
-  extension's version. Publish is gated on `VSCE_PAT` (Azure's literal `$(VSCE_PAT)` counts
-  as unset), uses `--skip-duplicate`, and **never publishes in a dry run**:
+  extension's version. Publish needs a Marketplace credential: **Microsoft Entra ID**
+  (`VSCE_AUTH=entra`, set by the GitHub release step when the `AZURE_CLIENT_ID` variable
+  exists, after an `azure/login` OIDC step; the script passes `--azure-credential`, #253)
+  or else `VSCE_PAT` (Azure's literal `$(VSCE_PAT)` counts as unset; Azure Pipelines has
+  only this route). It uses `--skip-duplicate`, and **never publishes in a dry run**:
   `nx release --dry-run --yes` still runs every `nx-release-publish` target, passing
   `--dryRun=true` and `NX_DRY_RUN` (measured; the C# target does not honour it yet, #245).
 - **Released from `apps/` by tag** (#229): `release.projects` and `preVersionCommand`

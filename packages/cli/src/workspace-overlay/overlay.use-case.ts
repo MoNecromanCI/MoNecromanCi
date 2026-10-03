@@ -2496,6 +2496,7 @@ export const ACTION_VERSIONS = {
   'actions/setup-node':      'v7',
   'actions/setup-dotnet':    'v6',
   'actions/upload-artifact': 'v7',
+  'azure/login':             'v3',
 } as const
 
 /**
@@ -3738,6 +3739,11 @@ permissions:
   # Lets the release step push the version tag nx release creates back to main,
   # and (github-only provider) create the GitHub Release itself.
   contents: write
+  # Lets azure/login exchange this job's OIDC token for a Microsoft Entra ID one,
+  # which is how a VS Code extension reaches the Marketplace with no stored secret.
+  # A token minted on a pull request cannot use it: the federated credential is
+  # pinned to refs/heads/main.
+  id-token: write
 
 jobs:
   ci:
@@ -3951,14 +3957,31 @@ ${
       # why every other provider combination keeps the explicit push step below.`
           : ''
       }
+      # Signs in to Microsoft Entra ID as the Marketplace publishing identity (an
+      # app registration with a federated credential for this repository's main
+      # branch), so the release step publishes VS Code extensions with
+      # 'vsce publish --azure-credential' and no token. Runs only when the
+      # AZURE_CLIENT_ID and AZURE_TENANT_ID repository variables exist and the
+      # workspace has an extension (every one ships a .vscodeignore). No Azure
+      # subscription is needed. Setup: README, 'VS Code extensions'.
+      - uses: azure/login@${ACTION_VERSIONS['azure/login']}
+        name: Sign in to Microsoft Entra ID (VS Code Marketplace)
+        if: \${{ ${onMain} && vars.AZURE_CLIENT_ID != '' && hashFiles('apps/*/.vscodeignore') != '' }}
+        with:
+          client-id: \${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: \${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
       - run: ${releaseGuard(pythonPublishEnvFragment(pythonPublishUrl, registryKind), nugetPublishEnvFragment(nugetFeedUrl))}
         name: Release — version, tag${githubReleases ? ', publish and GitHub Release' : ' and publish'} (npm + Python + C# + VS Code)
         if: \${{ ${onMain} }}
         env:
           ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `\${{ secrets.${name} }}`, ' '.repeat(10))}
           RELEASE_SPECIFIER: \${{ vars.RELEASE_SPECIFIER }}
-          # A VS Code extension publishes with it; tools/vscode-extension.cjs
-          # skips the Marketplace when it is unset.
+          # A VS Code extension publishes with Entra ID when the sign-in step
+          # above ran (VSCE_AUTH=entra), else with the VSCE_PAT token;
+          # tools/vscode-extension.cjs skips the Marketplace with neither.
+          VSCE_AUTH: \${{ vars.AZURE_CLIENT_ID != '' && 'entra' || '' }}
           VSCE_PAT: \${{ secrets.VSCE_PAT }}${
             githubReleases
               ? `

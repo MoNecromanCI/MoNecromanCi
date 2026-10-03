@@ -82,11 +82,18 @@ function scriptObjectLiteral (map: Readonly<Record<string, string>>): string {
  *   `dependsOn`, which cannot pass a different environment to one dependency. In a
  *   release that is the version `nx release` just wrote, so the engine and the
  *   extension it ships in always agree.
- * - **`publish` is gated on `VSCE_PAT`**, the same pattern as the C# NuGet target:
- *   the target must exist even when nothing is configured, because Nx throws when
- *   no project in a release group carries `nx-release-publish`. Azure Pipelines
- *   leaves an undefined `$(VSCE_PAT)` macro as that literal text, so that reads as
- *   unset too.
+ * - **`publish` is gated on a credential**, the same pattern as the C# NuGet
+ *   target: the target must exist even when nothing is configured, because Nx
+ *   throws when no project in a release group carries `nx-release-publish`.
+ *   `VSCE_AUTH=entra` (set by the GitHub release step when the `AZURE_CLIENT_ID`
+ *   variable exists, after `azure/login`) publishes with `--azure-credential`:
+ *   Microsoft Entra ID through OIDC, no stored secret (#253). It wins over
+ *   `VSCE_PAT`, a Marketplace personal access token, which remains the fallback.
+ *   Azure Pipelines leaves an undefined `$(VSCE_PAT)` macro as that literal text,
+ *   so that reads as unset too. The signal is explicit rather than "is
+ *   `AZURE_CLIENT_ID` set": `azure/login` exports no variable, and exporting
+ *   `AZURE_CLIENT_ID` would steer `@azure/identity` towards a managed identity the
+ *   runner does not have.
  * - **A `#!/usr/bin/env node` line**, though it is always run as `node <file>`:
  *   it is how `unicorn/no-process-exit` recognises a command-line program, the
  *   one place an exit code is the interface.
@@ -169,16 +176,17 @@ function publishExtension (manifest, sidecar, dryRun) {
 
     return
   }
+  const entra = process.env.VSCE_AUTH === 'entra'
   const token = process.env.VSCE_PAT ?? ''
-  if (token === '' || /^\$\(.*\)$/.test(token)) {
-    console.log('VSCE_PAT is not set - skipping the Marketplace publish of ' + manifest.name + '. Add it as a CI secret to publish.')
+  if (!entra && (token === '' || /^\$\(.*\)$/.test(token))) {
+    console.log('No Marketplace credential - skipping the Marketplace publish of ' + manifest.name + '. Set the AZURE_CLIENT_ID and AZURE_TENANT_ID variables (Microsoft Entra ID) or the VSCE_PAT secret to publish.')
 
     return
   }
   const files = vsixFiles(project, sidecar)
   const missing = files.filter(file => !existsSync(file))
   if (missing.length > 0) fail('Nothing to publish: ' + missing.join(', ') + ' not found - run the package target first.')
-  run('@vscode/vsce', 'vsce', ['publish', '--packagePath', ...files, '--skip-duplicate'])
+  run('@vscode/vsce', 'vsce', ['publish', ...(entra ? ['--azure-credential'] : []), '--packagePath', ...files, '--skip-duplicate'])
 }
 
 const [command, projectRoot, ...rest] = process.argv.slice(2)
@@ -516,7 +524,7 @@ export function vscodeExtensionPackageTarget (name: string, sidecar?: string): R
  *
  * @remarks
  * Depends on `package`, so it packages the version `nx release` has just written,
- * never a stale one. Gated on `VSCE_PAT` inside the script (see
+ * never a stale one. Gated on a Marketplace credential (Entra ID or `VSCE_PAT`) inside the script (see
  * {@link VSCODE_EXTENSION_SCRIPT}).
  *
  * @param name - The project name.
