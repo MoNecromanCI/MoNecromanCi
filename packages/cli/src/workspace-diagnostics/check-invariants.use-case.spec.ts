@@ -7,7 +7,12 @@ jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), se
 // needs a real Nx graph nor pays for a subprocess per test; the sync finding is
 // asserted through the mock's return code instead.
 jest.mock('../nx-workspace', () => ({ runShell: jest.fn(() => 0) }))
+// The only subprocess the doctor starts itself is the C compiler probe. Mocked, so the
+// result depends on neither the machine's PATH (which each OS resolves differently:
+// emptying it hid gcc on Windows and not on Linux) nor on a compiler being installed.
+jest.mock('node:child_process', () => ({ ...jest.requireActual('node:child_process'), spawnSync: jest.fn() }))
 
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,6 +21,7 @@ import { repairDeclarationSpecifiers, upgradeDeclarationSpecifierPlugins } from 
 import { collectFindings, runDoctor, type Finding } from './check-invariants.use-case'
 
 const mockRunShell = jest.mocked(runShell)
+const mockSpawnSync = jest.mocked(spawnSync)
 
 let workspaceRoot: string
 
@@ -1102,6 +1108,11 @@ function writePipeline (file: string, content: string): void {
   writeFileSync(join(workspaceRoot, file), content)
 }
 
+/** Answers the compiler probe: status 0 is a compiler that ran, anything else is none. */
+function compilerAnswers (status: number | null): void {
+  mockSpawnSync.mockReturnValue({ status } as never)
+}
+
 /** The findings about native apps and the C compiler, among all of them. */
 function native (findings: Finding[]): Finding[] {
   return findings.filter(finding => finding.check.includes('native apps') || finding.check.includes('C compiler'))
@@ -1110,19 +1121,18 @@ function native (findings: Finding[]): Finding[] {
 describe('doctor: native (cgo) apps (#263)', () => {
   const PIPELINE_WITH_NATIVE = 'jobs:\n  native:\n    name: native (${{ matrix.os }})\n'
   let savedCompiler: string | undefined
-  let savedPath: string | undefined
 
   beforeEach(() => {
     savedCompiler = process.env.CC
-    savedPath = process.env.PATH
-    // `node --version` always answers, so this is a machine with a compiler.
-    process.env.CC = 'node'
+    delete process.env.CC
+    // A machine with a compiler, unless a test says otherwise.
+    compilerAnswers(0)
   })
 
   afterEach(() => {
+    mockSpawnSync.mockReset()
     if (savedCompiler === undefined) delete process.env.CC
     else process.env.CC = savedCompiler
-    process.env.PATH = savedPath
   })
 
   it('adds no finding to a workspace without a native app', () => {
@@ -1170,13 +1180,31 @@ describe('doctor: native (cgo) apps (#263)', () => {
 
   it('fails, with what to install, on a machine with no C compiler', () => {
     addNativeApp()
-    delete process.env.CC
-    // An empty PATH: none of gcc, clang or cc can be found, whatever this machine has.
-    process.env.PATH = mkdtempSync(join(tmpdir(), 'mnci-no-compiler-'))
+    compilerAnswers(1)
 
     const compiler = native(collectFindings(workspaceRoot)).find(finding => finding.check.includes('C compiler'))
 
     expect(compiler?.ok).toBe(false)
     expect(compiler?.remedy).toContain('build-essential')
+    // Every name was tried before giving up.
+    expect(mockSpawnSync.mock.calls.map(call => call[0])).toEqual(['gcc', 'clang', 'cc'])
+  })
+
+  it('tries the compiler CC names first, without the flags that follow it', () => {
+    addNativeApp()
+    process.env.CC = 'mycc -m64'
+    compilerAnswers(0)
+
+    collectFindings(workspaceRoot)
+
+    expect(mockSpawnSync.mock.calls[0]).toEqual(['mycc', ['--version'], { stdio: 'ignore' }])
+  })
+
+  it('stops at the first compiler that answers', () => {
+    addNativeApp()
+
+    collectFindings(workspaceRoot)
+
+    expect(mockSpawnSync).toHaveBeenCalledTimes(1)
   })
 })
