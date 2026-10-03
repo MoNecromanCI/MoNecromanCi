@@ -84,15 +84,36 @@ function tryRun (command, cwd) {
   }
 }
 
-/** Runs a command capturing combined output; returns an ok/output record. */
-function tryRunCapture (command, cwd) {
+/**
+ * A token shaped like an npm one (`npm_` plus 36 characters), for runs whose
+ * result must not depend on the machine's own `NODE_AUTH_TOKEN`.
+ *
+ * Every generated `.npmrc` authenticates with `${NODE_AUTH_TOKEN}`, and
+ * `mnci doctor` checks that variable's SHAPE (locally, no registry contact):
+ * unset fails it, which is the GitHub runner, and so does a value that does not
+ * look like an npm token, which is a developer machine where some other tool
+ * set the name. So "doctor passes on a fresh workspace" was true or false by
+ * host, and red on the nightly. Passed to the doctor runs only, never
+ * exported to the whole suite: an invalid token sent on `npm install` could be
+ * refused by the registry.
+ */
+const NPM_SHAPED_TOKEN = `npm_${'0'.repeat(36)}`
+
+/**
+ * Runs a command capturing combined output; returns an ok/output record.
+ *
+ * @param command - The shell command.
+ * @param cwd - Where to run it.
+ * @param extraEnvironment - Variables added to (and overriding) the suite's own.
+ */
+function tryRunCapture (command, cwd, extraEnvironment = {}) {
   console.log(`\n$ ${command}   (cwd: ${cwd})`)
   try {
     const output = execSync(command, {
       cwd,
       encoding: 'utf8',
       stdio:    ['ignore', 'pipe', 'pipe'],
-      env:      { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true' },
+      env:      { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true', ...extraEnvironment },
     })
     console.log(output)
 
@@ -456,9 +477,15 @@ section('js stack', [], () => {
     'release: tag-only git (top-level git: commit false, tag true, push false)',
     release.git?.commit === false && release.git?.tag === true && release.git?.push === false,
   )
+  // A VS Code extension lives in apps/ yet is released like a package, so it is
+  // selected by tag rather than by path (`mnci upgrade` rewrites this array, and a
+  // tag matcher is the same on every upgrade). It sits before the go-lib
+  // exclusion because a negation only subtracts from what precedes it.
   enforce(
-    'release scoped to the publishable dirs (npm + python), with go-lib excluded',
-    JSON.stringify(release.projects) === '["packages/*","python-packages/*","!tag:type:go-lib"]',
+    'release scoped to the publishable dirs (npm + python) and the vscode-extension tag, with go-lib excluded',
+    JSON.stringify(release.projects) ===
+      '["packages/*","python-packages/*","tag:type:vscode-extension","!tag:type:go-lib"]',
+    JSON.stringify(release.projects),
   )
 
   enforceWorkspaceShape(workspace, 'after new')
@@ -952,8 +979,14 @@ section('js stack', [], () => {
   if (!msSource.includes(MS_SOURCE_MARKER)) {
     throw new Error(`ms@${msVersion} source changed — update the e2e's inline-detection marker`)
   }
+  // The fixtures replace the scaffold's own `<name>.use-case.ts` (and its spec),
+  // not a sibling file next to it: `src/index.ts` exports `./lib/<name>.use-case`,
+  // so a differently named file is an orphan nothing imports. That is how the sdk
+  // bundle came to hold the untouched placeholder and return `sdk` instead of
+  // `sdk uses utils and 1m`, failing two assertions below for a reason that looked
+  // like a bundler fault.
   writeFileSync(
-    path.join(workspace, 'libs/utils/src/lib/utils.ts'),
+    path.join(workspace, 'libs/utils/src/lib/utils.use-case.ts'),
     "export function utils(): string {\n  return 'utils';\n}\n",
   )
   const sdkManifestPath = path.join(workspace, 'packages/sdk/package.json')
@@ -964,12 +997,12 @@ section('js stack', [], () => {
   }
   writeFileSync(sdkManifestPath, `${JSON.stringify(sdkManifestForDependency, undefined, 2)}\n`)
   writeFileSync(
-    path.join(workspace, 'packages/sdk/src/lib/sdk.ts'),
+    path.join(workspace, 'packages/sdk/src/lib/sdk.use-case.ts'),
     "import ms from 'ms';\nimport { utils } from '@demo/utils';\n\nexport function sdk(): string {\n  return 'sdk uses ' + utils() + ' and ' + ms(60_000);\n}\n",
   )
   writeFileSync(
-    path.join(workspace, 'packages/sdk/src/lib/sdk.spec.ts'),
-    "import { sdk } from './sdk.js';\n\ndescribe('sdk', () => {\n  it('uses the internal lib and the external dependency', () => {\n    expect(sdk()).toEqual('sdk uses utils and 1m');\n  });\n});\n",
+    path.join(workspace, 'packages/sdk/src/lib/sdk.use-case.spec.ts'),
+    "import { sdk } from './sdk.use-case.js';\n\ndescribe('sdk', () => {\n  it('uses the internal lib and the external dependency', () => {\n    expect(sdk()).toEqual('sdk uses utils and 1m');\n  });\n});\n",
   )
   run('npx nx sync', workspace)
 
@@ -1287,7 +1320,9 @@ section('js stack', [], () => {
 
   console.log('\n▸ mnci doctor (root runtime dependency)')
 
-  const doctorClean = tryRunCapture(`node ${CLI} doctor`, workspace)
+  const doctorClean = tryRunCapture(`node ${CLI} doctor`, workspace, {
+    NODE_AUTH_TOKEN: NPM_SHAPED_TOKEN,
+  })
   enforce(
     'mnci doctor passes on a freshly generated workspace',
     doctorClean.ok,
@@ -1327,7 +1362,9 @@ section('js stack', [], () => {
     `${JSON.stringify(manifestWithRootDependency, undefined, 2)}\n`,
   )
 
-  const doctorHoisted = tryRunCapture(`node ${CLI} doctor`, workspace)
+  const doctorHoisted = tryRunCapture(`node ${CLI} doctor`, workspace, {
+    NODE_AUTH_TOKEN: NPM_SHAPED_TOKEN,
+  })
   enforce(
     'mnci doctor fails on a runtime dependency hoisted to the root manifest',
     !doctorHoisted.ok && doctorHoisted.output.includes('runtime dependencies'),
@@ -2996,8 +3033,10 @@ section('vscode extension', ['alt stack'], () => {
     'vscode: nx release --dry-run versions an extension-only workspace through the tag matcher and dry-runs the publish',
     vsxRelease.ok &&
       // Matched on the manifest path alone: nx colours the project name, so a
-      // pattern spanning it sees escape codes, not a space.
-      /New version \S+ written to manifest: apps\/editor\/package\.json/.test(vsxRelease.output) &&
+      // pattern spanning it sees escape codes, not a space. Either path separator,
+      // because nx prints the path in the host's own form (`apps\editor\package.json`
+      // on Windows) and the nightly runs on nothing but windows-latest.
+      /New version \S+ written to manifest: apps[/\\]editor[/\\]package\.json/.test(vsxRelease.output) &&
       vsxRelease.output.includes('Dry run - would publish'),
     vsxRelease.output,
   )
