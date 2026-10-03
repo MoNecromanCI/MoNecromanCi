@@ -152,6 +152,10 @@ export function buildProgram (cliVersion: string): Command {
       '--sidecar <go-app>',
       'vscode-extension only: a go-app whose six-platform build ships in the extension, one .vsix per platform',
     )
+    .option(
+      '--release',
+      'go-app only: release the app. Versioned from its git tag, its six-platform zips attached to its GitHub Release',
+    )
     .action(
       async (kind: ProjectKind | undefined, name: string | undefined, options: AddOptions) => {
         await runAdd(kind, name, options)

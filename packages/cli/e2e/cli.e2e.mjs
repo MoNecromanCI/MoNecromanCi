@@ -480,11 +480,12 @@ section('js stack', [], () => {
   // A VS Code extension lives in apps/ yet is released like a package, so it is
   // selected by tag rather than by path (`mnci upgrade` rewrites this array, and a
   // tag matcher is the same on every upgrade). It sits before the go-lib
-  // exclusion because a negation only subtracts from what precedes it.
+  // exclusion because a negation only subtracts from what precedes it. A Go app is
+  // the same: it joins the release only by opting in (`--release`), through its tag.
   enforce(
-    'release scoped to the publishable dirs (npm + python) and the vscode-extension tag, with go-lib excluded',
+    'release scoped to the publishable dirs (npm + python), the vscode-extension and releasable-go tags, with go-lib excluded',
     JSON.stringify(release.projects) ===
-      '["packages/*","python-packages/*","tag:type:vscode-extension","!tag:type:go-lib"]',
+      '["packages/*","python-packages/*","tag:type:vscode-extension","tag:release:go","!tag:type:go-lib"]',
     JSON.stringify(release.projects),
   )
 
@@ -2684,6 +2685,94 @@ section('go', ['alt stack'], () => {
       goRelease.ok && !/gocore/.test(goRelease.output),
       goRelease.output,
     )
+
+    /* -------------------------------------------------------------------------
+     * A releasable Go app (#259): versioned from its git tag, with no manifest,
+     * and its per-platform zips attached to its GitHub Release.
+     *
+     * Every `nx release` here names its version (0.0.1) instead of deriving it
+     * from conventional commits: on Windows Nx's own history scan reports "No
+     * changes were detected" for a workspace's first commits (see the python
+     * check above), and what is under test is the manifest-less versioning and
+     * tagging, not Nx's scan.
+     * ----------------------------------------------------------------------- */
+    run(`node ${CLI} add go-app gorel --release`, altWorkspace)
+    writeFileSync(
+      path.join(altWorkspace, 'apps/gorel/main.go'),
+      'package main\n\nimport "fmt"\n\nvar version = "dev"\n\nfunc main() {\n\tfmt.Println(version)\n}\n',
+    )
+    rmSync(path.join(altWorkspace, 'apps/gorel/main_test.go'), { force: true })
+    run('git add -A', altWorkspace)
+    run('git -c user.email=e2e@test -c user.name=e2e commit -q -m "feat(gorel): a releasable go app"', altWorkspace)
+
+    // The unmarked Go projects (goapi, gofn) and the go-lib must stay out, and the
+    // manifest-less app must not abort the release graph the way a bare go-lib once did.
+    const goReleaseDry = tryRunCapture('npx nx release 0.0.1 --dry-run', altWorkspace)
+    enforce(
+      'go: nx release --dry-run includes the releasable go-app and none of the unmarked Go projects',
+      // No `\b`: Nx colours its output, and an escape sequence ends in a letter, so a
+      // project name straight after one has no word boundary before it.
+      goReleaseDry.ok && goReleaseDry.output.includes('gorel') && !/goapi|gofn|gocore|goutil/.test(goReleaseDry.output),
+      goReleaseDry.output,
+    )
+
+    // Restricted to the one app so the rest of the alt workspace is left untouched.
+    const goReleaseReal = tryRunCapture('npx nx release 0.0.1 --projects=gorel --yes', altWorkspace)
+    const goTags = tryRunCapture('git tag --points-at HEAD', altWorkspace)
+    enforce(
+      'go: a real nx release tags the app gorel@0.0.1, with no manifest to version and a publish phase that does not abort',
+      goReleaseReal.ok && /^gorel@0\.0\.1$/m.test(goTags.output),
+      `${goReleaseReal.output}\ntags at HEAD: ${goTags.output}`,
+    )
+
+    // `gh` is stubbed on PATH, which records what it is asked to do: the suite has no
+    // token and must not publish anything. PATH goes through process.env, not a
+    // `PATH=` prefix, which cmd.exe does not understand.
+    const ghStub = mkdtempSync(path.join(tmpdir(), 'mnci-gh-stub-'))
+    const ghLog = path.join(ghStub, 'gh.log')
+    if (process.platform === 'win32') {
+      writeFileSync(path.join(ghStub, 'gh.cmd'), '@echo off\r\necho %*>> "%GH_LOG%"\r\nexit /b 0\r\n')
+    } else {
+      writeFileSync(path.join(ghStub, 'gh'), '#!/bin/sh\necho "$@" >> "$GH_LOG"\nexit 0\n', { mode: 0o755 })
+    }
+    const savedPath = process.env.PATH
+    process.env.PATH = `${ghStub}${path.delimiter}${savedPath}`
+    process.env.GH_LOG = ghLog
+    const goAssets = tryRunCapture('node tools/go-app-release.cjs assets', altWorkspace)
+    process.env.PATH = savedPath
+    delete process.env.GH_LOG
+    const ghCalls = existsSync(ghLog) ? readFileSync(ghLog, 'utf8') : ''
+    const goZips = goPlatforms.map(platform => `go-app-gorel-${platform}.zip`)
+    enforce(
+      'go: the assets step builds and attaches one zip per platform to the app\'s release (gh stubbed)',
+      goAssets.ok &&
+        ghCalls.includes('release upload gorel@0.0.1') &&
+        ghCalls.includes('--clobber') &&
+        goZips.every(zip => ghCalls.includes(zip) && existsSync(path.join(altWorkspace, 'dist/drop', zip))),
+      `${ghCalls}\n${goAssets.output}`,
+    )
+    rmSync(ghStub, { recursive: true, force: true })
+
+    // -trimpath keeps -ldflags out of `go version -m`, so the only honest check is to run it.
+    const hostOs = { win32: 'windows', linux: 'linux', darwin: 'darwin' }[process.platform]
+    const hostArch = { x64: 'amd64', arm64: 'arm64' }[process.arch]
+    const hostBinary = path.join(
+      altWorkspace,
+      'dist/platforms/gorel',
+      `${hostOs}-${hostArch}`,
+      process.platform === 'win32' ? 'gorel.exe' : 'gorel',
+    )
+    if (hostOs && hostArch && existsSync(hostBinary)) {
+      let reported
+      try {
+        reported = execSync(`"${hostBinary}"`, { encoding: 'utf8' }).trim()
+      } catch (error) {
+        reported = String(error)
+      }
+      enforce('go: the binary of the released app reports the version it was released as', reported === '0.0.1', `reported: ${reported}`)
+    } else {
+      skip('the released binary version check', `no built binary for ${process.platform}/${process.arch}`)
+    }
   } else {
     skip('the entire Go section', 'the Go toolchain is not on PATH')
   }

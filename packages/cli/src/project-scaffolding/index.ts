@@ -9,6 +9,7 @@
 export * from './add-project.use-case'
 export * from './post-generation.use-case'
 export { addGoPlatformTargets, GO_PLATFORMS } from './go.use-case'
+export { GO_RELEASE_SCRIPT_PATH, refreshGoReleaseScript } from './go-release.use-case'
 export {
   pinVscodeExtensionProjectNames,
   refreshVscodeExtensionScript,

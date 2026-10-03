@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
+import { makeGoAppReleasable } from './go-release.use-case'
 import { addProjectJsonTargets, ensureAdmZip, hasPlugin, registerProjectCommands } from './post-generation.use-case'
 
 /**
@@ -538,15 +539,17 @@ function prepareGo (workspaceRoot: string): void {
  * @remarks
  * Delegates project generation to `@nx-go/nx-go:application`, then writes the
  * build/test/lint targets (nothing is inferred in single-module mode) plus
- * mnci's own `package` zip convention.
+ * mnci's own `package` zip convention. With `release`, the app also joins
+ * `nx release` (see {@link makeGoAppReleasable}); without it, it is never released.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
+ * @param options - `release`: release the app, versioned from its git tag.
  * @returns Nothing.
  * @throws Error when Go is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addGoApp (workspaceRoot: string, name: string): void {
+export function addGoApp (workspaceRoot: string, name: string, options: { release?: boolean } = {}): void {
   prepareGo(workspaceRoot)
   ensureAdmZip(workspaceRoot)
 
@@ -570,6 +573,9 @@ export function addGoApp (workspaceRoot: string, name: string): void {
     'package-all': goPackageAllTarget('go-app', name),
     'start':       goStartTarget(name),
   })
+  if (options.release === true) {
+    makeGoAppReleasable(workspaceRoot, name)
+  }
   registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
 }
 

@@ -102,6 +102,7 @@ mnci add python-vendor shared --lib core  # wire core's module into shared's bui
 
 # Go (@nx-go/nx-go — one root go.mod, golangci-lint + go test)
 mnci add go-app api            # executable -> apps/ (binary, zipped into the drop)
+mnci add go-app cli --release  # ...released: tag + per-platform zips on the GitHub Release
 mnci add go-function-app fn    # serverless handler -> apps/
 mnci add go-lib core           # publishable (by git tag) -> packages/
 mnci add go-internal-lib util  # private shared package -> libs/
@@ -693,6 +694,7 @@ copy is discarded.
 | ------------------ | -------------------------------------------------------------- | -------------------------------------- |
 | `apps/`            | React / Node / Python / Go / Flutter apps (plain or Functions) | Never (packed into the drop)           |
 | `apps/` (tagged)   | VS Code extensions (`type:vscode-extension`)                   | Yes — `nx release`, `vsce publish`     |
+| `apps/` (tagged)   | Go apps added with `--release` (`release:go`)                  | Yes — `nx release` tag, zips on the GitHub Release |
 | `packages/`        | Publishable npm libraries, plus Go and Dart packages           | Yes — `nx release`, per-package tags   |
 | `python-packages/` | Publishable Python packages (hatchling wheels)                 | Yes — `twine upload` (Azure Artifacts) |
 | `libs/`            | Internal libraries (TS, Python, Go or Dart), never published   | Never                                  |
@@ -718,6 +720,11 @@ versioned and published like a package. `release.projects` matches it by its tag
 rewritten by every `mnci upgrade`, so a hand-added `apps/my-extension` would be
 lost, while a tag matcher is the same on every upgrade and covers every extension
 there will ever be.
+
+The third is an opt-in: a **Go app** added with `mnci add go-app <name> --release`
+is tagged `release:go` and joins the release the same way. Without the flag an app
+stays unreleased, because most Go apps are internal tools. See _Releasing a Go
+app_ in the Go section.
 
 Every kind builds to its own Nx-default output location (`apps/<name>/dist`,
 `packages/<name>/dist`, ...) — no post-generation build-output rewiring for
@@ -1432,6 +1439,42 @@ pipeline installs `golangci-lint` itself (see below).
   `nx-release-publish` target is written: there is nothing to push. The only
   real difference between `go-lib` and `go-internal-lib` is intent, recorded
   in the `type:go-lib` tag and the `packages/` location.
+- **Releasing a Go app is an opt-in: `mnci add go-app <name> --release`.** The
+  app is tagged `release:go`, which `release.projects` selects by tag (as it
+  does for a VS Code extension, so `mnci upgrade` keeps it). Without the flag
+  an app is never released.
+  - **Versioned from its git tag, with no manifest.** Nx's default
+    `versionActions` reads a `package.json`, and a project without one aborts
+    the release for the whole workspace, so the app carries a project-level
+    `release.version` pointing at `tools/go-app-release.cjs` and resolving its
+    current version from the tag (`<name>@<version>`). The same file is the
+    `versionActions`: it declares no manifest and writes nothing, which fits
+    because mnci releases never commit. `mnci upgrade` rewrites it, so local
+    edits do not survive.
+  - **The first release is `0.0.1`.** With no tag yet, the base is `0.0.0` and
+    Nx bumps it by its own rule for a `0.x` version. To start somewhere else,
+    push a `<name>@<version>` tag before the first release (`mvd-cli@0.9.0`),
+    or set `RELEASE_SPECIFIER` to an exact version.
+  - **It carries a publish target that publishes nothing.** `nx release` tags
+    first and publishes last, and a project matched for publishing without an
+    `nx-release-publish` target made it exit 1 _after_ the tag existed
+    (measured). Publishing a Go app is its tag.
+  - **The platform zips are attached to the GitHub Release, GitHub Actions only.**
+    After `nx release`, the generated workflow runs
+    `node tools/go-app-release.cjs assets`: for each app tagged by this run it
+    builds `package-all` with `VERSION` set to the new version, so the binary
+    reports it, and uploads `dist/drop/go-app-<name>-<goos>-<goarch>.zip` with
+    `gh release upload --clobber`, so a re-run is harmless. A run that released
+    nothing uploads nothing. Azure Pipelines (and `--ci both`'s Azure side)
+    creates the tag but has no GitHub Release to attach to, so it attaches
+    nothing.
+  - **A change to a library the app imports releases it too.** Nx counts the
+    commits that touch an app's dependencies, not only its own folder (measured:
+    a `fix:` touching only an imported `go-internal-lib` produced a patch
+    release of the app), which is right for a binary that links the library in.
+  - Not covered yet: apps that need a native toolchain (cgo) and so one runner
+    per OS (russoedu/MoNecromanCi#263). The asset step builds all six
+    platforms on one runner, which is what `CGO_ENABLED=0` allows.
 - **No publish-time dependency injection**, unlike Python's vendoring: `go
 build` links statically, so the binary in the drop already contains
   everything it needs.
