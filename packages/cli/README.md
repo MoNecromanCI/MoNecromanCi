@@ -75,7 +75,7 @@ helpers — they have no interest in adding a project. The concept now sits in i
 own slice that depends on nothing above it (`file-system` alone), and all three
 consumers point at it.
 
-## Commands (deliberately just six)
+## Commands (deliberately just seven)
 
 ```sh
 mnci new my-repo            # create a monorepo (prompts scope + registry)
@@ -122,6 +122,8 @@ mnci upgrade                  # re-apply the latest overlay (see below)
 mnci upgrade --agent windows-latest   # ...with an explicit override
 
 mnci doctor                   # check this workspace's invariants (read-only)
+
+mnci ci verify                # the pipeline's verify phase, run here: see `mnci ci` below
 
 mnci sync                     # converge dependency ranges + nx sync (TS project refs)
 mnci sync --check             # ...report and exit non-zero, writing nothing
@@ -319,6 +321,35 @@ Flags: `--check` (report only; also the automatic behaviour when stdout is not a
 TTY, so a piped or CI run reports instead of hanging on a prompt), `-y/--yes`
 (take everything), `--ecosystem`, and `--no-install` (edit the manifests but skip
 the reinstall).
+
+## `mnci ci`: the pipeline's phases, as a command
+
+`mnci ci verify` runs the pipeline's verify phase on your machine: `nx sync:check`, then
+every project (or, when a pull request's target branch is set, only the projects affected
+since the merge-base with it) through `lint`, `typecheck`, `test` and `build`. It exits with
+the failing command's own status, so it can stand in for the pipeline's step.
+
+It is not a shortcut for those Nx targets, and the CLI still has no wrapper for `nx test`.
+It is the pipeline's own logic, which until now lived as a `node -e` one-liner inside the
+generated YAML, ported to tested code, so a laptop and a pipeline run the same thing. The
+design (one `npx mnci ci` call in the pipeline, with room for your own steps around it) is
+tracked in #269, and this is its first phase: **the generated pipelines do not call it yet**
+and are unchanged, so nothing about an existing workspace changes. Phases follow as their
+guards are ported.
+
+- **Same scoping as the guard.** No pull-request target means every project, so a push to
+  main verifies in full. A pull request verifies what is affected since the merge-base with
+  `origin/<target>`, fetching the target once if that ref is missing, and falls back to every
+  project when no merge-base can be found, since a run that verifies too little still reports
+  green. The target comes from `GITHUB_BASE_REF` or `SYSTEM_PULLREQUEST_TARGETBRANCH`, so to
+  reproduce a pull request run locally, set one: `GITHUB_BASE_REF=main mnci ci verify`.
+- **Native (cgo) apps are left out**, as in the pipeline, since one agent cannot build them.
+- **Log groups.** Under GitHub Actions and Azure Pipelines each part is a collapsible group
+  (`::group::`, `##[group]`); locally it is a plain heading.
+- **Checked against the guard it replaces.** An integration spec runs the inline guard and
+  this command against the same real git repository, with a recording stand-in for `npx`,
+  across a push, a pull request, Azure's `refs/heads/` form, a missing `origin/<target>` and
+  an unresolvable one, and requires the same Nx commands in each.
 
 ## `mnci doctor`: checking the invariants actually hold
 

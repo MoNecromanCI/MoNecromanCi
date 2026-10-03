@@ -1,0 +1,39 @@
+/**
+ * The phases of the pipeline, as commands: what `mnci ci <phase>` runs, and what a generated pipeline is
+ * being moved to call.
+ *
+ * @remarks
+ * The deliberate public API of this slice: a sibling reaches it only through this barrel.
+ * Each phase is a port of the inline `node -e` guards the generated pipelines carry, so the
+ * logic is testable TypeScript, versioned with the CLI, and the same command runs on a
+ * developer's machine as in CI.
+ */
+
+import { runVerify, type VerifyDependencies } from './verify.use-case'
+
+/** The phases that exist. More arrive as their guards are ported. */
+export const CI_PHASES = ['verify'] as const
+
+/** One of {@link CI_PHASES}. */
+export type CiPhase = typeof CI_PHASES[number]
+
+/**
+ * Runs one phase of the pipeline.
+ *
+ * @param phase - Which phase.
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param dependencies - Overrides for the environment, the process runner and the logger, for tests.
+ * @returns The phase's exit status.
+ * @throws Never - a failing command is a status, not an exception.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<VerifyDependencies> = {}): number {
+  switch (phase) {
+    case 'verify': {
+      return runVerify(workspaceRoot, dependencies)
+    }
+  }
+}
+
+export { detectCiHost, groupEnd, groupStart, pullRequestTarget, type CiHost } from './ci-environment.client'
+export type { CiProcesses, VerifyDependencies } from './verify.use-case'
