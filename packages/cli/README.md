@@ -1479,10 +1479,18 @@ extension:
   Linux binaries. Unix file modes survive into the package, so the binary stays
   executable. Resolve it at runtime from `context.extensionPath` + `bin/`.
 - **`nx-release-publish`** runs `vsce publish --packagePath <every vsix>
-  --skip-duplicate` when `VSCE_PAT` is set (a Marketplace personal access token, as
-  a CI secret) and skips with a message otherwise. It depends on `package`, so it
-  ships the version `nx release` just wrote. The CI release step passes `VSCE_PAT`
-  through in both providers.
+  --skip-duplicate` with a Marketplace credential, and skips with a message without
+  one. It depends on `package`, so it ships the version `nx release` just wrote. Two
+  credentials work, and Entra ID wins when both are configured:
+  - **Microsoft Entra ID, no secret (GitHub Actions).** When the `AZURE_CLIENT_ID`
+    and `AZURE_TENANT_ID` repository variables exist, the release job signs in with
+    `azure/login` through OIDC (`id-token: write`) and publishes with
+    `vsce publish --azure-credential`. Nothing is stored and nothing expires. Setup
+    is below.
+  - **`VSCE_PAT`**, a Marketplace personal access token as a CI secret, in both
+    providers. Creating one needs an Azure DevOps organization, which now needs an
+    Azure subscription, and global PATs are reported to retire on 2026-12-01. Azure
+    Pipelines has only this route for now.
 - **Debugging**: an `<name>: debug` launch entry (`extensionHost`) opens a second
   VS Code window with the extension loaded, after the `<name>: build (development)`
   task, which keeps source maps.
@@ -1492,6 +1500,35 @@ Both targets run `tools/vscode-extension.cjs`, a workspace file mnci owns (like
 `mnci upgrade` rewrites it. It resolves `vsce` and `nx` through their own
 `package.json` `bin` and runs them with `node`, with no shell, so a workspace path
 containing spaces works on Windows.
+
+### Publishing with Microsoft Entra ID (one-time setup)
+
+Think of it as a guest list rather than a key. GitHub vouches for "a job in
+`<owner>/<repo>` on `main`", Entra ID checks that against the federated credential
+and issues a short-lived token, and the Marketplace accepts the token because the
+identity is a member of the publisher.
+
+1. **A tenant.** A free Azure account creates one. No billable resource is needed.
+2. **An app registration** (Entra admin center → App registrations → New
+   registration, single tenant, no redirect URI). Prefer it to a managed identity:
+   it lives in the tenant, not a subscription, so a lapsed trial does not stop
+   publishing. Note its Application (client) ID and Directory (tenant) ID.
+3. **A federated credential** on it (Certificates & secrets → Federated
+   credentials → GitHub Actions deploying Azure resources): your owner and
+   repository, entity type *Branch*, branch `main`. Repositories created after
+   2026-07-15 (or opted in) send GitHub's immutable subject, which carries the
+   numeric IDs: `repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main`.
+   The form asks for both IDs; `GET /repos/<owner>/<repo>` returns them as
+   `owner.id` and `id`.
+4. **Repository variables** (Settings → Secrets and variables → Actions →
+   Variables, not Secrets): `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`.
+5. **The identity as a publisher member.** The Marketplace's Members page wants
+   the identity's Azure DevOps profile ID, which only the identity can read, so read
+   it from a workflow run on `main` after `azure/login`:
+   `az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me
+   --resource 499b84ac-1321-427f-aa17-267ca6975798 --query id -o tsv`. Add that ID
+   under Members with the **Contributor** role, then confirm with
+   `npx @vscode/vsce verify-pat --azure-credential <publisher>` in the same job.
 
 Not built yet: integration tests through `@vscode/test-cli` (they download VS Code
 and need a display, so they would be gated like the Go and Flutter sections).

@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import {
+  ACTION_VERSIONS,
   applyOverlay,
   azurePipelinesYaml,
   DEFAULT_STACK,
@@ -661,6 +662,43 @@ describe('VSCE_PAT in the release step', () => {
 
     expect(pipeline).toContain('VSCE_PAT: $(VSCE_PAT)')
     expect(workflow).toContain('VSCE_PAT: ${{ secrets.VSCE_PAT }}')
+  })
+})
+
+describe('Microsoft Entra ID for the Marketplace (#253)', () => {
+  interface Step { uses?: string; run?: string; name?: string; if?: string; with?: Record<string, unknown>; env?: Record<string, string> }
+
+  for (const ci of ['github', 'both'] as const) {
+    it(`signs in through OIDC just before the release step, on main, only when configured and an extension exists (--ci ${ci})`, () => {
+      const document_ = yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm', ci)) as {
+        permissions: Record<string, string>
+        jobs:        { ci: { steps: Step[] } }
+      }
+      const steps = document_.jobs.ci.steps
+      const login = steps.findIndex(step => step.uses?.startsWith('azure/login@'))
+      const release = steps.findIndex(step => step.name?.startsWith('Release — version, tag'))
+
+      expect(document_.permissions['id-token']).toBe('write')
+      expect(steps[login].uses).toBe(`azure/login@${ACTION_VERSIONS['azure/login']}`)
+      expect(login).toBe(release - 1)
+      expect(steps[login].if).toBe("${{ github.event_name == 'push' && github.ref_name == 'main' && vars.AZURE_CLIENT_ID != '' && hashFiles('apps/*/.vscodeignore') != '' }}")
+      expect(steps[login].with).toEqual({
+        'client-id':              '${{ vars.AZURE_CLIENT_ID }}',
+        'tenant-id':              '${{ vars.AZURE_TENANT_ID }}',
+        'allow-no-subscriptions': true,
+      })
+      // The script publishes with --azure-credential on this signal, never on a
+      // stored secret.
+      expect(steps[release].env!.VSCE_AUTH).toBe("${{ vars.AZURE_CLIENT_ID != '' && 'entra' || '' }}")
+      expect(steps[release].env!.VSCE_PAT).toBe('${{ secrets.VSCE_PAT }}')
+    })
+  }
+
+  it('leaves Azure Pipelines on VSCE_PAT', () => {
+    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
+
+    expect(pipeline).not.toContain('azure/login')
+    expect(pipeline).not.toContain('VSCE_AUTH')
   })
 })
 

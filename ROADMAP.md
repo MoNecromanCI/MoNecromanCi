@@ -466,7 +466,8 @@ There was no way to scaffold a VS Code extension: the nearest kind, `node-app`, 
 un-bundled, and a `.vsix` ships no `node_modules`. `mnci add vscode-extension` now
 reshapes `@nx/node:application` into a bundled extension, packages it with `vsce`
 (one universal `.vsix`, or one per Marketplace target with a `--sidecar` go-app's
-binary in `bin/`), and publishes it through `nx release` when `VSCE_PAT` is set. It
+binary in `bin/`), and publishes it through `nx release` with Microsoft Entra ID
+(GitHub OIDC, no secret, #253) or a `VSCE_PAT` token. It
 lives in `apps/` and is released by tag (`tag:type:vscode-extension`) rather than by
 a path that `mnci upgrade` would overwrite.
 
