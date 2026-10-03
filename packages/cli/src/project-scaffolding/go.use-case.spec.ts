@@ -164,6 +164,74 @@ describe('runAdd go', () => {
     expect(mockRunNx).not.toHaveBeenCalled()
   })
 
+  describe('a native (cgo) app (#263)', () => {
+    it('is tagged build:cgo, and builds and packages for the host only', async () => {
+      seedProjectJson('apps/tray', 'tray')
+
+      await runAdd('go-app', 'tray', { cgo: true })
+
+      expect(nxCalls().find(argv => argv.includes('@nx-go/nx-go:application'))).toContain('--tags=type:go-app,build:cgo')
+      const targets = readProjectJson('apps/tray').targets as Record<string, Record<string, unknown>>
+      const command = (targets['build-native'].options as { command: string }).command
+      expect(command).toContain("CGO_ENABLED:'1'")
+      expect(command).toContain("'-s -w -X main.version='+v")
+      expect(command).toContain("host('GOOS')")
+      expect(targets['build-native'].outputs).toEqual(['{workspaceRoot}/dist/platforms/tray'])
+      expect(targets['build-native'].inputs).toContain('{workspaceRoot}/go.sum')
+      expect(targets['package-native'].dependsOn).toEqual(['build-native'])
+      expect(targets['package-native'].outputs).toEqual(['{workspaceRoot}/dist/drop/go-app-tray-*.zip'])
+    })
+
+    it('has no cross-compile and no package target, which the single-agent steps would run', async () => {
+      seedProjectJson('apps/tray', 'tray')
+
+      await runAdd('go-app', 'tray', { cgo: true })
+
+      const targets = Object.keys(readProjectJson('apps/tray').targets)
+      expect(targets).toEqual(expect.arrayContaining(['build', 'test', 'lint', 'start']))
+      expect(targets).not.toContain('package')
+      expect(targets).not.toContain('build-all')
+      expect(targets).not.toContain('package-all')
+    })
+
+    it('tells the user the pipeline needs an upgrade, and what to add for Linux', async () => {
+      seedProjectJson('apps/tray', 'tray')
+
+      await runAdd('go-app', 'tray', { cgo: true })
+
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('mnci upgrade'))
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('-dev packages'))
+    })
+
+    it('can be released as well: the zips of the native legs go to the same release', async () => {
+      seedProjectJson('apps/tray', 'tray')
+
+      await runAdd('go-app', 'tray', { cgo: true, release: true })
+
+      const project = JSON.parse(readFileSync(join(workspaceRoot, 'apps/tray/project.json'), 'utf8')) as { tags?: string[] }
+      expect(project.tags).toContain('release:go')
+    })
+
+    it('is rejected for a kind that cannot be built natively, before anything is generated', async () => {
+      await expect(runAdd('go-lib', 'core', { cgo: true })).rejects.toThrow('--cgo applies to go-app only, not go-lib.')
+
+      expect(mockRunNx).not.toHaveBeenCalled()
+    })
+
+    it('is left alone by the upgrade that adds the cross-compile targets to older apps', () => {
+      seedProjectJson('apps/tray', 'tray')
+      writeFileSync(
+        join(workspaceRoot, 'apps/tray/project.json'),
+        JSON.stringify({ name: 'tray', tags: ['type:go-app', 'build:cgo'], targets: {} }),
+      )
+      seedProjectJson('apps/plain', 'plain')
+      writeFileSync(join(workspaceRoot, 'apps/plain/project.json'), JSON.stringify({ name: 'plain', tags: ['type:go-app'], targets: {} }))
+
+      expect(addGoPlatformTargets(workspaceRoot)).toEqual(['apps/plain/project.json'])
+      expect(readProjectJson('apps/tray').targets).toEqual({})
+    })
+  })
+
   it('cross-compiles for six platforms into dist/platforms, outside the cached build output', async () => {
     seedProjectJson('apps/api', 'api')
 

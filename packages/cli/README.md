@@ -103,6 +103,7 @@ mnci add python-vendor shared --lib core  # wire core's module into shared's bui
 # Go (@nx-go/nx-go — one root go.mod, golangci-lint + go test)
 mnci add go-app api            # executable -> apps/ (binary, zipped into the drop)
 mnci add go-app cli --release  # ...released: tag + per-platform zips on the GitHub Release
+mnci add go-app tray --cgo     # needs a C toolchain: built on a runner of each OS
 mnci add go-function-app fn    # serverless handler -> apps/
 mnci add go-lib core           # publishable (by git tag) -> packages/
 mnci add go-internal-lib util  # private shared package -> libs/
@@ -1439,6 +1440,51 @@ pipeline installs `golangci-lint` itself (see below).
   `nx-release-publish` target is written: there is nothing to push. The only
   real difference between `go-lib` and `go-internal-lib` is intent, recorded
   in the `type:go-lib` tag and the `packages/` location.
+- **Pure-Go apps are cross-compiled; an app that needs a C toolchain is not
+  (`mnci add go-app <name> --cgo`).** `build-all` builds six static binaries from
+  one machine with `CGO_ENABLED=0`, which is right until the app needs cgo: a
+  system-tray icon (Cocoa on macOS, GTK on Linux), a native GUI toolkit, a cgo
+  database driver. Those can only be built where the C toolchain and the target
+  OS's libraries are, so a `--cgo` app is tagged `build:cgo` and gets
+  `build-native` and `package-native` (this machine only, `CGO_ENABLED=1`, the
+  same `VERSION` stamp and `-trimpath`, the zip named as `package-all` names a
+  platform's) **instead of** `package`, `build-all` and `package-all`. It keeps
+  `build`, `test`, `lint` and `start` for local work.
+  - **A `native` job, only when such an app exists.** The generated pipeline
+    gains a job with one leg each on `windows-latest`, `macos-latest` and
+    `ubuntu-latest` (GitHub Actions: a matrix; Azure Pipelines: a matrix of
+    `vmImage`s, with the original job moved under `jobs:`). Each leg lints,
+    tests, builds and packages the native apps and publishes its zips as an
+    artifact. The single-agent verify excludes them (`--exclude=tag:build:cgo`),
+    because it cannot build them. A workspace with no native app keeps a
+    pipeline byte-identical to the one it had: the job is decided when the file is
+    written, since neither provider can skip a whole job on a file's existence.
+  - **Run `mnci upgrade` after adding one.** `add` does not rewrite the
+    pipeline files, so until then CI would verify the app on the one agent that
+    cannot build it. `mnci add` says so, and `mnci doctor` fails while a
+    pipeline lacks the job, and while no C compiler is installed on the machine
+    (it reads `CC`, then `gcc`, `clang`, `cc`).
+  - **Linux prerequisites are yours to finish.** The leg installs a C compiler
+    and `pkg-config`, which is all mnci can know. The `-dev` packages your app
+    links (`libgtk-3-dev` and `libayatana-appindicator3-dev` for a tray icon) go
+    on that one marked line in the pipeline. The macOS runner ships Xcode's tools,
+    and the Windows leg relies on the hosted image's MinGW-w64 `gcc`: the nightly
+    e2e builds a cgo app on `windows-latest`, and says so loudly if it finds no
+    compiler there rather than passing.
+  - **Architectures: one per OS, the runner's own.** `windows-latest` and
+    `ubuntu-latest` are amd64 and `macos-latest` is arm64, so a native app ships
+    `windows-amd64`, `linux-amd64` and `darwin-arm64`. `darwin-amd64`,
+    `linux-arm64` and `windows-arm64` are not built: they need an Intel macOS
+    runner, an arm Linux runner or a cross-compiler. The legs are fixed in the
+    generated pipeline today, so adding one means editing a file `mnci upgrade`
+    rewrites (russoedu/MoNecromanCi#269 is about giving that a safe place).
+  - **Releasing one.** With `--release` as well, each leg, on a push to main and
+    after the `ci` job has tagged, runs
+    `node tools/go-app-release.cjs assets --native`, which builds
+    `package-native` with `VERSION` set to the tag's version and uploads that
+    OS's zip to the same GitHub Release, so one release collects a zip from every
+    runner. Azure Pipelines has no GitHub Release to attach to and stops at the
+    artifact.
 - **Releasing a Go app is an opt-in: `mnci add go-app <name> --release`.** The
   app is tagged `release:go`, which `release.projects` selects by tag (as it
   does for a VS Code extension, so `mnci upgrade` keeps it). Without the flag
@@ -1472,8 +1518,8 @@ pipeline installs `golangci-lint` itself (see below).
     commits that touch an app's dependencies, not only its own folder (measured:
     a `fix:` touching only an imported `go-internal-lib` produced a patch
     release of the app), which is right for a binary that links the library in.
-  - Not covered yet: apps that need a native toolchain (cgo) and so one runner
-    per OS (russoedu/MoNecromanCi#263). The asset step builds all six
+  - An app that needs a C toolchain is released from several runners instead:
+    see _Pure-Go apps are cross-compiled_ above. This step builds all six
     platforms on one runner, which is what `CGO_ENABLED=0` allows.
 - **No publish-time dependency injection**, unlike Python's vendoring: `go
 build` links statically, so the binary in the drop already contains

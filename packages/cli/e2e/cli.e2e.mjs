@@ -406,6 +406,29 @@ function hasGolangciLint () {
   }
 }
 
+/**
+ * Whether a C compiler cgo can use is on the PATH.
+ *
+ * @remarks
+ * Gated separately from {@link hasGo}, like the linter: a machine with Go and no
+ * compiler still runs every pure-Go check, and only the native-app build is skipped,
+ * loudly. Honours `CC`, which is what cgo itself reads.
+ * @returns `true` when one of the usual compilers answers `--version`.
+ */
+function hasCCompiler () {
+  const candidates = [process.env.CC?.split(' ', 1)[0], 'gcc', 'clang', 'cc'].filter(Boolean)
+
+  return candidates.some((command) => {
+    try {
+      execSync(`${command} --version`, { stdio: 'ignore' })
+
+      return true
+    } catch {
+      return false
+    }
+  })
+}
+
 /** Whether the .NET SDK is available to drive the C# section. */
 function hasDotnet () {
   try {
@@ -2772,6 +2795,61 @@ section('go', ['alt stack'], () => {
       enforce('go: the binary of the released app reports the version it was released as', reported === '0.0.1', `reported: ${reported}`)
     } else {
       skip('the released binary version check', `no built binary for ${process.platform}/${process.arch}`)
+    }
+
+    /* -------------------------------------------------------------------------
+     * A native (cgo) app (#263): it cannot be cross-compiled, so it gets targets
+     * for the machine they run on and none of the six-platform ones.
+     *
+     * The scaffolding needs only Go. The build needs a C compiler, so it is gated
+     * on one, loudly: and the app keeps its generated pure-Go source otherwise, so
+     * the sections after this one that build every project do not trip over a
+     * program that cannot compile here.
+     * ----------------------------------------------------------------------- */
+    run(`node ${CLI} add go-app tray --cgo`, altWorkspace)
+    const trayProject = JSON.parse(readFileSync(path.join(altWorkspace, 'apps/tray/project.json'), 'utf8'))
+    enforce(
+      'go: --cgo tags the app build:cgo and gives it host-only targets, none of the cross-compile ones',
+      trayProject.tags.includes('build:cgo') &&
+        trayProject.targets['build-native'] !== undefined &&
+        trayProject.targets['package-native'] !== undefined &&
+        trayProject.targets['build-all'] === undefined &&
+        trayProject.targets['package-all'] === undefined &&
+        trayProject.targets.package === undefined,
+      `tags: ${trayProject.tags}; targets: ${Object.keys(trayProject.targets)}`,
+    )
+
+    if (hasCCompiler()) {
+      writeFileSync(
+        path.join(altWorkspace, 'apps/tray/main.go'),
+        'package main\n\n/*\nstatic int answer(void) { return 42; }\n*/\nimport "C"\n\nimport "fmt"\n\nvar version = "dev"\n\nfunc main() {\n\tfmt.Println(version, int(C.answer()))\n}\n',
+      )
+      rmSync(path.join(altWorkspace, 'apps/tray/main_test.go'), { force: true })
+      const trayPackage = tryRunCapture('npx nx run tray:package-native --skip-nx-cache', altWorkspace)
+      const trayBinary = path.join(
+        altWorkspace,
+        'dist/platforms/tray',
+        `${hostOs}-${hostArch}`,
+        process.platform === 'win32' ? 'tray.exe' : 'tray',
+      )
+      let trayOutput
+      try {
+        trayOutput = execSync(`"${trayBinary}"`, { encoding: 'utf8' }).trim()
+      } catch (error) {
+        trayOutput = String(error)
+      }
+      enforce(
+        'go: a cgo app builds on this machine with the C toolchain, and the binary runs',
+        trayPackage.ok && trayOutput === 'dev 42',
+        `${trayPackage.output}\nran: ${trayOutput}`,
+      )
+      enforce(
+        'go: package-native zips this machine\'s build under the per-platform name',
+        existsSync(path.join(altWorkspace, 'dist/drop', `go-app-tray-${hostOs}-${hostArch}.zip`)),
+        readdirSync(path.join(altWorkspace, 'dist/drop')).join(', '),
+      )
+    } else {
+      skip('the cgo build assertions', 'no C compiler (CC, gcc, clang or cc) on the PATH')
     }
   } else {
     skip('the entire Go section', 'the Go toolchain is not on PATH')

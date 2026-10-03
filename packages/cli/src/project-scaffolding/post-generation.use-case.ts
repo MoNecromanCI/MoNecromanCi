@@ -46,6 +46,8 @@ export interface AddOptions {
   sidecar?:   string
   /** `go-app` only: release the app (versioned from its git tag, per-platform zips on its GitHub Release). */
   release?:   boolean
+  /** `go-app` only: the app needs a C toolchain, so it is built per OS on native runners instead of cross-compiled. */
+  cgo?:       boolean
 }
 
 /**

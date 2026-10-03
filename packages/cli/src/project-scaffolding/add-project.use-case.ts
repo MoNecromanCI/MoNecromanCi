@@ -220,10 +220,12 @@ export async function runAdd (
       message: 'What kind of project?',
       choices: PROJECT_KINDS.map(value => ({ name: value, value })),
     }))
-  if (resolvedKind !== 'go-app' && options.release === true) {
-    // Not silently ignored like the other kind-specific options: a user who asked
-    // for a release would otherwise believe the project is released.
-    throw new Error(`--release applies to go-app only, not ${resolvedKind}.`)
+  // Not silently ignored like the other kind-specific options: a user who asked for
+  // a release (or a native build) would otherwise believe the project has one.
+  for (const [flag, requested] of [['--release', options.release], ['--cgo', options.cgo]] as const) {
+    if (resolvedKind !== 'go-app' && requested === true) {
+      throw new Error(`${flag} applies to go-app only, not ${resolvedKind}.`)
+    }
   }
   const resolvedName = name ?? (await promptText('Project name'))
   // Fails fast, before any install or generator call: the name becomes a
@@ -309,7 +311,7 @@ export async function runAdd (
       break
     }
     case 'go-app': {
-      addGoApp(workspaceRoot, resolvedName, { release: options.release })
+      addGoApp(workspaceRoot, resolvedName, { release: options.release, cgo: options.cgo })
       break
     }
     case 'go-function-app': {

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
+import { GO_CGO_TAG } from '../workspace-overlay'
 import { makeGoAppReleasable } from './go-release.use-case'
 import { addProjectJsonTargets, ensureAdmZip, hasPlugin, registerProjectCommands } from './post-generation.use-case'
 
@@ -331,12 +332,76 @@ function goPackageAllTarget (tag: string, name: string): Record<string, unknown>
 }
 
 /**
+ * The shell fragment that asks Go for this machine's `GOOS` and `GOARCH`.
+ *
+ * @remarks
+ * Two calls rather than one `go env GOOS GOARCH`, so there is no newline to split on:
+ * these commands pass through `cmd.exe` and POSIX `sh`, and a backslash is where they
+ * disagree.
+ */
+const GO_HOST_PLATFORM = "const host=k=>spawnSync('go',['env',k],{encoding:'utf8'}).stdout.trim();const os=host('GOOS'),arch=host('GOARCH');"
+
+/**
+ * The `build-native` target of an app that needs a C toolchain: one binary, for this machine.
+ *
+ * @remarks
+ * What {@link goBuildAllTarget} cannot do: with `CGO_ENABLED=1` the binary can only be
+ * built where the C toolchain and the target OS's libraries are, so there is no cross-
+ * compile, and CI runs this on a runner of each OS. The output path, the `VERSION`
+ * stamp (`dev` when unset) and `-trimpath` are the same as `build-all`'s, so a platform's
+ * binary sits where `package-all` would have put it and a release stamps it the same way.
+ *
+ * Named `build-native`, not `build`, so the generic verify, which runs `build` on one
+ * agent, never reaches it.
+ *
+ * @param name - The Go app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goNativeBuildTarget (name: string): Record<string, unknown> {
+  const command = `node -e "const{spawnSync}=require('node:child_process');${GO_HOST_PLATFORM}const v=process.env.VERSION||'dev';const out='../../dist/platforms/${name}/'+os+'-'+arch+'/${name}'+(os==='windows'?'.exe':'');const r=spawnSync('go',['build','-trimpath','-ldflags','-s -w -X main.version='+v,'-o',out,'.'],{cwd:'apps/${name}',stdio:'inherit',env:{...process.env,CGO_ENABLED:'1'}});process.exit(r.status??1)"`
+
+  return {
+    executor: 'nx:run-commands',
+    inputs:   ['default', '^default', '{workspaceRoot}/go.mod', '{workspaceRoot}/go.sum', { env: 'VERSION' }],
+    outputs:  [`{workspaceRoot}/dist/platforms/${name}`],
+    options:  { command },
+  }
+}
+
+/**
+ * The `package-native` target of an app that needs a C toolchain: this machine's zip.
+ *
+ * @remarks
+ * `dist/drop/go-app-<name>-<goos>-<goarch>.zip`, the name `package-all` gives each
+ * platform's zip, so a release attaches the legs' zips the way it attaches the six.
+ *
+ * @param name - The Go app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goNativePackageTarget (name: string): Record<string, unknown> {
+  const command = `node -e "const fs=require('node:fs');const{spawnSync}=require('node:child_process');const A=require('adm-zip');${GO_HOST_PLATFORM}const d=os+'-'+arch;fs.mkdirSync('dist/drop',{recursive:true});const z=new A();z.addLocalFolder('dist/platforms/${name}/'+d);z.writeZip('dist/drop/go-app-${name}-'+d+'.zip')"`
+
+  return {
+    executor:  'nx:run-commands',
+    dependsOn: ['build-native'],
+    outputs:   [`{workspaceRoot}/dist/drop/go-app-${name}-*.zip`],
+    options:   { command },
+  }
+}
+
+/**
  * Gives every Go app in the workspace its `build-all` and `package-all` targets when it
  * lacks them: the `mnci upgrade` path for apps added before the targets existed.
  *
  * @remarks
  * Only adds; a target the user already has, under either name, is never touched.
- * Idempotent, so a repeat upgrade is a no-op.
+ * Idempotent, so a repeat upgrade is a no-op. An app that needs a C toolchain is
+ * skipped: it cannot be cross-compiled, and a `build-all` that silently built it
+ * without cgo would ship a binary missing the very thing it exists for.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @returns The `project.json` files it changed, workspace-relative.
@@ -356,7 +421,7 @@ export function addGoPlatformTargets (workspaceRoot: string): string[] {
     }
     const project = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as { tags?: string[], targets?: Record<string, unknown> }
     const tag = (project.tags ?? []).find(each => each === 'type:go-app' || each === 'type:go-function-app')?.slice('type:'.length)
-    if (tag === undefined) {
+    if (tag === undefined || (project.tags ?? []).includes(GO_CGO_TAG)) {
       continue
     }
     const missing: Record<string, unknown> = {}
@@ -542,14 +607,23 @@ function prepareGo (workspaceRoot: string): void {
  * mnci's own `package` zip convention. With `release`, the app also joins
  * `nx release` (see {@link makeGoAppReleasable}); without it, it is never released.
  *
+ * With `cgo`, the app needs a C toolchain (a tray icon, a native GUI, a cgo
+ * database driver), so it cannot be cross-compiled from one machine. It is tagged
+ * {@link GO_CGO_TAG} and gets `build-native` and `package-native`, for the machine
+ * they run on, instead of `package`, `build-all` and `package-all`: the single-agent
+ * pack step would otherwise try to build it on a runner that lacks its libraries.
+ * CI builds it on a runner of every OS (the pipelines gain a `native` job on the next
+ * `mnci upgrade`).
+ *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
- * @param options - `release`: release the app, versioned from its git tag.
+ * @param options - `release`: release the app, versioned from its git tag. `cgo`: it needs a C toolchain.
  * @returns Nothing.
  * @throws Error when Go is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addGoApp (workspaceRoot: string, name: string, options: { release?: boolean } = {}): void {
+export function addGoApp (workspaceRoot: string, name: string, options: { release?: boolean, cgo?: boolean } = {}): void {
+  const cgo = options.cgo === true
   prepareGo(workspaceRoot)
   ensureAdmZip(workspaceRoot)
 
@@ -559,24 +633,33 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
       '@nx-go/nx-go:application',
       `apps/${name}`,
       `--name=${name}`,
-      '--tags=type:go-app',
+      cgo ? `--tags=type:go-app,${GO_CGO_TAG}` : '--tags=type:go-app',
       '--no-interactive',
     ],
     workspaceRoot,
   )
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
-    'build':       goBuildTarget(name),
-    'test':        goTestTarget(),
-    'lint':        goLintTarget(),
-    'package':     goPackageTarget('go-app', name),
-    'build-all':   goBuildAllTarget(name),
-    'package-all': goPackageAllTarget('go-app', name),
-    'start':       goStartTarget(name),
+    build: goBuildTarget(name),
+    test:  goTestTarget(),
+    lint:  goLintTarget(),
+    ...(cgo
+      ? { 'build-native': goNativeBuildTarget(name), 'package-native': goNativePackageTarget(name) }
+      : {
+          'package':     goPackageTarget('go-app', name),
+          'build-all':   goBuildAllTarget(name),
+          'package-all': goPackageAllTarget('go-app', name),
+        }),
+    start: goStartTarget(name),
   })
   if (options.release === true) {
     makeGoAppReleasable(workspaceRoot, name)
   }
   registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
+  if (cgo) {
+    logger.warn(
+      `${name} needs a C toolchain, so CI builds it on a runner of each OS. Run \`mnci upgrade\` to add the native job to your pipeline, and add the -dev packages it links to the Linux prerequisites step.`,
+    )
+  }
 }
 
 /**

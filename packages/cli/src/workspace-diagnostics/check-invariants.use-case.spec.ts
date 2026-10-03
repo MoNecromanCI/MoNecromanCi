@@ -1088,3 +1088,95 @@ describe('doctor: the credential bound for npmjs.org looks like an npm token', (
     expect(findingFor(undefined)).toBeUndefined()
   })
 })
+
+/** Adds an app tagged as needing a C toolchain. */
+function addNativeApp (): void {
+  seedHealthyWorkspace()
+  mkdirSync(join(workspaceRoot, 'apps/tray'), { recursive: true })
+  writeFileSync(join(workspaceRoot, 'apps/tray/project.json'), JSON.stringify({ tags: ['type:go-app', 'build:cgo'] }))
+}
+
+/** Writes a pipeline file under the workspace. */
+function writePipeline (file: string, content: string): void {
+  mkdirSync(join(workspaceRoot, file, '..'), { recursive: true })
+  writeFileSync(join(workspaceRoot, file), content)
+}
+
+/** The findings about native apps and the C compiler, among all of them. */
+function native (findings: Finding[]): Finding[] {
+  return findings.filter(finding => finding.check.includes('native apps') || finding.check.includes('C compiler'))
+}
+
+describe('doctor: native (cgo) apps (#263)', () => {
+  const PIPELINE_WITH_NATIVE = 'jobs:\n  native:\n    name: native (${{ matrix.os }})\n'
+  let savedCompiler: string | undefined
+  let savedPath: string | undefined
+
+  beforeEach(() => {
+    savedCompiler = process.env.CC
+    savedPath = process.env.PATH
+    // `node --version` always answers, so this is a machine with a compiler.
+    process.env.CC = 'node'
+  })
+
+  afterEach(() => {
+    if (savedCompiler === undefined) delete process.env.CC
+    else process.env.CC = savedCompiler
+    process.env.PATH = savedPath
+  })
+
+  it('adds no finding to a workspace without a native app', () => {
+    seedHealthyWorkspace()
+
+    expect(native(collectFindings(workspaceRoot))).toEqual([])
+  })
+
+  it('passes when the pipeline has the native job and a compiler is installed', () => {
+    addNativeApp()
+    writePipeline('.github/workflows/ci.yml', PIPELINE_WITH_NATIVE)
+
+    const findings = native(collectFindings(workspaceRoot))
+
+    expect(findings.map(finding => finding.check)).toEqual([
+      '.github/workflows/ci.yml builds the native apps on every OS',
+      'a C compiler is installed (cgo needs one)',
+    ])
+    expect(findings.every(finding => finding.ok)).toBe(true)
+  })
+
+  it('fails when an app was added after the pipeline was written, and names the fix', () => {
+    addNativeApp()
+    writePipeline('.github/workflows/ci.yml', 'jobs:\n  ci:\n    runs-on: ubuntu-latest\n')
+    writePipeline('azure-pipelines.yml', 'steps:\n  - script: echo\n')
+
+    const failing = native(collectFindings(workspaceRoot)).filter(finding => !finding.ok)
+
+    expect(failing.map(finding => finding.check)).toEqual([
+      '.github/workflows/ci.yml builds the native apps on every OS',
+      'azure-pipelines.yml builds the native apps on every OS',
+    ])
+    expect(failing[0].remedy).toBe('run `mnci upgrade`')
+  })
+
+  it('checks only the pipeline files the workspace has', () => {
+    addNativeApp()
+    writePipeline('azure-pipelines.yml', 'jobs:\n  - job: native\n')
+
+    expect(native(collectFindings(workspaceRoot)).map(finding => finding.check)).toEqual([
+      'azure-pipelines.yml builds the native apps on every OS',
+      'a C compiler is installed (cgo needs one)',
+    ])
+  })
+
+  it('fails, with what to install, on a machine with no C compiler', () => {
+    addNativeApp()
+    delete process.env.CC
+    // An empty PATH: none of gcc, clang or cc can be found, whatever this machine has.
+    process.env.PATH = mkdtempSync(join(tmpdir(), 'mnci-no-compiler-'))
+
+    const compiler = native(collectFindings(workspaceRoot)).find(finding => finding.check.includes('C compiler'))
+
+    expect(compiler?.ok).toBe(false)
+    expect(compiler?.remedy).toContain('build-essential')
+  })
+})

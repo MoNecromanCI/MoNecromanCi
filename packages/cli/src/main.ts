@@ -156,6 +156,10 @@ export function buildProgram (cliVersion: string): Command {
       '--release',
       'go-app only: release the app. Versioned from its git tag, its six-platform zips attached to its GitHub Release',
     )
+    .option(
+      '--cgo',
+      'go-app only: the app needs a C toolchain (a tray icon, a native GUI, a cgo driver), so CI builds it on a runner of each OS instead of cross-compiling',
+    )
     .action(
       async (kind: ProjectKind | undefined, name: string | undefined, options: AddOptions) => {
         await runAdd(kind, name, options)

@@ -30,6 +30,7 @@ import {
   GOLANGCI_LINT_VERSION,
   generatorDefaults,
   githubActionsYaml,
+  hasNativeGoApp,
   isUnmodifiedMnciEslintConfig,
   mnciConfig,
   NODE_VERSION,
@@ -1773,6 +1774,173 @@ describe('a releasable Go app in the release step (#259)', () => {
 
     expect(result.status).toBe(1)
     expect(result.out).toContain('this workspace has 2 releasable packages')
+  })
+})
+
+describe('native (cgo) apps in the pipelines (#263)', () => {
+  interface Step { name?: string; displayName?: string; run?: string; script?: string; if?: string; condition?: string; uses?: string }
+  interface GithubJob { 'needs'?: string; 'runs-on': string; 'strategy'?: { 'fail-fast': boolean; 'matrix': { os: string[] } }; 'steps': Step[] }
+  interface AzureJob { job: string; dependsOn?: string; pool: Record<string, string>; strategy?: { matrix: Record<string, Record<string, string>> }; steps: Step[] }
+
+  const github = (native: boolean): { jobs: Record<string, GithubJob> } =>
+    yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github', undefined, native)) as { jobs: Record<string, GithubJob> }
+  const azure = (native: boolean): { jobs?: AzureJob[]; steps?: Step[]; pool?: Record<string, string>; variables?: unknown[] } =>
+    yaml.load(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'npm', undefined, 'pat', native)) as ReturnType<typeof azure>
+  const verifyOf = (steps: Step[]): Step | undefined => steps.find(step => (step.name ?? step.displayName ?? '').startsWith('Verify (affected'))
+  const without = (steps: Step[]): Step[] => steps.filter(step => !(step.name ?? step.displayName ?? '').startsWith('Verify (affected'))
+
+  describe('hasNativeGoApp', () => {
+    let workspace: string
+
+    beforeEach(() => {
+      workspace = mkdtempSync(join(tmpdir(), 'mnci-native-'))
+    })
+
+    afterEach(() => rmSync(workspace, { force: true, recursive: true }))
+
+    /** Writes `apps/<name>/project.json` with the given raw content. */
+    function project (name: string, content: string): void {
+      mkdirSync(join(workspace, 'apps', name), { recursive: true })
+      writeFileSync(join(workspace, 'apps', name, 'project.json'), content)
+    }
+
+    it('is true only when an app carries the build:cgo tag', () => {
+      project('tool', JSON.stringify({ tags: ['type:go-app'] }))
+      expect(hasNativeGoApp(workspace)).toBe(false)
+
+      project('tray', JSON.stringify({ tags: ['type:go-app', 'build:cgo'] }))
+      expect(hasNativeGoApp(workspace)).toBe(true)
+    })
+
+    it('is false with no apps folder, and for a project file it cannot read', () => {
+      expect(hasNativeGoApp(workspace)).toBe(false)
+
+      project('broken', '{ not json')
+      expect(hasNativeGoApp(workspace)).toBe(false)
+    })
+  })
+
+  describe('a workspace without a native app', () => {
+    it('gets exactly the pipelines it had before, for both providers', () => {
+      expect(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github', undefined, false))
+        .toBe(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github'))
+      expect(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'npm', undefined, 'pat', false))
+        .toBe(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'npm'))
+    })
+
+    it('has no native job and does not exclude anything from verify', () => {
+      expect(Object.keys(github(false).jobs)).toEqual(['ci'])
+      expect(githubActionsYaml('ubuntu-latest')).not.toContain('--exclude=tag:build:cgo')
+      expect(azurePipelinesYaml('ubuntu-latest', 'Build')).not.toContain('--exclude=tag:build:cgo')
+      expect(azure(false).jobs).toBeUndefined()
+    })
+  })
+
+  describe('GitHub Actions, with a native app', () => {
+    it('adds a native job after ci, one leg per OS, that does not stop at the first failure', () => {
+      const { native } = github(true).jobs
+
+      expect(Object.keys(github(true).jobs)).toEqual(['ci', 'native'])
+      expect(native.needs).toBe('ci')
+      expect(native['runs-on']).toBe('${{ matrix.os }}')
+      expect(native.strategy?.matrix.os).toEqual(['windows-latest', 'macos-latest', 'ubuntu-latest'])
+      expect(native.strategy?.['fail-fast']).toBe(false)
+    })
+
+    it('leaves the native apps out of the single-agent verify, and changes nothing else in the ci job', () => {
+      const plain = github(false).jobs.ci.steps
+      const withNative = github(true).jobs.ci.steps
+
+      expect(verifyOf(withNative)?.run).toContain("+' --exclude=tag:build:cgo'")
+      expect(verifyOf(plain)?.run).not.toContain('--exclude')
+      expect(without(withNative)).toEqual(without(plain))
+    })
+
+    it('runs the native build on each leg and attaches a releasable app\'s zip only on main', () => {
+      const { steps } = github(true).jobs.native
+      const build = steps.find(step => step.run?.startsWith('npx nx run-many -t lint,test,build-native,package-native'))
+      const attach = steps.find(step => step.run === 'node tools/go-app-release.cjs assets --native')
+      const linux = steps.find(step => step.name === 'Install native prerequisites (Linux)')
+
+      expect(build?.run).toContain('--projects=tag:build:cgo')
+      expect(attach?.if).toContain("github.ref_name == 'main'")
+      expect(attach?.if).toContain("hashFiles('tools/go-app-release.cjs') != ''")
+      expect(linux?.if).toBe("${{ runner.os == 'Linux' }}")
+      expect(linux?.run).toBe('sudo apt-get update && sudo apt-get install -y gcc pkg-config')
+      expect(steps.some(step => step.uses?.startsWith('actions/upload-artifact@'))).toBe(true)
+    })
+  })
+
+  describe('Azure Pipelines, with a native app', () => {
+    it('moves the single job under jobs: untouched, and adds the native job after it', () => {
+      const plain = azure(false)
+      const document = azure(true)
+
+      expect(document.steps).toBeUndefined()
+      expect(document.pool).toBeUndefined()
+      expect(document.variables).toEqual(plain.variables)
+      expect(document.jobs?.map(each => each.job)).toEqual(['ci', 'native'])
+      expect(document.jobs?.[0].pool).toEqual(plain.pool)
+      expect(without(document.jobs?.[0].steps ?? [])).toEqual(without(plain.steps ?? []))
+      expect(verifyOf(document.jobs?.[0].steps ?? [])?.script).toContain("+' --exclude=tag:build:cgo'")
+    })
+
+    it('fans the native job out over a Windows, a macOS and a Linux image, after ci', () => {
+      const native = azure(true).jobs?.[1]
+
+      expect(native?.dependsOn).toBe('ci')
+      expect(native?.pool).toEqual({ vmImage: '$(vmImage)' })
+      expect(Object.values(native?.strategy?.matrix ?? {}).map(leg => leg.vmImage))
+        .toEqual(['windows-latest', 'macos-latest', 'ubuntu-latest'])
+      expect(native?.steps.find(step => step.script?.startsWith('npx nx run-many -t lint,test,build-native,package-native'))).toBeDefined()
+      expect(native?.steps.find(step => step.displayName === 'Install native prerequisites (Linux)')?.condition)
+        .toBe("eq(variables['Agent.OS'], 'Linux')")
+    })
+
+    it('stays valid in the build-identity mode, whose steps start with a task', () => {
+      const document = yaml.load(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'azure-artifacts', undefined, 'build-identity', true)) as { jobs: AzureJob[] }
+
+      expect(document.jobs.map(each => each.job)).toEqual(['ci', 'native'])
+      expect(document.jobs[1].steps.some(step => (step as { task?: string }).task === 'npmAuthenticate@0')).toBe(true)
+    })
+  })
+
+  describe('applyOverlay', () => {
+    let workspace: string
+
+    beforeEach(() => {
+      workspace = mkdtempSync(join(tmpdir(), 'mnci-native-overlay-'))
+      writeFileSync(join(workspace, 'nx.json'), JSON.stringify({ $schema: 's', namedInputs: {} }))
+      writeFileSync(join(workspace, 'package.json'), JSON.stringify({ name: '@org/source', private: true, devDependencies: { nx: '23.0.0' } }))
+    })
+
+    afterEach(() => rmSync(workspace, { force: true, recursive: true }))
+
+    /** Applies the overlay for both providers, as `mnci upgrade` would. */
+    function apply (): void {
+      applyOverlay(workspace, {
+        workspaceName: 'demo',
+        scope:         '@demo',
+        registry:      { kind: 'npm' },
+        agent:         'ubuntu-latest',
+        variableGroup: 'Build',
+        ci:            'both',
+        stack:         DEFAULT_STACK,
+      })
+    }
+
+    it('writes the native job into both pipelines once an app is tagged build:cgo, and not before', () => {
+      apply()
+      expect(readFileSync(join(workspace, '.github/workflows/ci.yml'), 'utf8')).not.toContain('native:')
+      expect(readFileSync(join(workspace, 'azure-pipelines.yml'), 'utf8')).not.toContain('job: native')
+
+      mkdirSync(join(workspace, 'apps/tray'), { recursive: true })
+      writeFileSync(join(workspace, 'apps/tray/project.json'), JSON.stringify({ tags: ['build:cgo'] }))
+      apply()
+
+      expect(readFileSync(join(workspace, '.github/workflows/ci.yml'), 'utf8')).toContain('native:')
+      expect(readFileSync(join(workspace, 'azure-pipelines.yml'), 'utf8')).toContain('job: native')
+    })
   })
 })
 
