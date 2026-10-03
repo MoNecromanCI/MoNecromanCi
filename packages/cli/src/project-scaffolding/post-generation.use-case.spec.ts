@@ -11,12 +11,13 @@ jest.mock('../nx-workspace', () => ({
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import {
   registerProjectCommands,
   relocateRootRuntimeDependencies,
   removeGeneratedEslintConfig,
+  renameScaffoldPlaceholder,
   rootRuntimeDependencies,
 } from './post-generation.use-case'
 
@@ -50,6 +51,110 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(workspaceRoot, { recursive: true, force: true })
+})
+
+/** The library the renameScaffoldPlaceholder tests lay out. */
+function library (): string {
+  return join(workspaceRoot, 'libs/utils')
+}
+
+/** Reads a file of that library back. */
+function read (relative: string): string {
+  return readFileSync(join(library(), relative), 'utf8')
+}
+
+/** The module specifier of the first `from '…'` in a file of that library. */
+function specifierIn (relative: string): string {
+  return /from '(?<specifier>[^']+)'/.exec(read(relative))?.groups?.specifier ?? ''
+}
+
+/** Whether a relative specifier, as written in `from`, names a TypeScript file that exists. */
+function resolves (from: string, specifier: string): boolean {
+  const directory = dirname(join(library(), from))
+  const target = `${specifier.replace(/\.js$/, '')}.ts`
+
+  return existsSync(join(directory, target))
+}
+
+/** Whether a file of that library exists. */
+function exists (relative: string): boolean {
+  return existsSync(join(library(), relative))
+}
+
+/**
+ * Lays out what `@nx/js:lib` writes, with the module specifiers in the given
+ * form: no suffix for the rollup scaffold behind `npm-lib`, `.js` for the `tsc`
+ * scaffold behind `internal-lib` (which writes ESM specifiers).
+ */
+function scaffold (suffix: string): void {
+  mkdirSync(join(library(), 'src/lib'), { recursive: true })
+  writeFileSync(join(library(), 'src/lib/utils.ts'), "export function utils(): string {\n  return 'utils'\n}\n")
+  writeFileSync(
+    join(library(), 'src/lib/utils.spec.ts'),
+    `import { utils } from './utils${suffix}'\n\ndescribe('utils', () => {})\n`,
+  )
+  writeFileSync(join(library(), 'src/index.ts'), `export * from './lib/utils${suffix}'\n`)
+}
+
+describe('renameScaffoldPlaceholder', () => {
+  it.each(['', '.js'])('renames the placeholder and repoints the barrel and the spec (specifier suffix %j)', suffix => {
+    scaffold(suffix)
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    expect(exists('src/lib/utils.ts')).toBe(false)
+    expect(exists('src/lib/utils.use-case.ts')).toBe(true)
+    expect(read('src/index.ts')).toBe(`export * from './lib/utils.use-case${suffix}'\n`)
+    expect(read('src/lib/utils.use-case.spec.ts')).toContain(`from './utils.use-case${suffix}'`)
+  })
+
+  // The assertion that would have caught it: the previous tests only checked that
+  // a string had changed, and a string can change into a path nothing owns.
+  it.each(['', '.js'])('leaves every specifier it writes pointing at a file that exists (suffix %j)', suffix => {
+    scaffold(suffix)
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    const specFile = 'src/lib/utils.use-case.spec.ts'
+    expect(resolves('src/index.ts', specifierIn('src/index.ts'))).toBe(true)
+    expect(resolves(specFile, specifierIn(specFile))).toBe(true)
+  })
+
+  it('keeps the .js suffix, which ESM resolution needs, and does not add one to a bare specifier', () => {
+    scaffold('.js')
+    renameScaffoldPlaceholder(library(), 'utils')
+    expect(read('src/index.ts')).toContain('./lib/utils.use-case.js')
+
+    rmSync(library(), { recursive: true, force: true })
+    scaffold('')
+    renameScaffoldPlaceholder(library(), 'utils')
+    expect(read('src/index.ts')).not.toContain('.js')
+  })
+
+  it('leaves a sibling export alone, since the closing quote is part of what it matches', () => {
+    scaffold('.js')
+    writeFileSync(
+      join(library(), 'src/index.ts'),
+      "export * from './lib/utils.js'\nexport * from './lib/utils-extra.js'\n",
+    )
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    expect(read('src/index.ts')).toBe(
+      "export * from './lib/utils.use-case.js'\nexport * from './lib/utils-extra.js'\n",
+    )
+  })
+
+  it('is a no-op once renamed, and when the placeholder is absent', () => {
+    scaffold('.js')
+    renameScaffoldPlaceholder(library(), 'utils')
+    const once = read('src/index.ts')
+
+    renameScaffoldPlaceholder(library(), 'utils')
+    expect(read('src/index.ts')).toBe(once)
+
+    expect(() => renameScaffoldPlaceholder(join(workspaceRoot, 'libs/missing'), 'missing')).not.toThrow()
+  })
 })
 
 describe('registerProjectCommands', () => {

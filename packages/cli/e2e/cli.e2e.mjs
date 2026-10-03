@@ -952,6 +952,19 @@ section('js stack', [], () => {
   console.log('\n▸ mnci add internal-lib utils')
   run(`node ${CLI} add internal-lib utils`, workspace)
 
+  /*
+   * The scaffold as generated, BEFORE the fixtures below overwrite it. Every
+   * later step replaces `src/lib/utils.use-case.ts` and writes its own barrel,
+   * so a broken generated barrel was invisible until a fixture happened to
+   * leave it in place: the scaffold wrote `./lib/utils.use-case` against a
+   * `tsc` ESM build that needs the `.js` suffix kept, and `Cannot find module
+   * './lib/utils.js'` came out of build and test alike.
+   */
+  enforce(
+    'internal-lib: the freshly generated scaffold builds and tests as it is',
+    tryRun('npx nx run-many -t build,test --projects=@demo/utils', workspace),
+  )
+
   /* ---------------------------------------------------------------------------
    * The dependency chain: a PUBLISHED package using a PRIVATE internal lib AND a
    * real EXTERNAL dependency (ms) — opposite fates. The internal lib is imported
