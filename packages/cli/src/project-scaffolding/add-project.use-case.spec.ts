@@ -125,13 +125,14 @@ describe('runAdd', () => {
       JSON.stringify({ name: '@demo/utils' }),
     )
     writeFileSync(join(workspaceRoot, 'libs/utils/src/lib/utils.ts'), 'export const x = 1\n')
-    writeFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), "export * from './lib/utils'\n")
+    // The `tsc` scaffold behind internal-lib writes ESM specifiers, `.js` included.
+    writeFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), "export * from './lib/utils.js'\n")
 
     await runAdd('internal-lib', 'utils', {})
 
     expect(existsSync(join(workspaceRoot, 'libs/utils/src/lib/utils.use-case.ts'))).toBe(true)
     expect(readFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), 'utf8'))
-      .toContain("'./lib/utils.use-case'")
+      .toContain("'./lib/utils.use-case.js'")
   })
 
   it('prompts for the kind and name when omitted', async () => {

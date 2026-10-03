@@ -5,6 +5,7 @@ import {
   pythonReadme,
   pythonSampleModule,
   pythonSampleTest,
+  pythonTypedMarkerPath,
 } from '../../internal/python-project.algorithm'
 import type { InternalLibraryGeneratorSchema } from './schema.d'
 
@@ -45,5 +46,6 @@ export default async function internalLibraryGenerator (
   tree.write(`${root}/README.md`, pythonReadme(options.name, moduleDirectory))
   tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleModule(moduleDirectory))
   tree.write(`${root}/tests/test_${moduleDirectory}.py`, pythonSampleTest(moduleDirectory))
+  tree.write(`${root}/${pythonTypedMarkerPath(moduleDirectory)}`, '')
   await formatFiles(tree)
 }

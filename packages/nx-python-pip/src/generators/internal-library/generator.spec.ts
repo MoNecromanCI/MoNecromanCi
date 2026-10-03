@@ -23,4 +23,17 @@ describe('internalLibraryGenerator', () => {
     expect(tree.read('libs/core/pyproject.toml', 'utf8')).toContain('name = "core"')
     expect(tree.exists('libs/core/core/__init__.py')).toBe(true)
   })
+
+  it('marks the package typed (PEP 561), so a sibling importing it is not handed Any under mypy --strict', async () => {
+    await internalLibraryGenerator(tree, { name: 'core' })
+
+    expect(tree.exists('libs/core/core/py.typed')).toBe(true)
+    expect(tree.read('libs/core/core/py.typed', 'utf8')).toBe('')
+  })
+
+  it('derives the marker path from the module directory, not the project name', async () => {
+    await internalLibraryGenerator(tree, { name: 'my-core' })
+
+    expect(tree.exists('libs/my-core/my_core/py.typed')).toBe(true)
+  })
 })

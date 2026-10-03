@@ -563,6 +563,14 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
  * builds and its sample test still runs. A no-op when the placeholder is absent
  * or has already been renamed.
  *
+ * **Both specifier forms are repointed, and the `.js` suffix is kept.** The
+ * rollup `npm-lib` scaffold writes `'./lib/<name>'`, but the `tsc` `internal-lib`
+ * scaffold writes ESM specifiers, `'./lib/<name>.js'`. Matching only the first
+ * moved the file and left the barrel and the spec pointing at nothing, so a
+ * freshly generated internal-lib failed its own `build` and `test`. The unit
+ * test had faked the barrel in the bare form, and the e2e rewrote the missing file
+ * itself, so neither noticed.
+ *
  * `react-lib` is deliberately NOT covered: `@nx/react:library` scaffolds a
  * component, and `component` is not one of the shipped roles — renaming it to
  * `use-case` would make the name lie. A workspace linting React with these
@@ -587,7 +595,7 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
     renameSync(spec, renamed)
     writeFileEnsured(
       renamed,
-      readFileSync(renamed, 'utf8').replaceAll(`./${name}'`, () => `./${name}.use-case'`),
+      repointSpecifier(readFileSync(renamed, 'utf8'), `./${name}`, `./${name}.use-case`),
     )
   }
 
@@ -597,9 +605,32 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
   if (existsSync(barrel)) {
     writeFileEnsured(
       barrel,
-      readFileSync(barrel, 'utf8').replaceAll(`./lib/${name}'`, () => `./lib/${name}.use-case'`),
+      repointSpecifier(readFileSync(barrel, 'utf8'), `./lib/${name}`, `./lib/${name}.use-case`),
     )
   }
+}
+
+/**
+ * Repoints a module specifier in generated source, in both forms a scaffold uses.
+ *
+ * @remarks
+ * `'<from>'` (rollup scaffolds) and `'<from>.js'` (the `tsc` scaffold's ESM
+ * specifiers) both move to `<to>`, and the `.js` suffix is kept when it was
+ * there, because it is what ESM resolution needs. The closing quote is part of
+ * the match, so a sibling such as `'<from>-extra'` is left alone, and a specifier
+ * already repointed does not match again.
+ *
+ * @param source - The generated file's text.
+ * @param from - The specifier to replace, without quote or suffix (e.g. `./lib/utils`).
+ * @param to - The specifier to use instead.
+ * @returns The rewritten text.
+ * @throws Never - pure string replacement.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function repointSpecifier (source: string, from: string, to: string): string {
+  return source
+    .replaceAll(`${from}'`, () => `${to}'`)
+    .replaceAll(`${from}.js'`, () => `${to}.js'`)
 }
 
 /**
