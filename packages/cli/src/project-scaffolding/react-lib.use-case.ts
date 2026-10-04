@@ -9,6 +9,7 @@ import {
   markPublic,
   registerProjectCommands,
   removeGeneratedEslintConfig,
+  reshapeReactScaffold,
   runGeneratorAndRepair,
   writeProjectReadme,
   type AddOptions,
@@ -105,6 +106,8 @@ export async function addReactLib (
       repairPublishableManifest(publishableManifest)
       repairDeclarationSpecifiers(projectRoot)
       writeProjectReadme(projectRoot, `${scope}/${name}`, stack.testRunner)
+      // @nx/react:library's src/lib/<name>.tsx component becomes a project-named slice.
+      reshapeReactScaffold(projectRoot, name)
       removeGeneratedEslintConfig(workspaceRoot, `packages/${name}`)
       // `--publishable` also scaffolds a whole local-registry story (verdaccio
       // config, devDependency, root target) that mnci's tag-only release model

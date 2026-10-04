@@ -576,10 +576,8 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
  * import does not resolve under NodeNext. The slice barrel this writes matches
  * the project's own form (the `.js` suffix only when the scaffold used it).
  *
- * `react-lib` is deliberately NOT covered: `@nx/react:library` scaffolds a
- * component, and `component` is not one of the shipped roles — renaming it to
- * `use-case` would make the name lie. A workspace linting React with these
- * rules passes `roles: ['component']` itself.
+ * The React library kinds reshape the same way, through
+ * {@link reshapeReactScaffold} — only the file extension and the role differ.
  *
  * @param projectRoot - Absolute path to the generated project's directory.
  * @param name - The project name the generator used for the placeholder.
@@ -588,32 +586,85 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
  * @typeParam None - this function has no generic type parameters.
  */
 export function renameScaffoldPlaceholder (projectRoot: string, name: string): void {
+  reshapeScaffoldSlice(projectRoot, name, 'ts', 'use-case')
+}
+
+/**
+ * Reshapes `@nx/react:library`'s component placeholder into a vertical-slice.
+ *
+ * @remarks
+ * The React counterpart of {@link renameScaffoldPlaceholder}: `@nx/react:library`
+ * scaffolds `src/lib/<name>.tsx` (a `.component`, the front-end role) beside a
+ * `<name>.module.css` the component imports, with the same generic `lib/` bucket
+ * and bare-name violations. The reshape moves the WHOLE of `src/lib` into a slice
+ * named after the project — the component renamed to `<name>.component.tsx`, its
+ * spec repointed, and the CSS module carried along UNCHANGED so the component's
+ * `'./<name>.module.css'` import still resolves beside it.
+ *
+ * `component` is a first-class front-end role (the vertical-slice ADR's front-end
+ * amendment; `@mnci/eslint-config` ships it in the `verticalSlices` `roles`
+ * vocabulary), so a React workspace with the slice rules on lints clean with no
+ * override. Unconditional, for the reason {@link renameScaffoldPlaceholder} gives.
+ *
+ * @param projectRoot - Absolute path to the generated project's directory.
+ * @param name - The project name the generator used for the placeholder.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error moving or rewriting the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function reshapeReactScaffold (projectRoot: string, name: string): void {
+  reshapeScaffoldSlice(projectRoot, name, 'tsx', 'component')
+}
+
+/**
+ * Moves a generator's `src/lib/<name>` placeholder into a project-named slice.
+ *
+ * @remarks
+ * The shared core of {@link renameScaffoldPlaceholder} (`.ts`/`use-case`) and
+ * {@link reshapeReactScaffold} (`.tsx`/`component`). It moves EVERY file out of
+ * `src/lib` into the slice — the production file gains its role suffix, its spec
+ * follows with the suffix (and its self-import repointed), and any sidecar a
+ * generator drops (a `.module.css`) is carried along verbatim so a same-directory
+ * import still resolves. A no-op when the placeholder is absent or already moved.
+ *
+ * @param projectRoot - Absolute path to the generated project's directory.
+ * @param name - The project name the generator used.
+ * @param extension - The placeholder's extension: `ts` or `tsx`.
+ * @param role - The role suffix to give the production file and its spec.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error moving or rewriting the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function reshapeScaffoldSlice (projectRoot: string, name: string, extension: string, role: string): void {
   const sourceDir = join(projectRoot, 'src')
-  const placeholder = join(sourceDir, 'lib', `${name}.ts`)
-  if (!existsSync(placeholder)) {
+  const libDir = join(sourceDir, 'lib')
+  if (!existsSync(join(libDir, `${name}.${extension}`))) {
     return
   }
 
   const sliceDir = join(sourceDir, name)
   mkdirSync(sliceDir, { recursive: true })
-  renameSync(placeholder, join(sliceDir, `${name}.use-case.ts`))
 
-  const spec = join(sourceDir, 'lib', `${name}.spec.ts`)
-  if (existsSync(spec)) {
-    const renamed = join(sliceDir, `${name}.use-case.spec.ts`)
-    renameSync(spec, renamed)
-    writeFileEnsured(
-      renamed,
+  // Move everything the generator put in lib/ into the slice: the production file
+  // and its spec gain the role suffix; a sidecar (e.g. a CSS module) moves as-is.
+  for (const entry of readdirSync(libDir)) {
+    if (entry === `${name}.${extension}`) {
+      renameSync(join(libDir, entry), join(sliceDir, `${name}.${role}.${extension}`))
+    } else if (entry === `${name}.spec.${extension}`) {
+      const renamed = join(sliceDir, `${name}.${role}.spec.${extension}`)
+      renameSync(join(libDir, entry), renamed)
       // The spec still sits beside the implementation, so only its role suffix changes.
-      repointSpecifier(readFileSync(renamed, 'utf8'), `./${name}`, `./${name}.use-case`),
-    )
+      writeFileEnsured(renamed, repointSpecifier(readFileSync(renamed, 'utf8'), `./${name}`, `./${name}.${role}`))
+    } else {
+      renameSync(join(libDir, entry), join(sliceDir, entry))
+    }
   }
 
   // The package barrel re-exports the slice, not the old ./lib/<name>. Whether the
   // slice's own barrel carries the ESM `.js` suffix follows the form the scaffold used.
   const barrel = join(sourceDir, 'index.ts')
   const esm = existsSync(barrel) && readFileSync(barrel, 'utf8').includes(`./lib/${name}.js'`)
-  writeFileEnsured(join(sliceDir, 'index.ts'), `export * from './${name}.use-case${esm ? '.js' : ''}'\n`)
+  writeFileEnsured(join(sliceDir, 'index.ts'), `export * from './${name}.${role}${esm ? '.js' : ''}'\n`)
   if (existsSync(barrel)) {
     writeFileEnsured(
       barrel,
@@ -624,7 +675,7 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
   }
 
   // The generic lib/ bucket is now empty; the slice replaces it.
-  rmSync(join(sourceDir, 'lib'), { recursive: true, force: true })
+  rmSync(libDir, { recursive: true, force: true })
 }
 
 /**
