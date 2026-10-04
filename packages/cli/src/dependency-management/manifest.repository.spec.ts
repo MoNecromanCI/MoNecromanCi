@@ -8,9 +8,11 @@ import { join } from 'node:path'
 import { runCapture } from '../nx-workspace'
 import {
   ROOT_LABEL,
+  addPipDependency,
   collectInventory,
   csprojPackageReferences,
   hasEcosystem,
+  locateProjects,
   parseRequirement,
   pubspecBlockEntries,
   pyprojectDependencies,
@@ -547,5 +549,60 @@ describe('resolvedVersion', () => {
     // NuGet has no single workspace-wide resolved state to read either — each
     // .csproj restores into its own obj/project.assets.json.
     expect(resolvedVersion(workspaceRoot, 'nuget', 'Newtonsoft.Json')).toBeUndefined()
+  })
+})
+
+describe('locateProjects (#291)', () => {
+  it('locates one project per manifest, with its ecosystem, directory and basename', () => {
+    write('apps/web/package.json', JSON.stringify({ name: '@x/web' }))
+    write('apps/pysvc/pyproject.toml', '[project]\nname = "pysvc"\ndependencies = []\n')
+    write('libs/goutil/go.mod', 'module example.com/libs/goutil\n')
+
+    const located = locateProjects(workspaceRoot)
+
+    expect(located).toContainEqual(
+      expect.objectContaining({ ecosystem: 'npm', dir: 'apps/web', name: 'web' }),
+    )
+    expect(located).toContainEqual(
+      expect.objectContaining({ ecosystem: 'pip', dir: 'apps/pysvc', name: 'pysvc' }),
+    )
+    // Go is located per-module (multi-module), which the dependency-reading
+    // path still does not do — this is the location-only exception.
+    expect(located).toContainEqual(
+      expect.objectContaining({ ecosystem: 'go', dir: 'libs/goutil', name: 'goutil' }),
+    )
+  })
+})
+
+describe('addPipDependency (#291)', () => {
+  it('fills an empty single-line array', () => {
+    expect(addPipDependency('[project]\nname = "a"\ndependencies = []\n', 'flask>=3')).toContain(
+      'dependencies = ["flask>=3"]',
+    )
+  })
+
+  it('appends to a populated single-line array', () => {
+    expect(addPipDependency('[project]\ndependencies = ["requests"]\n', 'flask')).toContain(
+      'dependencies = ["requests", "flask"]',
+    )
+  })
+
+  it('inserts into a multi-line array as the first element', () => {
+    const result = addPipDependency('[project]\ndependencies = [\n    "requests",\n]\n', 'flask')
+
+    expect(result).toContain('"flask",')
+    expect(result).toContain('"requests",')
+  })
+
+  it('leaves the file unchanged when the dependency is already declared', () => {
+    const content = '[project]\ndependencies = ["flask>=3"]\n'
+
+    expect(addPipDependency(content, 'flask')).toBe(content)
+  })
+
+  it('ignores a dependencies key outside the [project] table', () => {
+    const content = '[build-system]\nrequires = ["setuptools"]\n\n[tool.other]\ndependencies = ["not-a-dep"]\n'
+
+    expect(addPipDependency(content, 'flask')).toBe(content)
   })
 })

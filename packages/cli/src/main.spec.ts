@@ -22,6 +22,7 @@ jest.mock('commander', () => {
     private readonly subcommands:       FakeCommand[] = []
     private readonly argumentNames:     string[] = []
     private readonly optionDefinitions: OptionDefinition[] = []
+    private readonly aliases:           string[] = []
     private commandName = ''
     private actionHandler?:             ActionHandler
 
@@ -30,6 +31,12 @@ jest.mock('commander', () => {
     }
 
     description (): this {
+      return this
+    }
+
+    alias (alias: string): this {
+      this.aliases.push(alias)
+
       return this
     }
 
@@ -102,7 +109,9 @@ jest.mock('commander', () => {
 
         return this
       }
-      const subcommand = this.subcommands.find(entry => entry.commandName === commandToken)
+      const subcommand = this.subcommands.find(
+        entry => entry.commandName === commandToken || entry.aliases.includes(commandToken),
+      )
       if (!subcommand) return this
 
       const options: Record<string, unknown> = {}
@@ -171,8 +180,9 @@ jest.mock('./workspace-upgrade', () => ({ runUpgrade: jest.fn() }))
 // a .js file.
 jest.mock('./dependency-management', () => ({
   ...jest.requireActual('./dependency-management'),
-  runSync: jest.fn(),
-  runUp:   jest.fn(),
+  runInstall: jest.fn(),
+  runSync:    jest.fn(),
+  runUp:      jest.fn(),
 }))
 jest.mock('./cli-version', () => ({
   checkForUpdate: jest.fn(),
@@ -183,6 +193,7 @@ import { buildProgram, main } from './main'
 import { runAdd } from './project-scaffolding'
 import { runInteractive } from './workspace-creation'
 import { runNew } from './workspace-creation'
+import { runInstall } from './dependency-management'
 import { runSync } from './dependency-management'
 import { runUp } from './dependency-management'
 import { runUpgrade } from './workspace-upgrade'
@@ -193,6 +204,7 @@ const mockRunNew = jest.mocked(runNew)
 const mockRunUpgrade = jest.mocked(runUpgrade)
 const mockRunSync = jest.mocked(runSync)
 const mockRunUp = jest.mocked(runUp)
+const mockRunInstall = jest.mocked(runInstall)
 const mockRunInteractive = jest.mocked(runInteractive)
 const mockCheckForUpdate = jest.mocked(checkForUpdate)
 
@@ -341,6 +353,18 @@ describe('buildProgram', () => {
     expect(mockRunUp).toHaveBeenCalledWith(
       '/somewhere/demo',
       expect.objectContaining({ yes: true }),
+    )
+  })
+
+  it('routes the `i` alias, with a package and -w, to runInstall against the cwd', async () => {
+    jest.spyOn(process, 'cwd').mockReturnValue('/somewhere/demo')
+    await buildProgram('1.0.0').parseAsync(['node', 'mnci', 'i', 'left-pad', '-w', 'web'])
+    // The exact packages shape (array) is commander's, not the mock's — the
+    // point here is the alias routes to runInstall with the cwd and the -w flag.
+    expect(mockRunInstall).toHaveBeenCalledWith(
+      '/somewhere/demo',
+      expect.anything(),
+      expect.objectContaining({ workspace: 'web' }),
     )
   })
 
