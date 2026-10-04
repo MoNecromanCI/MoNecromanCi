@@ -95,7 +95,7 @@ describe('runAdd go', () => {
     await expect(runAdd('go-app', 'api', {})).rejects.toThrow(/Go not found.*go\.dev/s)
   })
 
-  it('bootstraps a single root go.mod via init + convert-to-one-mod on the first add', async () => {
+  it('bootstraps a go.work workspace via init, without convert-to-one-mod, on the first add', async () => {
     seedProjectJson('apps/api', 'api')
 
     await runAdd('go-app', 'api', {})
@@ -107,26 +107,32 @@ describe('runAdd go', () => {
       workspaceRoot,
     )
 
-    // Order matters: convert-to-one-mod refuses once go.work has any `use` line,
-    // so it must run straight after init and before the first project exists.
     const calls = nxCalls()
     const initIndex = calls.findIndex(argv => argv.includes('@nx-go/nx-go:init'))
-    const convertIndex = calls.findIndex(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))
     const generateIndex = calls.findIndex(argv => argv.includes('@nx-go/nx-go:application'))
     expect(initIndex).toBeGreaterThanOrEqual(0)
-    expect(convertIndex).toBeGreaterThan(initIndex)
-    expect(generateIndex).toBeGreaterThan(convertIndex)
+    // Multi-module: init writes go.work, and convert-to-one-mod (which forced a single
+    // root module) is never run; each generator writes its own go.mod after init.
+    expect(calls.some(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))).toBe(false)
+    expect(generateIndex).toBeGreaterThan(initIndex)
   })
 
-  it('skips the module bootstrap when a root go.mod already exists', async () => {
+  it('skips the bootstrap when a root go.mod already exists (an adopted flat module)', async () => {
     writeFileSync(join(workspaceRoot, 'go.mod'), 'module demo\n\ngo 1.24\n')
     seedProjectJson('apps/api', 'api')
 
     await runAdd('go-app', 'api', {})
 
-    const calls = nxCalls()
-    expect(calls.some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
-    expect(calls.some(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))).toBe(false)
+    expect(nxCalls().some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
+  })
+
+  it('skips the bootstrap when a go.work already exists (multi-module already set up)', async () => {
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.24\n\nuse ./apps/other\n')
+    seedProjectJson('apps/api', 'api')
+
+    await runAdd('go-app', 'api', {})
+
+    expect(nxCalls().some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
   })
 
   describe('onto a repository that already has its own go.mod (#261)', () => {
