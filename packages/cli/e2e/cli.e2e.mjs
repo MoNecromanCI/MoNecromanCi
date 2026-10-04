@@ -700,7 +700,7 @@ section('js stack', [], () => {
     'husky + commitlint installed as devDependencies',
     Boolean(rootDevelopmentDependencies.husky && rootDevelopmentDependencies['@commitlint/cli']),
   )
-  // `affected` carries `typecheck` since #92 (roadmap #18). This assertion was not
+  // `affected` carries `typecheck` since #92 (former roadmap #18). This assertion was not
   // updated then, so the e2e has been red ever since and nobody saw it — it only runs
   // on a manual `workflow_dispatch`. Worth remembering when changing ROOT_SCRIPTS: the
   // unit tests cover the constant, but this is the only check that the value actually
@@ -1684,7 +1684,7 @@ section('js stack', [], () => {
   // which returns an OS-native path, so on a Windows agent it emits
   // `export * from "./src\\\\index"` - untyped for every Linux and macOS
   // consumer. mnci points `types` past the stub, but the stub still ships, so this
-  // records whether upstream has fixed it (ROADMAP 7c).
+  // records whether upstream has fixed it (issue #309).
   const sdkStubPath = path.join(workspace, 'packages/sdk/dist/index.d.ts')
   const sdkStub = existsSync(sdkStubPath) ? readFileSync(sdkStubPath, 'utf8') : ''
   enforce(
@@ -1946,7 +1946,7 @@ section('python', ['alt stack'], () => {
   //
   // Recording it as a normal failure keeps every later section running, so one
   // unusable toolchain costs its own coverage and nothing else's. This is the
-  // narrow version of ROADMAP #21 — full per-section isolation, where a broken
+  // narrow version of former roadmap #21 — full per-section isolation, where a broken
   // Python section would be *skipped* rather than cascade into failed assertions
   // below, is still open.
   const pythonToolchainInstall = tryRunCapture(
@@ -2388,7 +2388,7 @@ section('go', ['alt stack'], () => {
    * Go — @nx-go/nx-go, the one third-party plugin, in the multi-module `go.work`
    * layout mnci drives it in (one go.mod per project, #289).
    *
-   * This section closes the coverage hole ROADMAP §6 recorded: all four Go kinds
+   * This section closes the coverage hole former roadmap §6 recorded: all four Go kinds
    * had real unit tests and real CI wiring, but nothing had ever driven them end to
    * end, so every invariant below was documented and unverified. Gated on the Go
    * toolchain the same way Flutter is gated on its SDK — reported as SKIPPED rather

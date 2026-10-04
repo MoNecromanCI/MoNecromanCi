@@ -18,6 +18,7 @@ import {
   relocateRootRuntimeDependencies,
   removeGeneratedEslintConfig,
   renameScaffoldPlaceholder,
+  reshapeReactScaffold,
   rootRuntimeDependencies,
 } from './post-generation.use-case'
 
@@ -164,6 +165,47 @@ describe('renameScaffoldPlaceholder', () => {
     expect(read('src/index.ts')).toBe(once)
 
     expect(() => renameScaffoldPlaceholder(join(workspaceRoot, 'libs/missing'), 'missing')).not.toThrow()
+  })
+})
+
+/** Joins rows into file content with a trailing newline. */
+function lines (...rows: string[]): string {
+  return rows.join(String.fromCodePoint(10)) + String.fromCodePoint(10)
+}
+
+/** Lays out what `@nx/react:library` writes: a component, its spec and the CSS module it imports. */
+function reactScaffold (): void {
+  mkdirSync(join(library(), 'src/lib'), { recursive: true })
+  writeFileSync(join(library(), 'src/lib/utils.tsx'), lines("import styles from './utils.module.css'", '', 'export function Utils() {', '  return <div className={styles.x} />', '}'))
+  writeFileSync(join(library(), 'src/lib/utils.module.css'), lines('.x {}'))
+  writeFileSync(join(library(), 'src/lib/utils.spec.tsx'), lines("import { Utils } from './utils'", '', "describe('Utils', () => {})"))
+  writeFileSync(join(library(), 'src/index.ts'), lines("export * from './lib/utils'"))
+}
+
+describe('reshapeReactScaffold', () => {
+  it('moves the component, its spec and the CSS module into a project-named slice', () => {
+    reactScaffold()
+
+    reshapeReactScaffold(library(), 'utils')
+
+    expect(exists('src/lib')).toBe(false)
+    expect(exists('src/utils/utils.component.tsx')).toBe(true)
+    expect(read('src/utils/utils.component.spec.tsx')).toContain("from './utils.component'")
+    // The component's own './utils.module.css' import must still resolve beside it, unchanged.
+    expect(read('src/utils/utils.component.tsx')).toContain("'./utils.module.css'")
+    expect(exists('src/utils/utils.module.css')).toBe(true)
+    expect(read('src/utils/index.ts')).toBe("export * from './utils.component'\n")
+    expect(read('src/index.ts')).toBe("export * from './utils'\n")
+  })
+
+  it('is a no-op once reshaped, and when the placeholder is absent', () => {
+    reactScaffold()
+    reshapeReactScaffold(library(), 'utils')
+    const once = read('src/index.ts')
+
+    reshapeReactScaffold(library(), 'utils')
+    expect(read('src/index.ts')).toBe(once)
+    expect(() => reshapeReactScaffold(join(workspaceRoot, 'libs/missing'), 'missing')).not.toThrow()
   })
 })
 

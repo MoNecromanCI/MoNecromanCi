@@ -74,7 +74,7 @@ function sourceMapCapableCompiler (indent: string): string {
   return [
     `${indent}// Swapped from swc by MoNecromanCI. @nx/rollup runs swc without`,
     `${indent}// sourceMaps, so it returns no map and the bundle's map comes out empty -`,
-    `${indent}// valid-looking, and useless for debugging. See ROADMAP.`,
+    `${indent}// valid-looking, and useless for debugging. See issue #308.`,
     `${indent}compiler: 'babel',`,
   ].join('\n')
 }

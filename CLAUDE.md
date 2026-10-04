@@ -510,8 +510,8 @@ to one is mirrored in the other by construction:
 - **Release steps** fire only on `event_name == 'push' && ref_name == 'main'` — the
   positive form, not `!= 'pull_request'`, which would also match any trigger added
   later (this bit mnci's own workflow once, via a hand-added `workflow_dispatch`).
-  Azure's equivalent trigger fix (`in(Build.Reason, 'IndividualCI', 'BatchedCI')`)
-  is still open — see ROADMAP #23.
+  Azure's equivalent (`in(Build.Reason, 'IndividualCI', 'BatchedCI')`) is in place;
+  that it releases on a real Azure run is unverified (issue #315).
 - **Release preflights, and what each one can honestly prove.** npm's proves the
   token works (`npm whoami`) before `nx release` tags anything. **PyPI's cannot**:
   it has no `whoami`, and a bare `POST` to the only endpoint that authenticates
@@ -644,24 +644,10 @@ so.
 
 ## Known Issues & Future Plans
 
-[`ROADMAP.md`](ROADMAP.md) is the live, actively-maintained tracker for open work —
-read its top summary section first; it states what's done, what's open, and at what
-priority, with file:line citations for anything found by measurement rather than
-assumed. As of the last rollup there: **no P1 is open**. Open work is:
-
-- **New capability (P2):** a container/Docker project kind; e2e test projects
-  (Playwright, measured as needing no rule relaxation against the current lint
-  config); multi-project `dev up`; `--preset` composition for scaffolding several
-  kinds at once.
-- **A gate that still doesn't gate:** Azure Pipelines' release trigger has the same
-  "any non-PR event" over-fire shape already fixed for GitHub Actions, but the
-  precise fix is unverified — no Azure pipeline run has ever exercised this
-  project's actual release path, so there's nothing to check a change against.
-- **Deliberately deferred upgrade:** TypeScript 7 for the compile step, pending a
-  proper compatibility pass.
-- Two P3 items, otherwise closed.
-- A `cli-lib` project kind (publishable package that's also invoked like an app) is
-  named but not yet built — noted under the build/dev script convention above.
+Open work lives in **GitHub issues** (`gh issue list`) — the single source of truth.
+There is no ROADMAP file. Priorities are the `P2`/`P3` labels; third-party defects
+we work around carry `upstream`. File new work as an issue, close it with the PR that
+solves it. For history, read the git log and merged PRs.
 
 ## Design Decisions & Reasoning
 
@@ -830,8 +816,7 @@ guard decodes. Check which before wiring a third protocol.
 
 ## See Also
 
-- [`ROADMAP.md`](ROADMAP.md) — open work: known gaps, planned kinds, and the
-  invariants that are documented but not yet enforced
+- [GitHub issues](https://github.com/MoNecromanCI/MoNecromanCi/issues) — open work: known gaps, planned kinds
 - [`packages/cli/README.md`](packages/cli/README.md) — detailed CLI & workflow docs
 - [`packages/nx-python-pip/README.md`](packages/nx-python-pip/README.md) — Python plugin reference
 - [`packages/nx-flutter/README.md`](packages/nx-flutter/README.md) — Flutter plugin reference

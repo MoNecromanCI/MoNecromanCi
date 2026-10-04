@@ -609,7 +609,7 @@ JavaScript, so it has no TypeScript to check. Each of the three runs
 That indirection is load-bearing, and worth knowing before "simplifying" it away:
 Nx **disables** an inferred `typecheck` target when a project's tsconfig sets
 `noEmit: true`, replacing the command with an `echo` that passes. Both plugins used
-to do exactly that, so their typecheck was theatre until ROADMAP #20. The newer
+to do exactly that, so their typecheck was theatre until former roadmap #20. The newer
 `lib` those specs need lives in `tsconfig.typecheck.json` rather than the base
 tsconfig on purpose — raising it in the base changes class-field emit in published
 output, and the specs that need it are excluded from the build anyway.

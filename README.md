@@ -45,7 +45,7 @@ hook) — nothing is hand-edited. On `main`, CI runs the release automatically;
 ## Roadmap
 
 Open work — known gaps, planned project kinds, and CI/local-dev improvements —
-is tracked in [ROADMAP.md](ROADMAP.md).
+is tracked in [GitHub issues](https://github.com/MoNecromanCI/MoNecromanCi/issues).
 
 ## License
 

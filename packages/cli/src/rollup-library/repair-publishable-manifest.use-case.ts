@@ -42,7 +42,7 @@ const WRONG_TYPES_PATH = './dist/index.esm.d.ts'
  * project it configures, and `@nx/js:lib` and `@nx/react:library` both route through
  * it.
  *
- * The stub still ships and is simply unused. Upstream fix tracked in ROADMAP 7c.
+ * The stub still ships and is simply unused. Upstream fix tracked in issue #309.
  */
 const ACTUAL_TYPES_PATH = './dist/src/index.d.ts'
 
