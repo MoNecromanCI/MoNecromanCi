@@ -4,7 +4,7 @@
  * @remarks
  * The Python v2 programming model: a module-level `func.FunctionApp()` with
  * decorated routes. The handler is thin — the testable logic lives in the
- * module's `greeting.py` (imported here), so pytest needs no `azure-functions`
+ * module's `greeting_algorithm.py` (imported here), so pytest needs no `azure-functions`
  * install. Anonymous auth keeps the sample runnable locally with `func start`.
  *
  * @param moduleDirectory - The app's Python module directory (import root).
@@ -15,7 +15,7 @@
 export function pythonFunctionAppMain (moduleDirectory: string): string {
   return `import azure.functions as func
 
-from ${moduleDirectory}.greeting import build_greeting
+from ${moduleDirectory}.greeting_algorithm import build_greeting
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -73,12 +73,12 @@ export const PYTHON_FUNCTION_APP_GREETING = `def build_greeting(name: str) -> st
  * plain `pytest` — no install step needed.
  *
  * @param moduleDirectory - The app's Python module directory (import root).
- * @returns The `tests/test_greeting.py` contents.
+ * @returns The `tests/test_greeting_algorithm.py` contents.
  * @throws Never - pure string build.
  * @typeParam None - this function has no generic type parameters.
  */
 export function pythonFunctionAppGreetingTest (moduleDirectory: string): string {
-  return `from ${moduleDirectory}.greeting import build_greeting
+  return `from ${moduleDirectory}.greeting_algorithm import build_greeting
 
 
 def test_build_greeting() -> None:

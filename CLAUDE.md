@@ -459,10 +459,15 @@ reach the same logic without going through scaffolding) and re-applied on `mnci 
 mnci replaces the Nx generator's default `src/` shape with the vertical-slice one, so
 a fresh project lints clean with `verticalSlices` on and no override. Done so far
 (each is a `reshape*` function in `project-scaffolding/post-generation.use-case.ts`,
-re-applied on add): JS libraries (`renameScaffoldPlaceholder`), React libraries
-(`reshapeReactScaffold`), React apps (`reshapeReactAppScaffold`), Go libraries, and
-`node-function-app` (a `src/hello/` slice written directly). Still open on #290: the
-other app kinds, a realistic worked example per family, and the `--empty` flag.
+re-applied on add): JS libraries (`renameScaffoldPlaceholder`), both React library
+kinds (`reshapeReactScaffold`), React apps (`reshapeReactAppScaffold`), Go libraries, and
+`node-function-app` (a `src/hello/` slice written directly). The Python plugin's
+templates follow the language mapping: the sample lives in `<module>_use_case.py`
+behind an `__init__.py` barrel with `__all__`, and the function app's helper is
+`greeting_algorithm.py`. `node-app`, `vscode-extension`, `npm-lib` and `internal-lib`
+already lint clean (measured on generated projects). Not enforced anywhere yet, so
+not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
+#290: a realistic worked example per family and the `--empty` flag.
 
 Two traps from doing it: Nx writes **double quotes and semicolons** and the formatter
 only normalises them after the reshape runs, so a specifier rewrite must match both

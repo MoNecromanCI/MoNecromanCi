@@ -169,6 +169,8 @@ export function addReactInternalLib (
       repairPublishableManifest(privateManifest)
       repairDeclarationSpecifiers(projectRoot)
       writeProjectReadme(projectRoot, name, stack.testRunner)
+      // Same slice reshape as the publishable kind (see addReactLib).
+      reshapeReactScaffold(projectRoot, name)
       removeGeneratedEslintConfig(workspaceRoot, `libs/${name}`)
       registerProjectCommands(workspaceRoot, name, { build: true })
     },

@@ -3,6 +3,7 @@ import {
   pythonModuleDirectory,
   pythonPyprojectToml,
   pythonReadme,
+  pythonSampleBarrel,
   pythonSampleModule,
   pythonSampleTest,
   pythonTypedMarkerPath,
@@ -89,8 +90,9 @@ export function generateBuildableProject (tree: Tree, options: BuildableProjectO
 
   tree.write(`${root}/pyproject.toml`, pythonPyprojectToml(options.name, moduleDirectory))
   tree.write(`${root}/README.md`, pythonReadme(options.name, moduleDirectory))
-  tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleModule(moduleDirectory))
-  tree.write(`${root}/tests/test_${moduleDirectory}.py`, pythonSampleTest(moduleDirectory))
+  tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_use_case.py`, pythonSampleModule(moduleDirectory))
+  tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleBarrel(moduleDirectory))
+  tree.write(`${root}/tests/test_${moduleDirectory}_use_case.py`, pythonSampleTest(moduleDirectory))
   if (options.projectType === 'library') {
     tree.write(`${root}/${pythonTypedMarkerPath(moduleDirectory)}`, '')
   }

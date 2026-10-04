@@ -2,6 +2,7 @@ import {
   pythonModuleDirectory,
   pythonPyprojectToml,
   pythonReadme,
+  pythonSampleBarrel,
   pythonSampleModule,
   pythonSampleTest,
 } from './python-project.algorithm'
@@ -185,5 +186,11 @@ describe('pythonSampleModule + pythonSampleTest', () => {
     expect(module_).toContain('return "hello from pycore"')
     expect(test).toContain('from pycore import hello')
     expect(test).toContain('hello() == "hello from pycore"')
+  })
+
+  it('re-exports the public name from the role-named module through the barrel', () => {
+    const barrel = pythonSampleBarrel('pycore')
+    expect(barrel).toContain('from .pycore_use_case import hello')
+    expect(barrel).toContain('__all__ = ["hello"]')
   })
 })
