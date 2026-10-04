@@ -3477,9 +3477,15 @@ section('vscode extension', ['alt stack'], () => {
   // #229's acceptance: an extension-only workspace releases. `--yes` makes nx run
   // the publish phase too (it skips it otherwise, even in a dry run), which proves
   // the publish target exists, depends on package, and never publishes in a dry run.
+  // An explicit version (0.0.2), not a derived one — the same reason the Go section
+  // names 0.0.1: this is a fresh workspace with no release tags, so nx's
+  // conventional-commit resolver has no baseline, reports "No changes were detected"
+  // and falls back to the disk version without versioning or reaching the publish
+  // phase. The current-version resolution still runs through the vscode-extension tag
+  // matcher ("{projectName}@{version}"), which is what the check below is about.
   run('git add -A', vsxWorkspace)
   run('git -c user.email=e2e@mnci.invalid -c user.name=e2e commit -q --no-verify -m "feat: editor extension"', vsxWorkspace)
-  const vsxRelease = tryRunCapture('npx nx release --dry-run --yes', vsxWorkspace)
+  const vsxRelease = tryRunCapture('npx nx release 0.0.2 --dry-run --yes', vsxWorkspace)
   enforce(
     'vscode: nx release --dry-run versions an extension-only workspace through the tag matcher and dry-runs the publish',
     vsxRelease.ok &&
