@@ -51,6 +51,18 @@ const CLI = path.resolve(SCRIPT_DIR, '..', 'dist', 'cli.js')
  */
 const PYTHON = process.platform === 'win32' ? 'python' : 'python3'
 
+// Give every git subprocess an identity. The e2e passes user.name/email inline
+// on its own commits (`git -c user.email=… commit`), but `nx release` creates its
+// tags with its own `git` invocation, which fails with "Committer identity unknown"
+// on a runner that has no global git config — the failure that reddened the nightly
+// once releasable Go apps (#268) and the extension-only release (#274) landed. These
+// env vars satisfy git for every child process, nx release's tag creation included,
+// without overriding an identity the host already set.
+process.env.GIT_AUTHOR_NAME ??= 'mnci-e2e'
+process.env.GIT_AUTHOR_EMAIL ??= 'e2e@mnci.invalid'
+process.env.GIT_COMMITTER_NAME ??= 'mnci-e2e'
+process.env.GIT_COMMITTER_EMAIL ??= 'e2e@mnci.invalid'
+
 /**
  * Resolves an executable inside a virtualenv, cross-platform: POSIX venvs
  * put executables in `bin/`; Windows puts them in `Scripts/` with a `.exe`
