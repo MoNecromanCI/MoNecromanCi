@@ -68,12 +68,13 @@ function specifierIn (relative: string): string {
   return /from '(?<specifier>[^']+)'/.exec(read(relative))?.groups?.specifier ?? ''
 }
 
-/** Whether a relative specifier, as written in `from`, names a TypeScript file that exists. */
+/** Whether a relative specifier, as written in `from`, names a TypeScript file or slice barrel that exists. */
 function resolves (from: string, specifier: string): boolean {
   const directory = dirname(join(library(), from))
-  const target = `${specifier.replace(/\.js$/, '')}.ts`
+  const base = specifier.replace(/\.js$/, '')
 
-  return existsSync(join(directory, target))
+  // Either a file (./x -> x.ts) or a directory import (./x -> x/index.ts).
+  return existsSync(join(directory, `${base}.ts`)) || existsSync(join(directory, base, 'index.ts'))
 }
 
 /** Whether a file of that library exists. */
@@ -97,15 +98,21 @@ function scaffold (suffix: string): void {
 }
 
 describe('renameScaffoldPlaceholder', () => {
-  it.each(['', '.js'])('renames the placeholder and repoints the barrel and the spec (specifier suffix %j)', suffix => {
+  it.each(['', '.js'])('reshapes the placeholder into a project-named slice with its own barrel (specifier suffix %j)', suffix => {
     scaffold(suffix)
 
     renameScaffoldPlaceholder(library(), 'utils')
 
-    expect(exists('src/lib/utils.ts')).toBe(false)
-    expect(exists('src/lib/utils.use-case.ts')).toBe(true)
-    expect(read('src/index.ts')).toBe(`export * from './lib/utils.use-case${suffix}'\n`)
-    expect(read('src/lib/utils.use-case.spec.ts')).toContain(`from './utils.use-case${suffix}'`)
+    // The generic lib/ bucket is gone, replaced by a slice named after the project.
+    expect(exists('src/lib')).toBe(false)
+    expect(exists('src/utils/utils.use-case.ts')).toBe(true)
+    expect(read('src/utils/index.ts')).toBe(`export * from './utils.use-case${suffix}'\n`)
+    expect(read('src/utils/utils.use-case.spec.ts')).toContain(`from './utils.use-case${suffix}'`)
+    // The package barrel re-exports the slice: the directory for the bundler, the
+    // slice barrel's index for ESM (a bare directory import does not resolve there).
+    expect(read('src/index.ts')).toBe(
+      suffix === '.js' ? "export * from './utils/index.js'\n" : "export * from './utils'\n",
+    )
   })
 
   // The assertion that would have caught it: the previous tests only checked that
@@ -115,20 +122,23 @@ describe('renameScaffoldPlaceholder', () => {
 
     renameScaffoldPlaceholder(library(), 'utils')
 
-    const specFile = 'src/lib/utils.use-case.spec.ts'
+    const specFile = 'src/utils/utils.use-case.spec.ts'
     expect(resolves('src/index.ts', specifierIn('src/index.ts'))).toBe(true)
+    expect(resolves('src/utils/index.ts', specifierIn('src/utils/index.ts'))).toBe(true)
     expect(resolves(specFile, specifierIn(specFile))).toBe(true)
   })
 
   it('keeps the .js suffix, which ESM resolution needs, and does not add one to a bare specifier', () => {
     scaffold('.js')
     renameScaffoldPlaceholder(library(), 'utils')
-    expect(read('src/index.ts')).toContain('./lib/utils.use-case.js')
+    expect(read('src/index.ts')).toContain('./utils/index.js')
+    expect(read('src/utils/index.ts')).toContain('./utils.use-case.js')
 
     rmSync(library(), { recursive: true, force: true })
     scaffold('')
     renameScaffoldPlaceholder(library(), 'utils')
     expect(read('src/index.ts')).not.toContain('.js')
+    expect(read('src/utils/index.ts')).not.toContain('.js')
   })
 
   it('leaves a sibling export alone, since the closing quote is part of what it matches', () => {
@@ -141,11 +151,11 @@ describe('renameScaffoldPlaceholder', () => {
     renameScaffoldPlaceholder(library(), 'utils')
 
     expect(read('src/index.ts')).toBe(
-      "export * from './lib/utils.use-case.js'\nexport * from './lib/utils-extra.js'\n",
+      "export * from './utils/index.js'\nexport * from './lib/utils-extra.js'\n",
     )
   })
 
-  it('is a no-op once renamed, and when the placeholder is absent', () => {
+  it('is a no-op once reshaped, and when the placeholder is absent', () => {
     scaffold('.js')
     renameScaffoldPlaceholder(library(), 'utils')
     const once = read('src/index.ts')

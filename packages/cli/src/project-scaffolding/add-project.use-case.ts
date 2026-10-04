@@ -291,7 +291,7 @@ export async function runAdd (
         workspaceRoot,
       )
       markPrivate(join(workspaceRoot, 'libs', resolvedName, 'package.json'))
-      // Same @nx/js:lib placeholder, same role-suffix rule — see
+      // Same @nx/js:lib placeholder, same slice reshape — see
       // renameScaffoldPlaceholder.
       renameScaffoldPlaceholder(join(workspaceRoot, 'libs', resolvedName), resolvedName)
       removeGeneratedEslintConfig(workspaceRoot, `libs/${resolvedName}`)

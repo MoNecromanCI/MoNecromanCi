@@ -464,8 +464,8 @@ describe('the scaffold passes mnci\'s own vertical-slice rule', () => {
 
     await runAdd('npm-lib', 'sdk', {})
 
-    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.use-case.ts'))).toBe(true)
-    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.ts'))).toBe(false)
+    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/sdk/sdk.use-case.ts'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib'))).toBe(false)
   })
 
   it('repoints the barrel and the spec, so the package still has an entry point', async () => {
@@ -477,9 +477,11 @@ describe('the scaffold passes mnci\'s own vertical-slice rule', () => {
     await runAdd('npm-lib', 'sdk', {})
 
     expect(readFileSync(join(workspaceRoot, 'packages/sdk/src/index.ts'), 'utf8'))
-      .toContain("'./lib/sdk.use-case'")
-    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.use-case.spec.ts'))).toBe(true)
-    expect(readFileSync(join(workspaceRoot, 'packages/sdk/src/lib/sdk.use-case.spec.ts'), 'utf8'))
+      .toContain("'./sdk'")
+    expect(readFileSync(join(workspaceRoot, 'packages/sdk/src/sdk/index.ts'), 'utf8'))
+      .toContain("'./sdk.use-case'")
+    expect(existsSync(join(workspaceRoot, 'packages/sdk/src/sdk/sdk.use-case.spec.ts'))).toBe(true)
+    expect(readFileSync(join(workspaceRoot, 'packages/sdk/src/sdk/sdk.use-case.spec.ts'), 'utf8'))
       .toContain("'./sdk.use-case'")
   })
 

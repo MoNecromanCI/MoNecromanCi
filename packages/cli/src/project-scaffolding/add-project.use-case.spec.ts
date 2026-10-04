@@ -130,9 +130,10 @@ describe('runAdd', () => {
 
     await runAdd('internal-lib', 'utils', {})
 
-    expect(existsSync(join(workspaceRoot, 'libs/utils/src/lib/utils.use-case.ts'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'libs/utils/src/utils/utils.use-case.ts'))).toBe(true)
+    expect(existsSync(join(workspaceRoot, 'libs/utils/src/lib'))).toBe(false)
     expect(readFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), 'utf8'))
-      .toContain("'./lib/utils.use-case.js'")
+      .toContain("'./utils/index.js'")
   })
 
   it('prompts for the kind and name when omitted', async () => {

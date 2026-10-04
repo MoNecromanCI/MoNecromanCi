@@ -92,8 +92,8 @@ export async function addNpmLib (
       // per-project config is deleted rather than overwritten.
       // Nx writes a README crediting itself; mnci generated this project.
       writeProjectReadme(projectRoot, `${scope}/${name}`, stack.testRunner)
-      // @nx/js:lib's `src/lib/<name>.ts` has no role suffix, so mnci's own
-      // vertical-slices/file-role rule rejects it on the first lint.
+      // @nx/js:lib scaffolds a bare `src/lib/<name>.ts` in a generic bucket;
+      // reshape it into a real project-named slice with its own barrel.
       renameScaffoldPlaceholder(projectRoot, name)
       removeGeneratedEslintConfig(workspaceRoot, `packages/${name}`)
       // `--publishable` also scaffolds a whole local-registry story (verdaccio
