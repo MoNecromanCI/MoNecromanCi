@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
+import { declareSidecarDependencies } from '../go-workspace'
 import { VSCODE_EXTENSION_TAG } from '../workspace-overlay'
 import { runNodeApp } from './node.use-case'
 import {
@@ -761,6 +762,9 @@ export function addVscodeExtension (
     'package':            vscodeExtensionPackageTarget(name, sidecar),
     'nx-release-publish': vscodeExtensionPublishTarget(name, sidecar),
   })
+  // After the package target, which is where the sidecar is recorded: the extension
+  // depends on the Go app it ships, so a change to that app's libraries releases it.
+  declareSidecarDependencies(workspaceRoot)
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
   registerProjectCommands(workspaceRoot, name, { build: true })
   addDebugLaunch(workspaceRoot, name)

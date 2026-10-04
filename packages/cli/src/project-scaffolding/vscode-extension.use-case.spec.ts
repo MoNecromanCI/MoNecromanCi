@@ -213,6 +213,23 @@ describe('runAdd vscode-extension', () => {
     expect(targets['nx-release-publish'].options.command).toContain('--sidecar engine')
   })
 
+  it('depends on the Go app it ships, so a change to that app\'s libraries releases the extension', async () => {
+    // Measured: with no edge, a commit touching only a Go library the sidecar imports left
+    // `nx release` seeing "no changes" for the extension, so it was never published.
+    mkdirSync(join(workspaceRoot, 'apps/engine'), { recursive: true })
+    writeFileSync(join(workspaceRoot, 'apps/engine/project.json'), '{}')
+
+    await runAdd('vscode-extension', 'ext', { sidecar: 'engine' })
+
+    expect((manifest().nx as { implicitDependencies?: string[] }).implicitDependencies).toEqual(['engine'])
+  })
+
+  it('declares no dependency for an extension that ships no sidecar', async () => {
+    await runAdd('vscode-extension', 'ext', {})
+
+    expect((manifest().nx as { implicitDependencies?: string[] }).implicitDependencies).toBeUndefined()
+  })
+
   it('refuses a sidecar that is not a Go app, before generating anything', async () => {
     await expect(runAdd('vscode-extension', 'ext', { sidecar: 'missing' })).rejects.toThrow('no Go app at apps/missing')
     expect(mockRunNx).not.toHaveBeenCalled()

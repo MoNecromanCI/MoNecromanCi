@@ -3428,6 +3428,45 @@ section('vscode extension', ['alt stack'], () => {
       vsxRelease.output.includes('Dry run - would publish'),
     vsxRelease.output,
   )
+
+  /* -------------------------------------------------------------------------
+   * An extension follows the libraries of the Go app it ships. `--sidecar` used to be
+   * only a string in a command, so the project graph had no edge from the extension to
+   * its sidecar, and a commit that touched only a Go library the sidecar imports left
+   * `nx release` seeing "no changes" for the extension: it was never published, though
+   * the engine inside it had changed. Found in a real workspace, then measured here.
+   * ----------------------------------------------------------------------- */
+  if (withSidecar) {
+    enforce(
+      'vscode: an extension with a sidecar depends on it, so the Go app\'s libraries reach the extension',
+      (editorManifest.nx?.implicitDependencies ?? []).includes('engine'),
+      JSON.stringify(editorManifest.nx?.implicitDependencies),
+    )
+    run(`node ${CLI} add go-internal-lib shared`, vsxWorkspace)
+    const vsxModule = /^module\s+(?<module>\S+)/m.exec(readFileSync(path.join(vsxWorkspace, 'go.mod'), 'utf8'))?.groups?.module
+    writeFileSync(
+      path.join(vsxWorkspace, 'apps/engine/main.go'),
+      `package main\n\nimport (\n\t"fmt"\n\n\t"${vsxModule}/libs/shared/shared"\n)\n\nfunc main() {\n\tfmt.Println(shared.Shared("engine"))\n}\n`,
+    )
+    rmSync(path.join(vsxWorkspace, 'apps/engine/main_test.go'), { force: true })
+    run('git add -A', vsxWorkspace)
+    run('git -c user.email=e2e@mnci.invalid -c user.name=e2e commit -q --no-verify -m "feat: the engine uses a shared library"', vsxWorkspace)
+    // The baseline: the extension as it was last released, so only what follows counts.
+    run('git tag editor@0.0.1', vsxWorkspace)
+
+    const sharedSource = path.join(vsxWorkspace, 'libs/shared/shared/shared_use_case.go')
+    writeFileSync(sharedSource, `${readFileSync(sharedSource, 'utf8')}// A change in the library, and nothing else.\n`)
+    run('git add -A', vsxWorkspace)
+    run('git -c user.email=e2e@mnci.invalid -c user.name=e2e commit -q --no-verify -m "fix(shared): a change in the library the engine imports"', vsxWorkspace)
+    const vsxLibraryRelease = tryRunCapture('npx nx release --dry-run', vsxWorkspace)
+    enforce(
+      'vscode: a commit that touches only a Go library the sidecar imports versions the extension',
+      vsxLibraryRelease.ok &&
+        /New version \S+ written to manifest: apps[/\\]editor[/\\]package\.json/.test(vsxLibraryRelease.output) &&
+        !vsxLibraryRelease.output.includes('No changes were detected'),
+      vsxLibraryRelease.output,
+    )
+  }
 })
 /* ---------------------------------------------------------------------------
  * Report

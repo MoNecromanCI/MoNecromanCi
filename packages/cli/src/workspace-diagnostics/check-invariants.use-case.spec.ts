@@ -1256,3 +1256,63 @@ describe('doctor: the Go plugin is registered (#261)', () => {
     expect(collectFindings(workspaceRoot).filter(finding => !finding.ok && finding.check.includes('@nx-go'))).toEqual([])
   })
 })
+
+/** Seeds a healthy workspace with a VS Code extension, shipping a sidecar or not, with the given implicit dependencies. */
+function seedExtension (options: { sidecar?: string; implicitDependencies?: string[] }): void {
+  seedHealthyWorkspace()
+  const command = `node tools/vscode-extension.cjs package apps/ext${options.sidecar === undefined ? '' : ` --sidecar ${options.sidecar}`}`
+  mkdirSync(join(workspaceRoot, 'apps/ext'), { recursive: true })
+  writeFileSync(
+    join(workspaceRoot, 'apps/ext/package.json'),
+    JSON.stringify({
+      name: 'ext',
+      nx:   { name: 'ext', tags: ['type:vscode-extension'], implicitDependencies: options.implicitDependencies, targets: { package: { options: { command } } } },
+    }),
+  )
+}
+
+/** The findings about an extension's sidecar, among all of them. */
+function sidecarFindings (findings: Finding[]): Finding[] {
+  return findings.filter(finding => finding.check.includes('its sidecar'))
+}
+
+describe('doctor: a VS Code extension depends on the Go app it ships', () => {
+  it('passes when the extension depends on its sidecar', () => {
+    seedExtension({ sidecar: 'engine', implicitDependencies: ['engine'] })
+
+    const findings = sidecarFindings(collectFindings(workspaceRoot))
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0].ok).toBe(true)
+  })
+
+  it('fails, naming what is lost and the fix, when it does not', () => {
+    seedExtension({ sidecar: 'engine' })
+
+    const [finding] = sidecarFindings(collectFindings(workspaceRoot))
+
+    expect(finding.ok).toBe(false)
+    expect(finding.check).toContain('ext depends on its sidecar engine')
+    // The cost, in the terms the reader met it in: the extension is never published.
+    expect(finding.detail).toContain('never published')
+    expect(finding.remedy).toBe('run `mnci upgrade`')
+  })
+
+  it('does not count another implicit dependency as the sidecar', () => {
+    seedExtension({ sidecar: 'engine', implicitDependencies: ['something-else'] })
+
+    expect(sidecarFindings(collectFindings(workspaceRoot))[0].ok).toBe(false)
+  })
+
+  it('says nothing about an extension that ships no sidecar, so nobody else sees the line', () => {
+    seedExtension({})
+
+    expect(sidecarFindings(collectFindings(workspaceRoot))).toEqual([])
+  })
+
+  it('says nothing in a workspace with no extension', () => {
+    seedHealthyWorkspace()
+
+    expect(sidecarFindings(collectFindings(workspaceRoot))).toEqual([])
+  })
+})
