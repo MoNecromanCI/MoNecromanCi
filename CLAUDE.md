@@ -81,7 +81,7 @@ committing an upgrade.
 - **Release**: `nx release` (versioning from conventional commits, git tag-only push)
 - **CI**: Azure Pipelines and/or GitHub Actions
 - **Python toolchain**: pip (not uv), Ruff, pytest, PyPA `build`/`twine`
-- **Go toolchain**: one root `go.mod` (single module), golangci-lint, `go test`, via `@nx-go/nx-go`
+- **Go toolchain**: multi-module (one `go.mod` per project, a root `go.work` mnci owns), golangci-lint, `go test`, via `@nx-go/nx-go`
 - **Flutter toolchain**: one root `pubspec.yaml` (Dart pub workspace), `flutter analyze`/`test`, via `@mnci/nx-flutter`
 - **.NET toolchain**: `dotnet` SDK, delegating to `@nx/dotnet` (inference-only — no generators, so mnci scaffolds via `dotnet new` directly), `dotnet pack`/`dotnet nuget push` for release
 
@@ -119,8 +119,10 @@ committing an upgrade.
 
 - **`packages/cli/src/project-scaffolding/go.use-case.ts`** — the four Go kinds, delegating to
   `@nx-go/nx-go` (validated on Nx 23 despite its declared `< 23` devkit range).
-  Bootstraps one root `go.mod` via the plugin's `init` + `convert-to-one-mod`,
-  then writes build/test/lint targets explicitly. Lint is pinned to
+  Bootstraps a `go.work` workspace via the plugin's `init` (no `convert-to-one-mod`),
+  so each generator writes its own per-project `go.mod`; mnci then rewrites that
+  module line to the git-origin prefix (`setGoModulePath`) and writes build/test/lint
+  targets explicitly. Lint is pinned to
   `golangci-lint`; the plugin's own default is `go fmt`, which only reformats.
   CI installs it at `GOLANGCI_LINT_VERSION` from the prebuilt release, verified
   against its SHA-256 checksums (~1 s, versus ~70 s compiling `@latest`), falling
@@ -139,13 +141,13 @@ committing an upgrade.
   sample into one starter slice (`libs/<name>/<pkg>/<snake>_use_case.go`).
   The plugin's `test`/`lint` executors already run `./...` from the project
   root (measured, #233), so every slice package is covered with no target change.
-- `go-lib` is deliberately **excluded from `release.projects`** via
-  `!tag:type:go-lib`. Not tuning — a bug fix: a `go-lib` lands in `packages/`
-  but has no per-project manifest, so Nx's default `versionActions` looks for a
-  `package.json` that isn't there and aborts while building the release graph,
-  which kills `nx release` for the _whole_ workspace. Excluding is also the
-  semantically right call: one root `go.mod` means one module, so its packages
-  have no independent versions to bump.
+- `go-lib` is **excluded from `release.projects`** via `!tag:type:go-lib` — for now.
+  The original reason (a `go-lib` had no per-project manifest, so Nx's default
+  `versionActions` looked for a `package.json` that wasn't there and aborted the whole
+  release graph) no longer holds under multi-module: a `go-lib` now has its own `go.mod`
+  and module path. Releasing it properly means Go **nested-module tags**
+  (`libs/<name>/v1.2.3`), which is the remaining #289 work; until that lands it stays
+  excluded so `nx release` doesn't trip on it.
 
 ### VS Code extensions (`vscode-extension`)
 
@@ -182,7 +184,7 @@ committing an upgrade.
   generators — `@nx/dotnet` is **inference-only** (confirmed by `npm pack`ing
   it and reading its contents: it ships no `generators.json` at all), so it
   writes no `project.json` and mnci writes every target explicitly, the same
-  posture as Go's single-module layout.
+  posture as mnci's explicit Go targets.
 - **`writeCsharpVersionActions()`** writes `tools/csharp-version-actions.cjs`
   into the *generated* workspace — a workspace-relative `.cjs` file, not a
   new npm package. Nx's `resolveVersionActionsPath` tries `require.resolve`
@@ -345,13 +347,16 @@ Nx plugin where none does:
 - **Python** — `@mnci/nx-python-pip`, a real first-party `@nx/devkit` plugin (pip, Ruff,
   pytest, PyPA `build`/`twine`; no uv, no Poetry). Kinds: `python-app`, `python-lib`,
   `python-internal-lib`, `python-function-app`. Vendoring via `mnci add python-vendor`.
-- **Go** — `@nx-go/nx-go` (third-party), one root `go.mod`, **no** `go.work` and no
-  per-project manifests. Kinds: `go-app`, `go-lib`, `go-internal-lib`,
-  `go-function-app`. Every target is written explicitly by `project-scaffolding/go.use-case.ts` — the plugin's
-  inference needs a per-project `go.mod`, which the single-module layout doesn't have.
-  `go-lib` is excluded from `release.projects` (`!tag:type:go-lib`): it has no
-  per-project manifest, so Nx's default `versionActions` would abort the whole release
-  graph. `golangci-lint`, not the plugin's `go fmt` default.
+- **Go** — `@nx-go/nx-go` (third-party), **multi-module** (#289): one `go.mod` per project
+  and a root `go.work` mnci owns (a `use` entry per project; `mnci doctor` fails on a stale
+  one). Kinds: `go-app`, `go-lib`, `go-internal-lib`, `go-function-app`. Each module path is
+  `<host>/<org>/<repo>/<dir>` from the git origin — mnci writes the `go.mod` module line
+  itself, since `@nx-go/nx-go@4.1.1` names a module after its directory alone. Targets are
+  written explicitly by `project-scaffolding/go.use-case.ts` and override the plugin's inferred
+  ones; `golangci-lint`, not the plugin's `go fmt` default. `go-lib` stays excluded from
+  `release.projects` (`!tag:type:go-lib`) for now — releasing it via Go nested-module tags
+  (`libs/<name>/v1.2.3`) is the remaining #289 work. An adopted flat repo (existing root
+  `go.mod`, no `go.work`) is left single-module until migrated.
 - **Flutter** — `@mnci/nx-flutter`, a first-party plugin built on a **Dart pub
   workspace**: one root `pubspec.yaml`, every member with `resolution: workspace` and
   an entry in the root `workspace:` list (miss either and pub silently resolves that
@@ -802,12 +807,12 @@ guard decodes. Check which before wiring a third protocol.
 - `mnci upgrade` re-applies overlay safely (overwrites mnci-owned files only)
 - Stack is persisted in `nx.json`'s `mnci` block (upgrade reads it back)
 - All shell commands use cross-spawn (safe from injection)
-- Shared dev/tool packages live at the ROOT; runtime dependencies belong to the package that imports them. Go is the stated exception — one root `go.mod` means there is no per-project manifest to own anything
+- Shared dev/tool packages live at the ROOT; runtime dependencies belong to the package that imports them. Go now follows this too (#289): one `go.mod` per project, so each owns its dependencies
 - A peer range is never rewritten by mnci: it declares compatibility, not a version choice, and narrowing it drops consumers
 - `nx sync` reconciles TypeScript project references ONLY — it has no opinion about dependency versions
 - Python toolchain is invoked as `python3 -m <tool>` (not venv paths, works cross-platform)
-- Go uses a SINGLE root `go.mod`; never reintroduce `go.work` (a stale `use` entry breaks the whole Nx graph)
-- Go targets are written explicitly by `project-scaffolding/go.use-case.ts` — `@nx-go/nx-go`'s inference needs a per-project `go.mod`, which the single-module layout has not
+- Go is a MULTI-module workspace (#289): one `go.mod` per project and a root `go.work` that **mnci owns** — `@nx-go/nx-go`'s generators add a `use` entry per project, and `mnci doctor` fails on a stale one (a `use` entry whose directory is gone, which otherwise breaks the whole Nx graph). Each module path is `<host>/<org>/<repo>/<dir>` derived from the git origin, so a `go-lib` is `go get`-able; mnci writes the `go.mod` module line itself because `@nx-go/nx-go@4.1.1` names a module after its directory alone. An adopted flat repo (existing root `go.mod`, no `go.work`) is left single-module until migrated
+- Go targets are written explicitly by `project-scaffolding/go.use-case.ts` and override the plugin's inferred ones (lint is pinned to golangci-lint, not the plugin's `go fmt` default)
 - Flutter uses a SINGLE root `pubspec.yaml` pub workspace; every member needs `resolution: workspace` **and** an entry in the root `workspace:` list. Miss either and pub silently resolves that project standalone, giving it its own lockfile and dropping it out of the shared resolution
 - A publishable `flutter-lib` MUST keep its `release.version.versionActions` override — without it `nx release` fails for the entire workspace, not just that project (same failure mode as the `go-lib` exclusion above)
 - The Flutter SDK is installed **outside** the workspace by CI; never clone it inside, as it ships its own nested `pubspec.yaml` files that pollute pub resolution and the Nx graph

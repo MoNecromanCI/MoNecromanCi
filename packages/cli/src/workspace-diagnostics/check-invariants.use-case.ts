@@ -855,6 +855,40 @@ function checkGoPluginRegistered (workspaceRoot: string): Finding | undefined {
 }
 
 /**
+ * Checks that every `go.work` `use` entry points to a module that still exists.
+ *
+ * @remarks
+ * This is the failure the single-module layout used to avoid: a `use` entry whose directory
+ * was removed by hand makes `go list -m` fail, which breaks the **whole** Nx project graph,
+ * not just the Go projects. mnci owns `go.work` (its generators add an entry per project), so
+ * catching a stale one here is what lets the multi-module layout be safe (#289). Nothing for a
+ * workspace with no `go.work` — an adopted flat repo stays single-module and has none.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The finding, or `undefined` when there is no `go.work`.
+ * @throws Never - an unreadable `go.work` is treated as empty.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkGoWorkInSync (workspaceRoot: string): Finding | undefined {
+  const goWorkPath = join(workspaceRoot, 'go.work')
+  if (!fileExists(goWorkPath)) {
+    return undefined
+  }
+  const contents = existsSync(goWorkPath) ? readFileSync(goWorkPath, 'utf8') : ''
+  const blockEntries = Array.from(contents.matchAll(/(?:^|\n)\s*use\s+\(([^)]*)\)/g), match => match[1].split('\n')).flat()
+  const singleEntries = Array.from(contents.matchAll(/(?:^|\n)\s*use\s+(\.\S+)/g), match => match[1])
+  const uses = [...blockEntries, ...singleEntries].map(entry => entry.trim()).filter(Boolean)
+  const stale = uses.filter(entry => !existsSync(join(workspaceRoot, entry, 'go.mod')))
+
+  return {
+    check:  'every go.work `use` entry points to a module that still exists',
+    ok:     stale.length === 0,
+    detail: `go.work lists ${stale.join(', ')} but there is no go.mod there — \`go list -m\` fails, which breaks the whole Nx project graph`,
+    remedy: 'drop the stale `use` line(s) from go.work (mnci owns the file; a removed Go project should have its entry removed)',
+  }
+}
+
+/**
  * Checks what a workspace with a native (cgo) Go app needs to build it.
  *
  * @remarks
@@ -1143,6 +1177,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkTargetFilesExist(workspaceRoot),
     checkSync(workspaceRoot),
     checkGoPluginRegistered(workspaceRoot),
+    checkGoWorkInSync(workspaceRoot),
     ...checkNativeApps(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }

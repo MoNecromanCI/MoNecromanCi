@@ -2385,8 +2385,8 @@ section('python', ['alt stack'], () => {
 })
 section('go', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
-   * Go — @nx-go/nx-go, the one third-party plugin, in the single-root-`go.mod`
-   * layout mnci imposes on it.
+   * Go — @nx-go/nx-go, the one third-party plugin, in the multi-module `go.work`
+   * layout mnci drives it in (one go.mod per project, #289).
    *
    * This section closes the coverage hole ROADMAP §6 recorded: all four Go kinds
    * had real unit tests and real CI wiring, but nothing had ever driven them end to
@@ -2397,32 +2397,45 @@ section('go', ['alt stack'], () => {
 
   if (hasGo()) {
     console.log('\n▸ mnci add go-app / go-internal-lib / go-lib / go-function-app')
+    // A git origin, so each project's module path resolves to a fetchable prefix
+    // (mnci derives <host>/<org>/<repo> from it). Without one the paths fall back to
+    // the bare directory, which go.work still resolves but `go get` could not.
+    run('git remote add origin https://github.com/mnci-e2e/alt.git', altWorkspace)
     run(`node ${CLI} add go-app goapi`, altWorkspace)
     run(`node ${CLI} add go-internal-lib goutil`, altWorkspace)
     run(`node ${CLI} add go-lib gocore`, altWorkspace)
     run(`node ${CLI} add go-function-app gofn`, altWorkspace)
 
-    // The layout invariant, and the one with the widest blast radius if broken: a
-    // stale `go.work` `use` entry breaks the entire Nx graph, not just Go.
+    // The multi-module layout: a root go.work ties one go.mod per project together,
+    // so each project owns its dependencies (#289). mnci owns go.work — every add
+    // writes a use entry — so the stale-entry failure that once broke the whole Nx
+    // graph cannot arise from a hand edit.
+    const goModFiles = findFiles(altWorkspace, name => name === 'go.mod')
     enforce(
-      'go: ONE root go.mod and NO go.work anywhere — the single-module layout',
-      existsSync(path.join(altWorkspace, 'go.mod')) &&
-        !existsSync(path.join(altWorkspace, 'go.work')) &&
-        findFiles(altWorkspace, name => name === 'go.mod').length === 1,
-      findFiles(altWorkspace, name => name === 'go.mod').join(', '),
+      'go: a root go.work and one go.mod per project (multi-module), no single root go.mod',
+      existsSync(path.join(altWorkspace, 'go.work')) &&
+        !existsSync(path.join(altWorkspace, 'go.mod')) &&
+        goModFiles.length === 4,
+      `go.work: ${existsSync(path.join(altWorkspace, 'go.work'))}; go.mod files: ${goModFiles.join(', ')}`,
     )
 
-    // Read rather than hardcoded: the module path comes from the workspace scope,
-    // so hardcoding it would make this section quietly wrong on a rename.
-    const goModule = readFileSync(path.join(altWorkspace, 'go.mod'), 'utf8')
+    // The prefix every project's module path shares, read from goapi's own go.mod
+    // (its module is <prefix>/apps/goapi) rather than hardcoded, so a rename stays honest.
+    const goModule = readFileSync(path.join(altWorkspace, 'apps/goapi/go.mod'), 'utf8')
       .split('\n', 1)[0]
       .replace('module ', '')
+      .replace(/\/apps\/goapi$/, '')
       .trim()
+    enforce(
+      'go: each project module path is the git-origin prefix plus its directory, so a go-lib is go get-able',
+      goModule === 'github.com/mnci-e2e/alt' &&
+        readFileSync(path.join(altWorkspace, 'libs/goutil/go.mod'), 'utf8').includes('module github.com/mnci-e2e/alt/libs/goutil'),
+      `prefix read as: ${goModule}`,
+    )
 
-    // Nothing is inferred in single-module mode: @nx-go/nx-go's inference keys on a
-    // per-project go.mod, which this layout deliberately does not have, so add/go.ts
-    // writes every target explicitly. If that ever regressed, the targets would
-    // silently vanish rather than fail loudly.
+    // mnci writes every Go target explicitly (and they override the plugin's inferred
+    // ones — lint is pinned to golangci-lint, not the plugin's `go fmt` default). If that
+    // ever regressed, the targets would silently vanish rather than fail loudly.
     for (const [project, directory, expected] of [
       ['goapi', 'apps/goapi', ['build', 'test', 'lint', 'package', 'build-all', 'package-all', 'start']],
       ['goutil', 'libs/goutil', ['test', 'lint']],
@@ -2475,11 +2488,11 @@ section('go', ['alt stack'], () => {
       )
     }
 
-    // THE payoff of one root module: a cross-project import needs no vendoring, no
-    // `replace` directive and no per-project manifest — just the import path.
+    // THE payoff of the go.work workspace: a cross-project import needs no vendoring and
+    // no `replace` directive — go.work resolves the sibling module locally by its path.
     writeFileSync(
       path.join(altWorkspace, 'apps/goapi/main.go'),
-      `package main\n\nimport (\n\t"fmt"\n\n\t"${goModule}/libs/goutil/goutil"\n)\n\n// Hello delegates across a project boundary through the single root module.\nfunc Hello(name string) string {\n\treturn goutil.Goutil(name)\n}\n\nfunc main() {\n\tfmt.Println(Hello("goapi"))\n}\n`,
+      `package main\n\nimport (\n\t"fmt"\n\n\t"${goModule}/libs/goutil/goutil"\n)\n\n// Hello delegates across a project boundary, resolved locally through go.work.\nfunc Hello(name string) string {\n\treturn goutil.Goutil(name)\n}\n\nfunc main() {\n\tfmt.Println(Hello("goapi"))\n}\n`,
     )
     writeFileSync(
       path.join(altWorkspace, 'apps/goapi/main_test.go'),
@@ -2500,9 +2513,9 @@ section('go', ['alt stack'], () => {
      * The project graph carries the app -> lib edge, and `affected` follows it
      * (MoNecromanCI/MoNecromanCi#260).
      *
-     * The pipeline verifies only the AFFECTED projects on a pull request, and
-     * `@nx-go/nx-go` infers no targets in the single-module layout, so nothing said
-     * it still infers the edges. If it stopped, a change to a lib would affect
+     * The pipeline verifies only the AFFECTED projects on a pull request, and the
+     * Go graph edges are the plugin's inference (mnci writes targets, not edges), so
+     * nothing but this said it still infers them. If it stopped, a change to a lib would affect
      * nothing: CI would run next to nothing, report green, and have tested none of
      * the apps that import it. Measured to hold on `@nx-go/nx-go` 4.1.1 with Nx
      * 23.2.0, for a direct import, a transitive one, two apps sharing one lib and
