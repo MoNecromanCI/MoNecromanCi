@@ -1221,7 +1221,7 @@ section('js stack', [], () => {
   // @standard-clean
   writeFileSync(
     path.join(workspace, 'apps/api/src/main.ts'),
-    "// esbuild only includes what is reachable from here, so add one import per\n// function file you create under src/functions/.\nimport './functions/hello'\nimport { apiDeps } from './deps'\n\nconsole.log(apiDeps())\n",
+    "// esbuild only includes what is reachable from here, so add one import per\n// function slice you create under src/ (through its index).\nimport './hello'\nimport { apiDeps } from './deps'\n\nconsole.log(apiDeps())\n",
   )
   run('npx nx sync', workspace)
 

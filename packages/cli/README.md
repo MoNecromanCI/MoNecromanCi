@@ -1335,12 +1335,12 @@ already use:
 - **`node-function-app` overlay**: `@azure/functions` is installed for real
   (a plain `@nx/node:application` app has no Azure dependency by default,
   unlike a plugin-generated one), an HTTP-triggered `app.http(...)` sample
-  (v4 programming model) is written under `src/functions/`, `host.json` is
+  (v4 programming model) is written as a `src/hello/` slice (`hello.handler.ts` plus a pure `greeting.algorithm.ts` and its spec, behind an `index.ts`), `host.json` is
   added, and the manifest is repaired — `main: 'main.js'` (the dist shim) and
   `@azure/functions` added to `dependencies` for Azure's deploy-time install
   to find.
 - **Convention** (both kinds): `src/main.ts` is the esbuild entry — add one
-  import per function file you create under `src/functions/`, or it won't be
+  import per function slice you create under `src/` (through its `index.ts`), or it won't be
   reachable (and thus won't be transpiled into `dist`).
 
 ## How React apps work (one build per environment)

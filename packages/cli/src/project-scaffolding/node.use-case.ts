@@ -272,13 +272,13 @@ function ensureAzureFunctionsPackage (workspaceRoot: string): void {
  * @remarks
  * `@nx/esbuild:esbuild` only includes what is reachable from `main.ts` — the
  * same convention the removed hand-rolled function app used — so add one
- * import per function file you create under `src/functions/`. The import
+ * import per function slice you create under `src/`. The import
  * runs `app.http(...)` (or another trigger registration) as a side effect;
  * nothing needs to be re-exported.
  */
 export const NODE_FUNCTION_APP_MAIN = `// esbuild only includes what is reachable from here, so add one import per
-// function file you create under src/functions/.
-import './functions/hello'
+// function slice you create under src/ (through its index).
+import './hello'
 `
 
 /**
@@ -312,7 +312,7 @@ export const NODE_FUNCTION_APP_HOST_JSON = `{
  */
 export const NODE_FUNCTION_APP_HELLO = `import { app } from '@azure/functions'
 import type { HttpRequest, HttpResponseInit } from '@azure/functions'
-import { buildGreeting } from './greeting'
+import { buildGreeting } from './greeting.algorithm'
 
 async function hello(request: HttpRequest): Promise<HttpResponseInit> {
   const name = request.query.get('name') ?? 'world'
@@ -325,6 +325,15 @@ app.http('hello', {
   route: 'hello',
   handler: hello,
 })
+`
+
+/**
+ * The barrel of the sample function's slice.
+ *
+ * @remarks
+ * The one door `main.ts` imports through, as the slice rules require of a sibling.
+ */
+export const NODE_FUNCTION_APP_HELLO_BARREL = `export * from './hello.handler'
 `
 
 /**
@@ -349,7 +358,7 @@ export const NODE_FUNCTION_APP_GREETING = `export function buildGreeting (name: 
  * chosen runner natively (unlike the removed hand-rolled function app, which
  * carried no test setup of its own).
  */
-export const NODE_FUNCTION_APP_GREETING_SPEC = `import { buildGreeting } from './greeting'
+export const NODE_FUNCTION_APP_GREETING_SPEC = `import { buildGreeting } from './greeting.algorithm'
 
 describe('buildGreeting', () => {
   it('greets a name', () => {
@@ -547,15 +556,12 @@ export function addNodeFunctionApp (
   ensureAzureFunctionsPackage(workspaceRoot)
   const nodeFunctionAppRoot = join(workspaceRoot, 'apps', name)
   writeFileEnsured(join(nodeFunctionAppRoot, 'src/main.ts'), NODE_FUNCTION_APP_MAIN)
-  writeFileEnsured(join(nodeFunctionAppRoot, 'src/functions/hello.ts'), NODE_FUNCTION_APP_HELLO)
-  writeFileEnsured(
-    join(nodeFunctionAppRoot, 'src/functions/greeting.ts'),
-    NODE_FUNCTION_APP_GREETING,
-  )
-  writeFileEnsured(
-    join(nodeFunctionAppRoot, 'src/functions/greeting.spec.ts'),
-    NODE_FUNCTION_APP_GREETING_SPEC,
-  )
+  // One slice per function: the handler adapts the transport, the greeting is a pure
+  // computation, and the barrel is the slice's door (main.ts reaches it through that).
+  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/hello.handler.ts'), NODE_FUNCTION_APP_HELLO)
+  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/greeting.algorithm.ts'), NODE_FUNCTION_APP_GREETING)
+  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/greeting.algorithm.spec.ts'), NODE_FUNCTION_APP_GREETING_SPEC)
+  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/index.ts'), NODE_FUNCTION_APP_HELLO_BARREL)
   writeFileEnsured(join(nodeFunctionAppRoot, 'host.json'), NODE_FUNCTION_APP_HOST_JSON)
   repairNodeFunctionAppManifest(nodeFunctionAppRoot, workspaceRoot)
   ensureAdmZip(workspaceRoot)
