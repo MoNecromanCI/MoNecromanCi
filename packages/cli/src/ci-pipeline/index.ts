@@ -9,15 +9,19 @@
  * developer's machine as in CI.
  */
 
-import { runVerify, type VerifyDependencies } from './verify.use-case'
+import { runPack } from './pack.use-case'
+import { runVerify } from './verify.use-case'
+import type { CiDependencies } from './phase.contract'
 
 /**
  * The phases that exist.
  *
  * @remarks
- * More arrive as their guards are ported from the generated pipelines.
+ * More arrive as their guards are ported from the generated pipelines. The order is the one
+ * the pipeline runs them in: `verify` gates every run; `pack` builds, on main, the per-app
+ * artifacts a release then publishes.
  */
-export const CI_PHASES = ['verify'] as const
+export const CI_PHASES = ['verify', 'pack'] as const
 
 /**
  * One of {@link CI_PHASES}.
@@ -43,13 +47,16 @@ export type CiPhase = typeof CI_PHASES[number]
  * @throws Never - a failing command is a status, not an exception.
  * @typeParam None - this function has no generic type parameters.
  */
-export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<VerifyDependencies> = {}): number {
+export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): number {
   switch (phase) {
     case 'verify': {
       return runVerify(workspaceRoot, dependencies)
+    }
+    case 'pack': {
+      return runPack(workspaceRoot, dependencies)
     }
   }
 }
 
 export { detectCiHost, groupEnd, groupStart, pullRequestTarget, type CiHost } from './ci-environment.client'
-export type { CiProcesses, VerifyDependencies } from './verify.use-case'
+export type { CiDependencies, CiProcesses } from './phase.contract'

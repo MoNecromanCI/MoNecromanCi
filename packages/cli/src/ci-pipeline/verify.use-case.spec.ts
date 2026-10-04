@@ -4,7 +4,8 @@ jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), se
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runVerify, type CiProcesses } from './verify.use-case'
+import { runVerify } from './verify.use-case'
+import type { CiProcesses } from './phase.contract'
 
 const TARGETS = 'lint,typecheck,test,build'
 
