@@ -45,7 +45,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/russoedu/MoNecromanCi.git",
+    "url": "git+https://github.com/MoNecromanCI/MoNecromanCi.git",
     "directory": "packages/nx-flutter"
   },
   "peerDependencies": {

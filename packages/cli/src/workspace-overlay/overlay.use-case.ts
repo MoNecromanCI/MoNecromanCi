@@ -2380,7 +2380,7 @@ const GO_MODULE_DOWNLOAD_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\
  *
  * @remarks
  * Pinned, like {@link FLUTTER_SDK_VERSION}, for two reasons measured on a real
- * generated workspace (russoedu/MoNecromanCi#239):
+ * generated workspace (MoNecromanCI/MoNecromanCi#239):
  *
  * - **Reproducibility.** The guard used to `go install …@latest`, so a new
  *   golangci-lint release could add or tighten linters and turn every

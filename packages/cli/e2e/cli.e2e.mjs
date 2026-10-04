@@ -2458,7 +2458,7 @@ section('go', ['alt stack'], () => {
     )
 
     // A Go library is a capability of slice packages, not one flat root package
-    // (russoedu/MoNecromanCi#227): the generator's root `<name>.go` is replaced by
+    // (MoNecromanCI/MoNecromanCi#227): the generator's root `<name>.go` is replaced by
     // `doc.go`, and its sample code moves into one starter slice package.
     for (const [directory, slice, stem] of [
       ['libs/goutil', 'goutil', 'goutil'],
@@ -2498,7 +2498,7 @@ section('go', ['alt stack'], () => {
 
     /* -------------------------------------------------------------------------
      * The project graph carries the app -> lib edge, and `affected` follows it
-     * (russoedu/MoNecromanCi#260).
+     * (MoNecromanCI/MoNecromanCi#260).
      *
      * The pipeline verifies only the AFFECTED projects on a pull request, and
      * `@nx-go/nx-go` infers no targets in the single-module layout, so nothing said
@@ -2599,7 +2599,7 @@ section('go', ['alt stack'], () => {
 
     // The Go test and lint targets carry no package list: @nx-go/nx-go appends
     // `./...` and runs from the project root, so every slice package below it is
-    // covered (russoedu/MoNecromanCi#233). Pinned here because that recursion is
+    // covered (MoNecromanCI/MoNecromanCi#233). Pinned here because that recursion is
     // the plugin's behaviour, not mnci's, and a lib whose slices silently fell out
     // of `test` would report green while testing nothing.
     const nestedSlice = path.join(altWorkspace, 'libs/goutil/greeting')
