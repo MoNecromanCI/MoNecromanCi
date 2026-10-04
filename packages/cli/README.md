@@ -204,7 +204,7 @@ value always wins.
 swc's `transform()` without `sourceMaps`, so swc returns no map, the rollup
 chain breaks, and the map comes out valid-looking and **empty** — `sources: []`.
 Measured on a real package: swc gave 0 sources, babel gave 9. Revert the swap
-once Nx passes `sourceMaps` through; ROADMAP 7d has the one-line upstream fix.
+once Nx passes `sourceMaps` through; issue #308 has the one-line upstream fix.
 
 Re-measured against the exact toolchain `mnci new` pins today (Nx 23.2.0,
 `@swc/core` 1.15.8): `@nx/rollup`'s swc plugin still does **not** pass
