@@ -94,7 +94,7 @@ export async function addNpmLib (
       writeProjectReadme(projectRoot, `${scope}/${name}`, stack.testRunner)
       // @nx/js:lib scaffolds a bare `src/lib/<name>.ts` in a generic bucket;
       // reshape it into a real project-named slice with its own barrel.
-      renameScaffoldPlaceholder(projectRoot, name)
+      renameScaffoldPlaceholder(projectRoot, name, options.empty === true)
       removeGeneratedEslintConfig(workspaceRoot, `packages/${name}`)
       // `--publishable` also scaffolds a whole local-registry story (verdaccio
       // config, devDependency, root target) that mnci's tag-only release model

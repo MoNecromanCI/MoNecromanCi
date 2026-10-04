@@ -183,6 +183,19 @@ function reactScaffold (): void {
   writeFileSync(join(library(), 'src/index.ts'), lines("export * from './lib/utils'"))
 }
 
+describe('renameScaffoldPlaceholder --empty', () => {
+  it('leaves the slice folder with only a barrel, and the package barrel pointing at it', () => {
+    scaffold('')
+
+    renameScaffoldPlaceholder(library(), 'utils', true)
+
+    expect(exists('src/utils/utils.use-case.ts')).toBe(false)
+    expect(exists('src/utils/utils.use-case.spec.ts')).toBe(false)
+    expect(read('src/utils/index.ts')).toBe('export {}\n')
+    expect(read('src/index.ts')).toBe("export * from './utils'\n")
+  })
+})
+
 describe('reshapeReactScaffold', () => {
   it('moves the component, its spec and the CSS module into a project-named slice', () => {
     reactScaffold()
@@ -197,6 +210,16 @@ describe('reshapeReactScaffold', () => {
     expect(exists('src/utils/utils.module.css')).toBe(true)
     expect(read('src/utils/index.ts')).toBe("export * from './utils.component'\n")
     expect(read('src/index.ts')).toBe("export * from './utils'\n")
+  })
+
+  it('--empty drops the component, its spec and the CSS module it imports', () => {
+    reactScaffold()
+
+    reshapeReactScaffold(library(), 'utils', true)
+
+    expect(exists('src/utils/utils.component.tsx')).toBe(false)
+    expect(exists('src/utils/utils.module.css')).toBe(false)
+    expect(read('src/utils/index.ts')).toBe('export {}\n')
   })
 
   it('is a no-op once reshaped, and when the placeholder is absent', () => {

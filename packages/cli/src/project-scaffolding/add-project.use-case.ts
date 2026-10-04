@@ -177,6 +177,9 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'vscode-extension',
 ]
 
+/** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib'])
+
 /**
  * Adds a project to the workspace by delegating to the matching Nx generator.
  *
@@ -231,6 +234,9 @@ export async function runAdd (
       throw new Error(`${flag} applies to go-app only, not ${resolvedKind}.`)
     }
   }
+  if (options.empty === true && !EMPTY_KINDS.has(resolvedKind)) {
+    throw new Error(`--empty applies to ${[...EMPTY_KINDS].join(', ')}, not ${resolvedKind}.`)
+  }
   const resolvedName = name ?? (await promptText('Project name'))
   // Fails fast, before any install or generator call: the name becomes a
   // directory, an argv token and (for Python kinds) a module identifier — and
@@ -259,7 +265,7 @@ export async function runAdd (
       break
     }
     case 'react-internal-lib': {
-      addReactInternalLib(workspaceRoot, resolvedName, stack)
+      addReactInternalLib(workspaceRoot, resolvedName, stack, options.empty === true)
       break
     }
     case 'node-app': {
@@ -293,7 +299,7 @@ export async function runAdd (
       markPrivate(join(workspaceRoot, 'libs', resolvedName, 'package.json'))
       // Same @nx/js:lib placeholder, same slice reshape — see
       // renameScaffoldPlaceholder.
-      renameScaffoldPlaceholder(join(workspaceRoot, 'libs', resolvedName), resolvedName)
+      renameScaffoldPlaceholder(join(workspaceRoot, 'libs', resolvedName), resolvedName, options.empty === true)
       removeGeneratedEslintConfig(workspaceRoot, `libs/${resolvedName}`)
       registerProjectCommands(workspaceRoot, resolvedName, { build: true })
       break

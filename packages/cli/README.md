@@ -87,6 +87,7 @@ cd my-repo
 mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add node-app svc          # @nx/node (plain Node app, esbuild)
 mnci add node-app api --framework express  # ...or fastify | koa | nest
+mnci add npm-lib core --empty             # slice skeleton only, no sample (also internal-lib, react-lib, react-internal-lib)
 mnci add node-function-app api # @nx/node + an Azure Functions v4 overlay
 mnci add npm-lib sdk           # @nx/js publishable lib -> packages/
 mnci add internal-lib utils    # @nx/js private lib -> libs/

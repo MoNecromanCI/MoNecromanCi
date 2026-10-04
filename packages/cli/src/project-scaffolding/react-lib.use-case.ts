@@ -107,7 +107,7 @@ export async function addReactLib (
       repairDeclarationSpecifiers(projectRoot)
       writeProjectReadme(projectRoot, `${scope}/${name}`, stack.testRunner)
       // @nx/react:library's src/lib/<name>.tsx component becomes a project-named slice.
-      reshapeReactScaffold(projectRoot, name)
+      reshapeReactScaffold(projectRoot, name, options.empty === true)
       removeGeneratedEslintConfig(workspaceRoot, `packages/${name}`)
       // `--publishable` also scaffolds a whole local-registry story (verdaccio
       // config, devDependency, root target) that mnci's tag-only release model
@@ -137,6 +137,7 @@ export async function addReactLib (
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
  * @param stack - The workspace's chosen test runner.
+ * @param empty - Scaffold the slice skeleton only, with no sample (`--empty`).
  * @returns Nothing.
  * @throws Error when the generator's own scaffolding step fails, or a
  * clearer wrapped error when the scaffold was written but its plugin install
@@ -147,6 +148,7 @@ export function addReactInternalLib (
   workspaceRoot: string,
   name: string,
   stack: WorkspaceStack,
+  empty = false,
 ): void {
   ensurePlugin(workspaceRoot, '@nx/react')
   const projectRoot = join(workspaceRoot, 'libs', name)
@@ -170,7 +172,7 @@ export function addReactInternalLib (
       repairDeclarationSpecifiers(projectRoot)
       writeProjectReadme(projectRoot, name, stack.testRunner)
       // Same slice reshape as the publishable kind (see addReactLib).
-      reshapeReactScaffold(projectRoot, name)
+      reshapeReactScaffold(projectRoot, name, empty)
       removeGeneratedEslintConfig(workspaceRoot, `libs/${name}`)
       registerProjectCommands(workspaceRoot, name, { build: true })
     },
