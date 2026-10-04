@@ -53,8 +53,10 @@
     "directory": "packages/nx-python-pip"
   },
   "peerDependencies": {
-    "@nx/devkit": ">=21.0.0",
     "nx": ">=21.0.0"
+  },
+  "dependencies": {
+    "@nx/devkit": ">=21.0.0"
   },
   "nx": {
     "targets": {
