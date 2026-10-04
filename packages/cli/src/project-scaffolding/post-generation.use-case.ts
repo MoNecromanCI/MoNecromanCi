@@ -602,9 +602,9 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
  * `'./<name>.module.css'` import still resolves beside it.
  *
  * `component` is a first-class front-end role (the vertical-slice ADR's front-end
- * amendment; `@mnci/eslint-config` ships it in the `verticalSlices` `roles`
- * vocabulary), so a React workspace with the slice rules on lints clean with no
- * override. Unconditional, for the reason {@link renameScaffoldPlaceholder} gives.
+ * amendment), and `@mnci/eslint-config` accepts it on `.tsx` files with no option
+ * (`mnci/vertical-slices-tsx`), so a React workspace with the slice rules on lints
+ * clean with no override. Unconditional, for the reason {@link renameScaffoldPlaceholder} gives.
  *
  * @param projectRoot - Absolute path to the generated project's directory.
  * @param name - The project name the generator used for the placeholder.

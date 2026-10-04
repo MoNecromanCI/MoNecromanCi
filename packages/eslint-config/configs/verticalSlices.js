@@ -4,6 +4,14 @@ import { basename, dirname, join, relative, sep } from 'node:path'
 /** The roles a production file may play, as its last suffix before the extension says. */
 export const ROLES = ['handler', 'use-case', 'algorithm', 'policy', 'model', 'contract', 'mapper', 'validator', 'repository', 'client', 'store', 'error', 'config', 'enum']
 
+/**
+ * The front-end roles a `.tsx` file may play without any option: a file that holds JSX
+ * is a UI file by construction, so asking each React workspace to opt in is ceremony.
+ * The non-JSX front-end roles (`.style`, `.mock`, `.fixture`, a `.hook.ts`) stay opt-in
+ * through `roles`, because a `.ts` file says nothing about being UI.
+ */
+export const TSX_ROLES = ['route', 'component', 'section', 'hook', 'content']
+
 const EXTENSION = String.raw`\.(?:ts|tsx|mts|cts)`
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 /**
@@ -279,7 +287,7 @@ export const plugin = {
  * treated as `files`, so both earlier forms keep working.
  * @param options.files - Globs of the source this applies to. Default: every
  * project's `src` under `apps/`, `libs/` and `packages/`.
- * @param options.roles - Extra role suffixes, APPENDED to {@link ROLES}.
+ * @param options.roles - Extra role suffixes, APPENDED to {@link ROLES} (and {@link TSX_ROLES}).
  * @returns The flat config blocks.
  */
 export default function verticalSlices (options = {}) {
@@ -306,6 +314,14 @@ export default function verticalSlices (options = {}) {
         'vertical-slices/no-deep-import': 'error',
         'vertical-slices/no-slice-cycle': 'error',
       },
+    },
+    {
+      // JSX files take the front-end roles with no option (see TSX_ROLES). Nested
+      // `files` arrays are an AND, so this narrows the user's globs to `.tsx`.
+      name:    'mnci/vertical-slices-tsx',
+      files:   files.map(glob => [glob, '**/*.tsx']),
+      plugins: { 'vertical-slices': plugin },
+      rules:   { 'vertical-slices/file-role': ['error', { roles: [...TSX_ROLES, ...roles] }] },
     },
   ]
 }

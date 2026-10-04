@@ -246,6 +246,12 @@ amendment adds `.route`, `.component`, `.hook`, `.section`, `.style`,
 `.content`, `.mock` and `.fixture`. A React app could not opt in at all while
 the list was fixed — every component it has would report.
 
+**A `.tsx` file needs no option for the JSX roles.** A file that holds JSX is a UI
+file by construction, so `.route`, `.component`, `.section`, `.hook` and `.content`
+are accepted on `.tsx` files out of the box (the `mnci/vertical-slices-tsx`
+block). The non-JSX front-end roles (`.style`, `.mock`, `.fixture`, a `.hook.ts`)
+stay opt-in through `roles`, because a `.ts` file says nothing about being UI.
+
 `roles` **appends** to the defaults rather than replacing them: a workspace
 adding `.component.tsx` still wants `.use-case.ts`, and a replacing option
 would mean restating fourteen entries to add one. Only `file-role` takes it;

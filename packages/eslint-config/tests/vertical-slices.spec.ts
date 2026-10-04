@@ -31,7 +31,7 @@ const FIXTURES: Record<string, string> = {
   'tsconfig.json':
     '{\n  "compilerOptions": {\n    "target": "es2021",\n    "module": "commonjs",\n    "moduleResolution": "node",\n    "strict": true,\n    "noEmit": true\n  },\n  "include": []\n}\n',
   'packages/app/tsconfig.json':
-    '{\n  "compilerOptions": {\n    "target": "es2021",\n    "module": "commonjs",\n    "moduleResolution": "node",\n    "strict": true,\n    "noEmit": true\n  },\n  "include": ["src/**/*.ts"]\n}\n',
+    '{\n  "compilerOptions": {\n    "target": "es2021",\n    "module": "commonjs",\n    "moduleResolution": "node",\n    "strict": true,\n    "noEmit": true\n  },\n  "include": ["src/**/*.ts", "src/**/*.tsx"]\n}\n',
   'packages/app/src/index.ts':                    "export { fee } from './billing'\nexport { add } from './arithmetic'\n",
   // A clean slice: flat, role-suffixed, reached through its index.
   'packages/app/src/arithmetic/index.ts':         "export { add } from './add.algorithm'\n",
@@ -45,7 +45,12 @@ const FIXTURES: Record<string, string> = {
   'packages/app/src/invoicing/invoice.contract.ts': 'export interface Invoice {\n  amount: number\n}\n',
   'packages/app/src/invoicing/total.use-case.ts':
     "import { fee } from '../billing'\nimport type { Invoice } from './invoice.contract'\n\nexport function total (invoice: Invoice): number {\n  return invoice.amount + fee(invoice)\n}\n",
-  'packages/app/src/reports/index.ts': "export { report } from './report.use-case'\n",
+  // A JSX file takes the front-end roles with no option; the same name on a `.ts` file does not.
+  'packages/app/src/ui/index.ts':               "export { Greeting } from './greeting.component'\n",
+  'packages/app/src/ui/greeting.component.tsx': "export function Greeting (): string {\n  return 'hi'\n}\n",
+  'packages/app/src/ui/farewell.component.ts':  "export function Farewell (): string {\n  return 'bye'\n}\n",
+  'packages/app/src/ui/untyped.tsx':            'export const Untyped = 1\n',
+  'packages/app/src/reports/index.ts':          "export { report } from './report.use-case'\n",
   'packages/app/src/reports/report.use-case.ts':
     "import { add } from '../arithmetic/add.algorithm'\n\nexport function report (): number {\n  return add(1, 2)\n}\n",
   'packages/app/src/reports/selfish.use-case.ts':
@@ -200,6 +205,12 @@ describe('mnci({ verticalSlices })', () => {
     // to prevent, and it does not care who wrote the import.
     expect(slicesFor('packages/app/src/billing/fee.policy.spec.ts'))
       .toEqual(['vertical-slices/no-deep-import'])
+  })
+
+  it('accepts the front-end roles on a .tsx file with no option, and only there', () => {
+    expect(slicesFor('packages/app/src/ui/greeting.component.tsx')).toEqual([])
+    expect(slicesFor('packages/app/src/ui/farewell.component.ts')).toEqual(['vertical-slices/file-role'])
+    expect(slicesFor('packages/app/src/ui/untyped.tsx')).toEqual(['vertical-slices/file-role'])
   })
 
   it('reports a file without its role, or not in kebab-case, nested, or at the root of src', () => {
