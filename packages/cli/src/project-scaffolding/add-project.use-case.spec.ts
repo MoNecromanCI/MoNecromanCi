@@ -136,6 +136,30 @@ describe('runAdd', () => {
       .toContain("'./utils/index.js'")
   })
 
+  it('--empty keeps the slice skeleton of an internal-lib and drops the sample and its spec', async () => {
+    mkdirSync(join(workspaceRoot, 'libs/utils/src/lib'), { recursive: true })
+    writeFileSync(join(workspaceRoot, 'libs/utils/package.json'), JSON.stringify({ name: '@demo/utils' }))
+    writeFileSync(join(workspaceRoot, 'libs/utils/src/lib/utils.ts'), 'export const x = 1\n')
+    writeFileSync(join(workspaceRoot, 'libs/utils/src/lib/utils.spec.ts'), "import './utils'\n")
+    writeFileSync(join(workspaceRoot, 'libs/utils/src/index.ts'), "export * from './lib/utils.js'\n")
+
+    await runAdd('internal-lib', 'utils', { empty: true })
+
+    expect(existsSync(join(workspaceRoot, 'libs/utils/src/utils/utils.use-case.ts'))).toBe(false)
+    expect(existsSync(join(workspaceRoot, 'libs/utils/src/utils/utils.use-case.spec.ts'))).toBe(false)
+    expect(readFileSync(join(workspaceRoot, 'libs/utils/src/utils/index.ts'), 'utf8')).toBe('export {}\n')
+    // With no spec the runner would exit non-zero, so the test target must pass with none.
+    const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'libs/utils/package.json'), 'utf8')) as {
+      nx: { targets: { test: { options: { passWithNoTests: boolean } } } }
+    }
+    expect(manifest.nx.targets.test.options.passWithNoTests).toBe(true)
+  })
+
+  it('refuses --empty on a kind that has no skeleton variant yet, rather than ignoring it', async () => {
+    await expect(runAdd('python-app', 'svc', { empty: true })).rejects.toThrow('--empty applies to')
+    expect(mockRunNx).not.toHaveBeenCalled()
+  })
+
   it('prompts for the kind and name when omitted', async () => {
     mockSelect.mockResolvedValue('react-app')
     mockPromptText.mockResolvedValue('shop')

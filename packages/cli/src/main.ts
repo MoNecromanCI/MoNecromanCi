@@ -169,6 +169,10 @@ export function buildProgram (cliVersion: string): Command {
       'node-app only: express | fastify | koa | nest | none (default: none)',
     )
     .option(
+      '--empty',
+      'npm-lib, internal-lib, react-lib, react-internal-lib: scaffold the slice skeleton only, with no sample code or spec',
+    )
+    .option(
       '--lib <name>',
       'python-vendor only: the internal Python library (libs/<name>) to vendor into <name>',
     )

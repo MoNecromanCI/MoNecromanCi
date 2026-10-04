@@ -50,6 +50,8 @@ export interface AddOptions {
   cgo?:       boolean
   /** `go-app` only: the React app (under `apps/`) the app embeds and serves, built first and staged for `//go:embed`. */
   web?:       string
+  /** TypeScript libraries only: scaffold the slice skeleton with no sample code (`mnci add --empty`). */
+  empty?:     boolean
 }
 
 /**
@@ -581,12 +583,13 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
  *
  * @param projectRoot - Absolute path to the generated project's directory.
  * @param name - The project name the generator used for the placeholder.
+ * @param empty - Keep only the slice skeleton: drop the sample and its spec (`--empty`).
  * @returns Nothing.
  * @throws Propagates any `fs` error moving or rewriting the files.
  * @typeParam None - this function has no generic type parameters.
  */
-export function renameScaffoldPlaceholder (projectRoot: string, name: string): void {
-  reshapeScaffoldSlice(projectRoot, name, 'ts', 'use-case')
+export function renameScaffoldPlaceholder (projectRoot: string, name: string, empty = false): void {
+  reshapeScaffoldSlice(projectRoot, name, 'ts', 'use-case', empty)
 }
 
 /**
@@ -608,12 +611,13 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
  *
  * @param projectRoot - Absolute path to the generated project's directory.
  * @param name - The project name the generator used for the placeholder.
+ * @param empty - Keep only the slice skeleton: drop the sample and its spec (`--empty`).
  * @returns Nothing.
  * @throws Propagates any `fs` error moving or rewriting the files.
  * @typeParam None - this function has no generic type parameters.
  */
-export function reshapeReactScaffold (projectRoot: string, name: string): void {
-  reshapeScaffoldSlice(projectRoot, name, 'tsx', 'component')
+export function reshapeReactScaffold (projectRoot: string, name: string, empty = false): void {
+  reshapeScaffoldSlice(projectRoot, name, 'tsx', 'component', empty)
 }
 
 /**
@@ -665,6 +669,30 @@ export function reshapeReactAppScaffold (projectRoot: string): void {
 }
 
 /**
+ * Strips a reshaped slice down to its skeleton: a barrel and nothing else.
+ *
+ * @remarks
+ * `mnci add --empty`. The slice folder and the package barrel stay, so the library
+ * lints, builds and typechecks as it did; the sample and its spec go. With no spec
+ * the runner would exit non-zero ("No tests found"), so the test target is told to
+ * pass with none — measured: `nx.targets.test.options.passWithNoTests` becomes
+ * `jest --passWithNoTests=true`.
+ *
+ * @param projectRoot - Absolute path to the generated project's directory.
+ * @param sliceDir - Absolute path to the reshaped slice.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error removing or writing the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function emptySlice (projectRoot: string, sliceDir: string): void {
+  for (const entry of readdirSync(sliceDir)) {
+    rmSync(join(sliceDir, entry), { recursive: true, force: true })
+  }
+  writeFileEnsured(join(sliceDir, 'index.ts'), 'export {}\n')
+  addNxTargets(join(projectRoot, 'package.json'), { test: { options: { passWithNoTests: true } } })
+}
+
+/**
  * Moves a generator's `src/lib/<name>` placeholder into a project-named slice.
  *
  * @remarks
@@ -679,11 +707,12 @@ export function reshapeReactAppScaffold (projectRoot: string): void {
  * @param name - The project name the generator used.
  * @param extension - The placeholder's extension: `ts` or `tsx`.
  * @param role - The role suffix to give the production file and its spec.
+ * @param empty - Drop the sample, its spec and any sidecar; the slice keeps only a barrel (`--empty`).
  * @returns Nothing.
  * @throws Propagates any `fs` error moving or rewriting the files.
  * @typeParam None - this function has no generic type parameters.
  */
-function reshapeScaffoldSlice (projectRoot: string, name: string, extension: string, role: string): void {
+function reshapeScaffoldSlice (projectRoot: string, name: string, extension: string, role: string, empty: boolean): void {
   const sourceDir = join(projectRoot, 'src')
   const libDir = join(sourceDir, 'lib')
   if (!existsSync(join(libDir, `${name}.${extension}`))) {
@@ -724,6 +753,10 @@ function reshapeScaffoldSlice (projectRoot: string, name: string, extension: str
 
   // The generic lib/ bucket is now empty; the slice replaces it.
   rmSync(libDir, { recursive: true, force: true })
+
+  if (empty) {
+    emptySlice(projectRoot, sliceDir)
+  }
 }
 
 /**

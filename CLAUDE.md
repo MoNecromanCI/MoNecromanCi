@@ -467,7 +467,14 @@ behind an `__init__.py` barrel with `__all__`, and the function app's helper is
 `greeting_algorithm.py`. `node-app`, `vscode-extension`, `npm-lib` and `internal-lib`
 already lint clean (measured on generated projects). Not enforced anywhere yet, so
 not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
-#290: a realistic worked example per family and the `--empty` flag.
+#290: a realistic worked example per family, and `--empty` for the kinds other than
+the four TypeScript libraries.
+
+`mnci add <lib kind> --empty` (npm-lib, internal-lib, react-lib, react-internal-lib)
+keeps the slice folder with only an `index.ts` (`export {}`) and drops the sample and
+its spec. With no spec the runner exits non-zero, so it also sets
+`nx.targets.test.options.passWithNoTests` (Nx turns that into
+`jest --passWithNoTests=true`). The flag is refused on any other kind, not ignored.
 
 Two traps from doing it: Nx writes **double quotes and semicolons** and the formatter
 only normalises them after the reshape runs, so a specifier rewrite must match both
