@@ -80,6 +80,13 @@ jest.mock('commander', () => {
       return this
     }
 
+    // Mirrors `.option()` for the flags that use `new Option(...).choices(...)` (the `new`
+    // command's `--ci`/`--registry`); choice validation itself is proven against the real
+    // commander in main.choices.spec.ts, so here it is only a flag definition.
+    addOption (option: { flags: string }): this {
+      return this.option(option.flags)
+    }
+
     action (handler: ActionHandler): this {
       this.actionHandler = handler
 
@@ -132,7 +139,18 @@ jest.mock('commander', () => {
     }
   }
 
-  return { Command: FakeCommand, Argument: FakeArgument }
+  class FakeOption {
+    flags: string
+    constructor (flags: string, _description?: string) {
+      this.flags = flags
+    }
+
+    choices (_values: readonly string[]): this {
+      return this
+    }
+  }
+
+  return { Command: FakeCommand, Argument: FakeArgument, Option: FakeOption }
 })
 
 jest.mock('./project-scaffolding', () => ({

@@ -13,6 +13,7 @@ import {
 import { promptCi, promptNxCloud, promptRegistry, promptStack, promptText } from '../terminal'
 import { logger } from '../terminal'
 import { assertValidProjectName } from '../project-name'
+import { PROJECT_KINDS } from '../project-scaffolding'
 import { adoptGeneratedWorkspace, assertAdoptableDirectory } from './adopt-directory.use-case'
 
 /**
@@ -126,7 +127,13 @@ async function resolveStack (options: NewOptions): Promise<StackConfig> {
 const CI_PROVIDERS: ReadonlySet<CiProvider> = new Set(['azure', 'github', 'both'])
 
 async function resolveCi (options: NewOptions): Promise<CiProvider> {
-  if (options.ci && CI_PROVIDERS.has(options.ci)) {
+  if (options.ci !== undefined) {
+    // An explicitly-set but invalid value fails loudly rather than degrading to the
+    // default — under --yes a typo (`--ci githb`) used to become `azure` silently (#231).
+    if (!CI_PROVIDERS.has(options.ci)) {
+      throw new Error(`Invalid --ci '${options.ci}'. Valid values: azure, github, both.`)
+    }
+
     return options.ci
   }
   if (options.yes) {
@@ -144,7 +151,14 @@ async function resolveCi (options: NewOptions): Promise<CiProvider> {
  * @throws Propagates prompt errors (e.g. when stdin is not a TTY).
  * @typeParam None - this function has no generic type parameters.
  */
+const REGISTRY_KINDS: ReadonlySet<RegistryConfig['kind']> = new Set(['azure-artifacts', 'npm'])
+
 async function resolveRegistry (options: NewOptions): Promise<RegistryConfig> {
+  // Same loud failure as resolveCi: an invalid --registry under --yes used to default to npm
+  // silently (#231). Checked before the branches below so an unknown value never slips through.
+  if (options.registry !== undefined && !REGISTRY_KINDS.has(options.registry)) {
+    throw new Error(`Invalid --registry '${options.registry}'. Valid values: azure-artifacts, npm.`)
+  }
   if (options.registry === 'azure-artifacts' || (options.organization && options.artifactsFeed)) {
     return {
       kind:          'azure-artifacts',
@@ -321,17 +335,39 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
 
   logger.success('Done. Next steps:')
   if (adoptTarget === undefined) logger.info(`  cd ${workspaceName}`)
-  logger.info('  mnci add react-app web        # or: react-lib, react-internal-lib, node-app,')
-  logger.info('                                 #     node-function-app, npm-lib, internal-lib,')
-  logger.info(
-    '                                 #     python-app, python-function-app, python-lib, python-internal-lib,',
-  )
-  logger.info(
-    '                                 #     go-app, go-function-app, go-lib, go-internal-lib,',
-  )
-  logger.info(
-    '                                 #     flutter-app, flutter-lib, flutter-internal-lib,',
-  )
-  logger.info('                                 #     vscode-extension')
+  for (const line of projectKindHintLines()) {
+    logger.info(line)
+  }
   logger.info('  git add -A && git commit -m "feat: initial workspace"')
+}
+
+/**
+ * The `mnci add` hint lines for the post-create message.
+ *
+ * @remarks
+ * Generated from {@link PROJECT_KINDS} rather than a literal, so a newly added kind (the C#
+ * ones were missing before #231) appears automatically and the list cannot go stale. The
+ * kinds are word-wrapped to keep each line readable in a terminal.
+ *
+ * @param kinds - The kinds to list; defaults to every {@link PROJECT_KINDS}.
+ * @returns The lines to print, `mnci add` first then the wrapped kind list.
+ * @throws Never - pure string construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function projectKindHintLines (kinds: readonly string[] = PROJECT_KINDS): string[] {
+  const indent = ' '.repeat(4)
+  const width = 78
+  const lines = ['  mnci add <kind> <name>   # <kind> is one of:']
+  let current = indent
+  for (const [index, kind] of kinds.entries()) {
+    const token = `${kind}${index < kinds.length - 1 ? ', ' : ''}`
+    if (current !== indent && current.length + token.length > width) {
+      lines.push(current.replace(/\s+$/, ''))
+      current = indent
+    }
+    current += token
+  }
+  lines.push(current.replace(/\s+$/, ''))
+
+  return lines
 }
