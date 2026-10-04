@@ -602,9 +602,9 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
  * `'./<name>.module.css'` import still resolves beside it.
  *
  * `component` is a first-class front-end role (the vertical-slice ADR's front-end
- * amendment; `@mnci/eslint-config` ships it in the `verticalSlices` `roles`
- * vocabulary), so a React workspace with the slice rules on lints clean with no
- * override. Unconditional, for the reason {@link renameScaffoldPlaceholder} gives.
+ * amendment), and `@mnci/eslint-config` accepts it on `.tsx` files with no option
+ * (`mnci/vertical-slices-tsx`), so a React workspace with the slice rules on lints
+ * clean with no override. Unconditional, for the reason {@link renameScaffoldPlaceholder} gives.
  *
  * @param projectRoot - Absolute path to the generated project's directory.
  * @param name - The project name the generator used for the placeholder.
@@ -614,6 +614,54 @@ export function renameScaffoldPlaceholder (projectRoot: string, name: string): v
  */
 export function reshapeReactScaffold (projectRoot: string, name: string): void {
   reshapeScaffoldSlice(projectRoot, name, 'tsx', 'component')
+}
+
+/**
+ * Gives `@nx/react:app`'s `src/app` files the `.component` role and a barrel.
+ *
+ * @remarks
+ * The app generator writes `src/app/{app,nx-welcome}.tsx` and `app.spec.tsx`: bare
+ * names that say nothing about their role, so `vertical-slices/file-role` rejects
+ * them. `src/app` is already a project-shaped folder, so this keeps the folder and
+ * renames inside it — `<file>.component.tsx`, the spec repointed, and the CSS module
+ * left untouched — then adds the `index.ts` the slice rules require and repoints
+ * `main.tsx` through it. `App` is both a named and the default export, so the barrel
+ * re-exports both. A no-op when `src/app/app.tsx` is absent or already renamed.
+ *
+ * @param projectRoot - Absolute path to the generated app's directory.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error moving or rewriting the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function reshapeReactAppScaffold (projectRoot: string): void {
+  const appDir = join(projectRoot, 'src', 'app')
+  if (!existsSync(join(appDir, 'app.tsx'))) {
+    return
+  }
+
+  for (const [from, to] of [
+    ['app.tsx', 'app.component.tsx'],
+    ['app.spec.tsx', 'app.component.spec.tsx'],
+    ['nx-welcome.tsx', 'nx-welcome.component.tsx'],
+  ]) {
+    if (existsSync(join(appDir, from))) {
+      renameSync(join(appDir, from), join(appDir, to))
+    }
+  }
+
+  const rewrite = (file: string, from: string, to: string): void => {
+    if (existsSync(file)) {
+      writeFileEnsured(file, repointSpecifier(readFileSync(file, 'utf8'), from, to))
+    }
+  }
+  rewrite(join(appDir, 'app.component.tsx'), './nx-welcome', './nx-welcome.component')
+  rewrite(join(appDir, 'app.component.spec.tsx'), './app', './app.component')
+  rewrite(join(projectRoot, 'src', 'main.tsx'), './app/app', './app')
+
+  writeFileEnsured(
+    join(appDir, 'index.ts'),
+    "export * from './app.component'\nexport { default } from './app.component'\n",
+  )
 }
 
 /**
@@ -696,9 +744,16 @@ function reshapeScaffoldSlice (projectRoot: string, name: string, extension: str
  * @typeParam None - this function has no generic type parameters.
  */
 function repointSpecifier (source: string, from: string, to: string): string {
-  return source
-    .replaceAll(`${from}'`, () => `${to}'`)
-    .replaceAll(`${from}.js'`, () => `${to}.js'`)
+  // Nx writes double quotes and semicolons; the formatter only normalises them after the
+  // reshape runs, so both quote styles have to match.
+  let result = source
+  for (const quote of ["'", '"']) {
+    result = result
+      .replaceAll(`${from}${quote}`, () => `${to}${quote}`)
+      .replaceAll(`${from}.js${quote}`, () => `${to}.js${quote}`)
+  }
+
+  return result
 }
 
 /**

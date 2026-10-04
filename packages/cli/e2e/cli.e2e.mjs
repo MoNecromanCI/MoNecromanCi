@@ -1150,7 +1150,7 @@ section('js stack', [], () => {
       "import * as ReactDOM from 'react-dom/client';",
       "import ms from 'ms';",
       "import { utils } from '@demo/utils';",
-      "import App from './app/app';",
+      "import App from './app';",
       '',
       "console.log('deps-check:', utils(), ms(60_000), import.meta.env.VITE_API_URL);",
       '',
@@ -1221,7 +1221,7 @@ section('js stack', [], () => {
   // @standard-clean
   writeFileSync(
     path.join(workspace, 'apps/api/src/main.ts'),
-    "// esbuild only includes what is reachable from here, so add one import per\n// function file you create under src/functions/.\nimport './functions/hello'\nimport { apiDeps } from './deps'\n\nconsole.log(apiDeps())\n",
+    "// esbuild only includes what is reachable from here, so add one import per\n// function slice you create under src/ (through its index).\nimport './hello'\nimport { apiDeps } from './deps'\n\nconsole.log(apiDeps())\n",
   )
   run('npx nx sync', workspace)
 
@@ -1869,14 +1869,14 @@ section('alt stack', [], () => {
   // Verified empirically (real windows-latest CI run) that this is an upstream
   // bug in `@nx/react`'s own generated Vitest project config, not anything
   // mnci authors: on Windows only, Vitest resolves @alt/web's spec file to a
-  // drive-letter-less absolute path ('/src/app/app.spec.tsx' instead of
-  // 'C:/.../src/app/app.spec.tsx'). @alt/sdk's plain vitest run (no react/JSX)
+  // drive-letter-less absolute path ('/src/app/app.component.spec.tsx' instead of
+  // 'C:/.../src/app/app.component.spec.tsx'). @alt/sdk's plain vitest run (no react/JSX)
   // is unaffected, so this is scoped to the react+vitest combination, and is
   // tracked here rather than silently ignored — any other test failure still
   // fails this assertion on every platform.
   const isKnownWindowsVitestPathBug =
     process.platform === 'win32' &&
-    altTest.output.includes("Cannot find module '/src/app/app.spec.tsx'")
+    altTest.output.includes("Cannot find module '/src/app/app.component.spec.tsx'")
   enforce(
     'alt: test (vitest) runs green',
     altTest.ok || isKnownWindowsVitestPathBug,

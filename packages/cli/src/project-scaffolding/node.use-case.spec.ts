@@ -228,16 +228,16 @@ describe('runAdd node-function-app', () => {
     // The v4 programming model: an HTTP trigger importing a tested helper,
     // wired into the esbuild entry so it's reachable (and thus bundled).
     expect(readFileSync(join(workspaceRoot, 'apps/api/src/main.ts'), 'utf8')).toContain(
-      'import \'./functions/hello\'',
+      'import \'./hello\'',
     )
-    const hello = readFileSync(join(workspaceRoot, 'apps/api/src/functions/hello.ts'), 'utf8')
+    const hello = readFileSync(join(workspaceRoot, 'apps/api/src/hello/hello.handler.ts'), 'utf8')
     expect(hello).toContain('from \'@azure/functions\'')
     expect(hello).toContain('app.http(\'hello\'')
     expect(
-      readFileSync(join(workspaceRoot, 'apps/api/src/functions/greeting.ts'), 'utf8'),
+      readFileSync(join(workspaceRoot, 'apps/api/src/hello/greeting.algorithm.ts'), 'utf8'),
     ).toContain('export function buildGreeting')
     expect(
-      readFileSync(join(workspaceRoot, 'apps/api/src/functions/greeting.spec.ts'), 'utf8'),
+      readFileSync(join(workspaceRoot, 'apps/api/src/hello/greeting.algorithm.spec.ts'), 'utf8'),
     ).toContain('buildGreeting')
     expect(readFileSync(join(workspaceRoot, 'apps/api/host.json'), 'utf8')).toContain(
       'extensionBundle',
