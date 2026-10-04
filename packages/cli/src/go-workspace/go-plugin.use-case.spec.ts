@@ -1,7 +1,13 @@
+// The nx-workspace barrel transitively loads @inquirer/prompts (ESM-only, unparseable by
+// jest as CJS). Stub it so the real barrel — and its real runCapture, which these tests need
+// to read the git origin — loads.
+jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), select: jest.fn(), checkbox: jest.fn(), Separator: class {} }))
+
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN, registerNxGoPlugin } from './go-plugin.use-case'
+import { hasGoProject, isNxGoPluginRegistered, modulePrefixFromRemoteUrl, NX_GO_PLUGIN, registerNxGoPlugin } from './go-plugin.use-case'
 
 let workspaceRoot: string
 
@@ -128,5 +134,47 @@ describe('registerNxGoPlugin', () => {
   it('does nothing, and writes no file, without an nx.json', () => {
     expect(registerNxGoPlugin(workspaceRoot)).toBe(false)
     expect(() => readFileSync(join(workspaceRoot, 'nx.json'))).toThrow()
+  })
+})
+
+describe('modulePrefixFromRemoteUrl', () => {
+  it.each([
+    ['https://github.com/MoNecromanCI/MoNecromanCi.git', 'github.com/MoNecromanCI/MoNecromanCi'],
+    ['https://github.com/MoNecromanCI/MoNecromanCi', 'github.com/MoNecromanCI/MoNecromanCi'],
+    ['git@github.com:MoNecromanCI/MoNecromanCi.git', 'github.com/MoNecromanCI/MoNecromanCi'],
+    ['ssh://git@github.com/org/repo.git', 'github.com/org/repo'],
+    ['https://user:token@dev.azure.com/acme/proj/_git/widget', 'dev.azure.com/acme/proj/_git/widget'],
+  ])('maps %s to its host/path module prefix', (url, expected) => {
+    expect(modulePrefixFromRemoteUrl(url)).toBe(expected)
+  })
+
+  it.each(['', ' '.repeat(3), 'not-a-url', String.raw`C:\local\path`])('is undefined for a non-URL (%p)', (url) => {
+    expect(modulePrefixFromRemoteUrl(url)).toBeUndefined()
+  })
+})
+
+const hasGit = spawnSync('git', ['--version']).status === 0
+const describeWithGit = hasGit ? describe : describe.skip
+if (!hasGit) {
+  console.warn('SKIPPED: registerNxGoPlugin origin tests need git on PATH')
+}
+
+describeWithGit('registerNxGoPlugin with a git origin', () => {
+  it('registers the plugin with a modulePrefix derived from origin', () => {
+    execFileSync('git', ['init', '-q'], { cwd: workspaceRoot })
+    execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/widget.git'], { cwd: workspaceRoot })
+    nxJson({ plugins: [] })
+
+    expect(registerNxGoPlugin(workspaceRoot)).toBe(true)
+    expect(readNxJson().plugins).toEqual([{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'github.com/acme/widget' } }])
+  })
+
+  it('upgrades the bare name init writes to carry the modulePrefix', () => {
+    execFileSync('git', ['init', '-q'], { cwd: workspaceRoot })
+    execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/widget.git'], { cwd: workspaceRoot })
+    nxJson({ plugins: [NX_GO_PLUGIN] })
+
+    expect(registerNxGoPlugin(workspaceRoot)).toBe(true)
+    expect(readNxJson().plugins).toEqual([{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'github.com/acme/widget' } }])
   })
 })

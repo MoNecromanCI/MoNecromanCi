@@ -2,6 +2,9 @@ jest.mock('../nx-workspace', () => ({
   runNx:        jest.fn(),
   runFormatter: jest.fn(),
   runShell:     jest.fn(() => 0),
+  // No git origin in these temp workspaces, so goModulePrefix (via registerNxGoPlugin)
+  // resolves to undefined and the plugin registers under its bare name, as before.
+  runCapture:   jest.fn(() => ({ status: 1, stdout: '' })),
 }))
 jest.mock('../terminal', () => ({
   ...jest.requireActual('../terminal'),

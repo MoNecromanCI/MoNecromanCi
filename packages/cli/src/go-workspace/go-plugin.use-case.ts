@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
+import { runCapture } from '../nx-workspace'
 
 /**
  * The Nx plugin that works out which Go project imports which.
@@ -13,9 +14,12 @@ import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
  */
 export const NX_GO_PLUGIN = '@nx-go/nx-go'
 
+/** A plugin entry in `nx.json`: a bare name, or an object with options. */
+type PluginEntry = string | { plugin?: string, options?: { modulePrefix?: string } }
+
 /** The slice of `nx.json` this module reads and writes. */
 interface NxJsonWithPlugins {
-  plugins?: (string | { plugin?: string })[]
+  plugins?: PluginEntry[]
 }
 
 /**
@@ -68,15 +72,70 @@ export function isNxGoPluginRegistered (workspaceRoot: string): boolean {
 }
 
 /**
- * Registers the Go plugin in `nx.json`, when it is not.
+ * Turns a git remote URL into a Go module prefix: the host and path, with no scheme,
+ * credentials or trailing `.git`.
  *
  * @remarks
- * The plugin's own `init` generator does this too, but it also writes a `go.work`, which
- * is the multi-module layout mnci rejects (see `ensureGoModule`), and it is only run when
- * mnci creates the root `go.mod`. A repository that already has one (an adopted flat Go
- * module) used to skip it, leaving the plugin installed but unregistered: every target
- * worked, since they are written explicitly, and the project graph had no Go edge.
- * Appends the bare name, which is exactly what `init` writes. Idempotent.
+ * A Go module path must be a real VCS location, so `github.com/MoNecromanCI/MoNecromanCi`
+ * — not the npm-scope-derived name — is what makes a per-project module (`<prefix>/<dir>`)
+ * `go get`-able (#289, closing the old #236). Handles the `https://`/`ssh://` forms and the
+ * scp-like `git@host:org/repo` form, strips any `user:pass@` credentials and a trailing
+ * `.git`, and leaves case untouched (Go module paths are case-sensitive).
+ *
+ * @param url - A git remote URL.
+ * @returns The module prefix, or `undefined` for an empty or unrecognisable URL.
+ * @throws Never - pure string work.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function modulePrefixFromRemoteUrl (url: string): string | undefined {
+  const trimmed = url.trim()
+  const scpLike = /^[^@/]+@([^:]+):(.+)$/.exec(trimmed)
+  const withScheme = /^[a-z][\w+.-]*:\/\/(?:[^@/]+@)?(.+)$/i.exec(trimmed)
+  let path: string | undefined
+  if (scpLike) {
+    path = `${scpLike[1]}/${scpLike[2]}`
+  } else if (withScheme) {
+    path = withScheme[1]
+  }
+  if (path === undefined) {
+    return undefined
+  }
+  const cleaned = path.replace(/\.git$/, '').replace(/\/+$/, '')
+
+  return cleaned === '' ? undefined : cleaned
+}
+
+/**
+ * The Go module prefix for this workspace, read from its `origin` git remote.
+ *
+ * @remarks
+ * Used to give every per-project `go.mod` a fetchable module path (`<prefix>/<projectDir>`)
+ * via the `@nx-go/nx-go` plugin's `modulePrefix` option. `undefined` when there is no
+ * resolvable `origin` (a brand-new local repo), in which case the caller keeps the plugin's
+ * own scope-derived default rather than inventing one.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The module prefix, or `undefined` when `origin` is absent or unreadable.
+ * @throws Never - a failed `git` call yields `undefined`.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function goModulePrefix (workspaceRoot: string): string | undefined {
+  const result = runCapture('git', ['remote', 'get-url', 'origin'], workspaceRoot)
+
+  return result.status === 0 ? modulePrefixFromRemoteUrl(result.stdout) : undefined
+}
+
+/**
+ * Registers the Go plugin in `nx.json`, with a `modulePrefix` option when one is derivable.
+ *
+ * @remarks
+ * The plugin's own `init` generator registers it too (as a bare name), but only when mnci
+ * bootstraps the workspace module; a repository that already has one (an adopted Go module)
+ * used to skip it, leaving the plugin installed but unregistered, so `nx affected` knew no
+ * Go edge. This also sets the plugin's `modulePrefix` ({@link goModulePrefix}) so each
+ * project's `go.mod` gets a fetchable path — **upgrading** an existing bare registration
+ * (the one `init` writes) to carry it. Idempotent: no change when the plugin is already
+ * registered with the same prefix (or when none is derivable and it is already present).
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @returns Whether `nx.json` changed.
@@ -85,11 +144,25 @@ export function isNxGoPluginRegistered (workspaceRoot: string): boolean {
  */
 export function registerNxGoPlugin (workspaceRoot: string): boolean {
   const nxJsonPath = join(workspaceRoot, 'nx.json')
-  if (!fileExists(nxJsonPath) || isNxGoPluginRegistered(workspaceRoot)) {
+  if (!fileExists(nxJsonPath)) {
     return false
   }
+  const modulePrefix = goModulePrefix(workspaceRoot)
+  const entry: PluginEntry = modulePrefix === undefined ? NX_GO_PLUGIN : { plugin: NX_GO_PLUGIN, options: { modulePrefix } }
   const nxJson = readJson<NxJsonWithPlugins>(nxJsonPath)
-  writeFileEnsured(nxJsonPath, toJson({ ...nxJson, plugins: [...(nxJson.plugins ?? []), NX_GO_PLUGIN] }))
+  const plugins = [...(nxJson.plugins ?? [])]
+  const index = plugins.findIndex(plugin => (typeof plugin === 'string' ? plugin : plugin.plugin) === NX_GO_PLUGIN)
+  if (index === -1) {
+    plugins.push(entry)
+  } else {
+    const current = plugins[index]
+    const currentPrefix = typeof current === 'string' ? undefined : current.options?.modulePrefix
+    if (modulePrefix === undefined || currentPrefix === modulePrefix) {
+      return false
+    }
+    plugins[index] = entry
+  }
+  writeFileEnsured(nxJsonPath, toJson({ ...nxJson, plugins }))
 
   return true
 }
