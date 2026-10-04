@@ -8,4 +8,4 @@
  * slice that adds projects, the same reason `rollup-library` exists.
  */
 
-export { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN, registerNxGoPlugin } from './go-plugin.use-case'
+export { goModulePrefix, hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN, registerNxGoPlugin } from './go-plugin.use-case'

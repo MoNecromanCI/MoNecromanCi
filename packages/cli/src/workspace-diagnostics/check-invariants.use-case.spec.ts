@@ -1256,3 +1256,44 @@ describe('doctor: the Go plugin is registered (#261)', () => {
     expect(collectFindings(workspaceRoot).filter(finding => !finding.ok && finding.check.includes('@nx-go'))).toEqual([])
   })
 })
+
+/** The finding about go.work being in sync, among all of them. */
+function goWorkSync (findings: Finding[]): Finding | undefined {
+  return findings.find(finding => finding.check.includes('go.work'))
+}
+
+describe('doctor: go.work is in sync (#289)', () => {
+  it('says nothing when there is no go.work (a single-module or adopted repo)', () => {
+    seedGoWorkspace(['@nx-go/nx-go'])
+
+    expect(goWorkSync(collectFindings(workspaceRoot))).toBeUndefined()
+  })
+
+  it('passes when every use entry points to a module that still exists', () => {
+    seedGoWorkspace(['@nx-go/nx-go'])
+    writeFileSync(join(workspaceRoot, 'apps/cli/go.mod'), 'module github.com/acme/demo/apps/cli\n\ngo 1.27\n')
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27\n\nuse (\n\t./apps/cli\n)\n')
+
+    expect(goWorkSync(collectFindings(workspaceRoot))?.ok).toBe(true)
+  })
+
+  it('fails, naming the cost and the fix, on a stale use entry whose module is gone', () => {
+    seedGoWorkspace(['@nx-go/nx-go'])
+    writeFileSync(join(workspaceRoot, 'apps/cli/go.mod'), 'module github.com/acme/demo/apps/cli\n\ngo 1.27\n')
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27\n\nuse (\n\t./apps/cli\n\t./libs/ghost\n)\n')
+
+    const finding = goWorkSync(collectFindings(workspaceRoot))
+
+    expect(finding?.ok).toBe(false)
+    expect(finding?.detail).toContain('./libs/ghost')
+    expect(finding?.detail).toContain('Nx project graph')
+    expect(finding?.remedy).toContain('go.work')
+  })
+
+  it('reads a single-line `use` entry, not only a use(...) block', () => {
+    seedGoWorkspace(['@nx-go/nx-go'])
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27\n\nuse ./libs/ghost\n')
+
+    expect(goWorkSync(collectFindings(workspaceRoot))?.ok).toBe(false)
+  })
+})

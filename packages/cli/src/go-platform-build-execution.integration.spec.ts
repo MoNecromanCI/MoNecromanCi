@@ -12,7 +12,7 @@
 jest.mock('@inquirer/prompts', () => ({ select: jest.fn(), input: jest.fn() }))
 // The native block scaffolds through runAdd. The generators and installs it would run are
 // stood in for; what is under test is the commands it writes, which run for real below.
-jest.mock('./nx-workspace', () => ({ runNx: jest.fn(), runFormatter: jest.fn(), runShell: jest.fn(() => 0) }))
+jest.mock('./nx-workspace', () => ({ runNx: jest.fn(), runFormatter: jest.fn(), runShell: jest.fn(() => 0), runCapture: jest.fn(() => ({ status: 1, stdout: '' })) }))
 
 import { execFileSync, execSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

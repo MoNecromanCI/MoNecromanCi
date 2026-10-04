@@ -2,6 +2,9 @@ jest.mock('../nx-workspace', () => ({
   runNx:        jest.fn(),
   runFormatter: jest.fn(),
   runShell:     jest.fn(() => 0),
+  // No git origin in these temp workspaces, so goModulePrefix (via registerNxGoPlugin)
+  // resolves to undefined and the plugin registers under its bare name, as before.
+  runCapture:   jest.fn(() => ({ status: 1, stdout: '' })),
 }))
 jest.mock('../terminal', () => ({
   ...jest.requireActual('../terminal'),
@@ -12,12 +15,13 @@ jest.mock('@inquirer/prompts', () => ({ select: jest.fn(), input: jest.fn() }))
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runNx, runShell } from '../nx-workspace'
+import { runCapture, runNx, runShell } from '../nx-workspace'
 import { runAdd } from './add-project.use-case'
 import { addGoPlatformTargets, GO_PLATFORMS, goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
+const mockRunCapture = jest.mocked(runCapture)
 
 let workspaceRoot: string
 
@@ -70,6 +74,8 @@ function nxCalls (): string[][] {
 beforeEach(() => {
   workspaceRoot = mkdtempSync(join(tmpdir(), 'mnci-add-go-'))
   mockRunShell.mockImplementation(() => 0)
+  // Default: no git origin, so the module prefix is undefined (a test that wants one overrides).
+  mockRunCapture.mockReturnValue({ status: 1, stdout: '' })
   jest.spyOn(process, 'cwd').mockReturnValue(workspaceRoot)
   jest.spyOn(console, 'log').mockImplementation(() => {})
   jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -92,7 +98,7 @@ describe('runAdd go', () => {
     await expect(runAdd('go-app', 'api', {})).rejects.toThrow(/Go not found.*go\.dev/s)
   })
 
-  it('bootstraps a single root go.mod via init + convert-to-one-mod on the first add', async () => {
+  it('bootstraps a go.work workspace via init, without convert-to-one-mod, on the first add', async () => {
     seedProjectJson('apps/api', 'api')
 
     await runAdd('go-app', 'api', {})
@@ -104,26 +110,52 @@ describe('runAdd go', () => {
       workspaceRoot,
     )
 
-    // Order matters: convert-to-one-mod refuses once go.work has any `use` line,
-    // so it must run straight after init and before the first project exists.
     const calls = nxCalls()
     const initIndex = calls.findIndex(argv => argv.includes('@nx-go/nx-go:init'))
-    const convertIndex = calls.findIndex(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))
     const generateIndex = calls.findIndex(argv => argv.includes('@nx-go/nx-go:application'))
     expect(initIndex).toBeGreaterThanOrEqual(0)
-    expect(convertIndex).toBeGreaterThan(initIndex)
-    expect(generateIndex).toBeGreaterThan(convertIndex)
+    // Multi-module: init writes go.work, and convert-to-one-mod (which forced a single
+    // root module) is never run; each generator writes its own go.mod after init.
+    expect(calls.some(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))).toBe(false)
+    expect(generateIndex).toBeGreaterThan(initIndex)
   })
 
-  it('skips the module bootstrap when a root go.mod already exists', async () => {
+  it('skips the bootstrap when a root go.mod already exists (an adopted flat module)', async () => {
     writeFileSync(join(workspaceRoot, 'go.mod'), 'module demo\n\ngo 1.24\n')
     seedProjectJson('apps/api', 'api')
 
     await runAdd('go-app', 'api', {})
 
-    const calls = nxCalls()
-    expect(calls.some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
-    expect(calls.some(argv => argv.includes('@nx-go/nx-go:convert-to-one-mod'))).toBe(false)
+    expect(nxCalls().some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
+  })
+
+  it('skips the bootstrap when a go.work already exists (multi-module already set up)', async () => {
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.24\n\nuse ./apps/other\n')
+    seedProjectJson('apps/api', 'api')
+
+    await runAdd('go-app', 'api', {})
+
+    expect(nxCalls().some(argv => argv.includes('@nx-go/nx-go:init'))).toBe(false)
+  })
+
+  it('rewrites a generated project go.mod to the origin-derived module path (#289)', async () => {
+    mockRunCapture.mockReturnValue({ status: 0, stdout: 'https://github.com/acme/demo.git\n' })
+    seedProjectJson('apps/api', 'api')
+    // The (mocked) plugin generator doesn't run, so stand in for the per-project go.mod it writes.
+    writeFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'module apps/api\n\ngo 1.27\n')
+
+    await runAdd('go-app', 'api', {})
+
+    expect(readFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'utf8')).toContain('module github.com/acme/demo/apps/api')
+  })
+
+  it('leaves a generated go.mod alone when there is no git origin to derive a prefix from', async () => {
+    seedProjectJson('apps/api', 'api')
+    writeFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'module apps/api\n\ngo 1.27\n')
+
+    await runAdd('go-app', 'api', {})
+
+    expect(readFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'utf8')).toContain('module apps/api')
   })
 
   describe('onto a repository that already has its own go.mod (#261)', () => {

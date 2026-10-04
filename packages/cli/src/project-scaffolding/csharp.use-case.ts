@@ -638,8 +638,8 @@ export async function addCsharpLib (
  * has no such implicit resolution: it is an explicit edit to the consuming
  * `.csproj`, which `dotnet add <consumer> reference <lib>` makes in one
  * command. The step is named for the user rather than skipped silently, the
- * same courtesy {@link addGoInternalLib}'s `goModulePath` message already
- * extends for Go's import path.
+ * same courtesy `addGoInternalLib`'s import-path message already extends for
+ * Go.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).

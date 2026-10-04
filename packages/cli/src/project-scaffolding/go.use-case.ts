@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
-import { registerNxGoPlugin } from '../go-workspace'
+import { goModulePrefix, registerNxGoPlugin } from '../go-workspace'
 import { GO_CGO_TAG } from '../workspace-overlay'
 import { makeGoAppReleasable } from './go-release.use-case'
 import { assertWebApp, wireGoAppToWeb } from './go-web.use-case'
@@ -96,67 +96,103 @@ function ensureNxGoPlugin (workspaceRoot: string): void {
 }
 
 /**
- * Idempotently bootstraps the workspace's single root `go.mod`.
+ * Idempotently bootstraps the workspace as a Go **multi-module** workspace (a root `go.work`).
  *
  * @remarks
- * This is the Go half of mnci's root-manifest model — the direct analogue of
- * the root `package.json` for TS and `requirements-dev.txt` for Python. Every
- * Go project in the workspace shares one module, so a library is imported as
- * `<module>/libs/<name>` with no per-project manifest and no replace
- * directives.
+ * Each Go project owns its `go.mod`, so it keeps its own dependencies — the same
+ * per-project model mnci uses for every other language (#289). `init` writes the root
+ * `go.work` and registers the plugin; each `@nx-go/nx-go:application`/`library` generator
+ * then adds its own `go.mod` (module `<modulePrefix>/<projectDir>`, see
+ * {@link registerNxGoPlugin}) and a `go.work` `use` entry. **No `convert-to-one-mod`** — that
+ * is what used to force the single root module.
  *
- * The sequence is exact and order-sensitive, established empirically against
- * a real Nx 23.1.0 workspace:
+ * Skipped when the workspace is already bootstrapped: a `go.work` (this layout), or a bare
+ * root `go.mod` (a repository adopted while still single-module — left as-is until migrated).
  *
- * 1. `init` writes `go.work` and registers the plugin in `nx.json`.
- * 2. `convert-to-one-mod` deletes `go.work` and writes the root `go.mod`.
- *
- * Step 2 refuses to run once `go.work` contains any `use` line, so it must
- * happen before the first Go project exists — hence bootstrapping here, on
- * the first `mnci add go-*`, rather than lazily later. Skipped entirely once
- * `go.mod` exists, so repeat adds are cheap and a user's own edits (extra
- * `require` lines) survive.
- *
- * The multi-module `go.work` alternative was rejected deliberately: besides
- * splitting dependencies across per-project manifests, a single stale `use`
- * entry (a project directory removed by hand) makes `go list -m -json` fail,
- * which breaks the entire Nx project graph — not just the Go projects.
+ * The old single-module choice avoided one failure: a stale `go.work` `use` entry (a project
+ * dir removed by hand) makes `go list -m -json` fail and breaks the whole Nx graph. mnci now
+ * **owns** `go.work` — the generators add entries, deletes remove them, and `mnci doctor`
+ * fails on drift — so that failure cannot arise from a hand edit.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @returns Nothing.
- * @throws Error when either generator exits non-zero.
+ * @throws Error when the generator exits non-zero.
  * @typeParam None - this function has no generic type parameters.
  */
 function ensureGoModule (workspaceRoot: string): void {
-  if (fileExists(join(workspaceRoot, 'go.mod'))) {
+  if (fileExists(join(workspaceRoot, 'go.work')) || fileExists(join(workspaceRoot, 'go.mod'))) {
     return
   }
-  logger.step('Bootstrapping the workspace Go module (single root go.mod)')
+  logger.step('Bootstrapping the Go workspace (go.work, one module per project)')
   runNx(['g', '@nx-go/nx-go:init', '--no-interactive'], workspaceRoot)
-  runNx(['g', '@nx-go/nx-go:convert-to-one-mod', '--no-interactive'], workspaceRoot)
 }
 
 /**
- * The workspace's Go module path, read from the root `go.mod`.
+ * The `module` line of a `go.mod`, or `undefined` when it is absent or unreadable.
  *
- * @remarks
- * Needed to tell a user the import path of a library that was just added.
- * `convert-to-one-mod` derives it from the root package.json name.
- *
- * @param workspaceRoot - Absolute path to the workspace.
- * @returns The module path, or `undefined` when `go.mod` is unreadable.
- * @throws Never - returns `undefined` rather than propagating a read error.
+ * @param goModPath - Absolute path to a `go.mod`.
+ * @returns The module path, or `undefined`.
+ * @throws Never - an unreadable file yields `undefined`.
  * @typeParam None - this function has no generic type parameters.
  */
-function goModulePath (workspaceRoot: string): string | undefined {
+function readGoModModule (goModPath: string): string | undefined {
   try {
     // go.mod is not JSON, so it is read directly rather than via readJson.
-    const contents = readFileSync(join(workspaceRoot, 'go.mod'), 'utf8')
-
-    return /^module\s+(\S+)/m.exec(contents)?.[1]
+    return /^module\s+(\S+)/m.exec(readFileSync(goModPath, 'utf8'))?.[1]
   } catch {
     return undefined
   }
+}
+
+/**
+ * The Go import path of a project, for telling the user how to import a library just added.
+ *
+ * @remarks
+ * Multi-module: the project has its own `go.mod` (module `<prefix>/<projectDir>`), so that is
+ * the import base. Single-module / adopted (no per-project `go.mod`): compose the root
+ * module with the project directory, which is how a package in one shared module is imported.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectDir - The project's workspace-relative directory (e.g. `packages/core`).
+ * @returns The import base path, or `undefined` when no module is resolvable.
+ * @throws Never - returns `undefined` rather than propagating a read error.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goModulePathFor (workspaceRoot: string, projectDir: string): string | undefined {
+  const projectModule = readGoModModule(join(workspaceRoot, projectDir, 'go.mod'))
+  if (projectModule !== undefined) {
+    return projectModule
+  }
+  const rootModule = readGoModModule(join(workspaceRoot, 'go.mod'))
+
+  return rootModule === undefined ? undefined : `${rootModule}/${projectDir}`
+}
+
+/**
+ * Rewrites a freshly generated project's `go.mod` module path to `<modulePrefix>/<projectDir>`.
+ *
+ * @remarks
+ * `@nx-go/nx-go` 4.1.1 names a workspace module after its directory alone (`apps/api`), which
+ * is not a fetchable VCS path (its `modulePrefix` plugin option is honoured only by unreleased
+ * versions). So mnci sets the path itself from the git origin ({@link goModulePrefix}), which
+ * is what makes `go get <prefix>/libs/<name>` work and what {@link registerNxGoPlugin}'s option
+ * records for a future plugin that reads it. No-op when there is no origin (keep the plugin's
+ * default) or no per-project `go.mod` (a single-module/adopted workspace).
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectDir - The project's workspace-relative directory (e.g. `apps/api`).
+ * @returns Nothing.
+ * @throws Propagates an `fs` write error; a missing `go.mod` is a no-op, not a throw.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function setGoModulePath (workspaceRoot: string, projectDir: string): void {
+  const prefix = goModulePrefix(workspaceRoot)
+  const goModPath = join(workspaceRoot, projectDir, 'go.mod')
+  if (prefix === undefined || !fileExists(goModPath)) {
+    return
+  }
+  const rewritten = readFileSync(goModPath, 'utf8').replace(/^module\s+\S+/m, () => `module ${prefix}/${projectDir}`)
+  writeFileEnsured(goModPath, rewritten)
 }
 
 /**
@@ -616,8 +652,9 @@ function prepareGo (workspaceRoot: string): void {
  *
  * @remarks
  * Delegates project generation to `@nx-go/nx-go:application`, then writes the
- * build/test/lint targets (nothing is inferred in single-module mode) plus
- * mnci's own `package` zip convention. With `release`, the app also joins
+ * build/test/lint targets explicitly (which override the plugin's inferred ones — mnci
+ * pins lint to golangci-lint, not the plugin's `go fmt` default) plus mnci's own `package`
+ * zip convention. With `release`, the app also joins
  * `nx release` (see {@link makeGoAppReleasable}); without it, it is never released.
  *
  * With `cgo`, the app needs a C toolchain (a tray icon, a native GUI, a cgo
@@ -658,6 +695,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `apps/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     build: goBuildTarget(name),
     test:  goTestTarget(),
@@ -724,6 +762,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `apps/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
     'test':        goTestTarget(),
@@ -769,6 +808,7 @@ export function addGoLib (workspaceRoot: string, name: string): void {
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `packages/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'packages', name, 'project.json'), {
     test: goTestTarget(),
     lint: goLintTarget(),
@@ -776,9 +816,9 @@ export function addGoLib (workspaceRoot: string, name: string): void {
   const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'packages', name), name)
   registerProjectCommands(workspaceRoot, name, { build: false })
 
-  const module = goModulePath(workspaceRoot)
+  const module = goModulePathFor(workspaceRoot, `packages/${name}`)
   if (module) {
-    logger.step(`Import its starter slice as ${module}/packages/${name}/${slice}`)
+    logger.step(`Import its starter slice as ${module}/${slice}`)
   }
 }
 
@@ -786,8 +826,8 @@ export function addGoLib (workspaceRoot: string, name: string): void {
  * Adds a private Go library under `libs/`.
  *
  * @remarks
- * Identical machinery to {@link addGoLib} minus the publishable intent: same
- * single root module, imported as `<module>/libs/<name>`. Test and lint
+ * Identical machinery to {@link addGoLib} minus the publishable intent: its own module
+ * under `libs/<name>`, imported by its module path. Test and lint
  * targets only — a Go package that is not `main` produces no binary, so
  * there is no build target to write.
  *
@@ -811,6 +851,7 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `libs/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'libs', name, 'project.json'), {
     test: goTestTarget(),
     lint: goLintTarget(),
@@ -818,8 +859,8 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
   const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'libs', name), name)
   registerProjectCommands(workspaceRoot, name, { build: false })
 
-  const module = goModulePath(workspaceRoot)
+  const module = goModulePathFor(workspaceRoot, `libs/${name}`)
   if (module) {
-    logger.step(`Import its starter slice as ${module}/libs/${name}/${slice}`)
+    logger.step(`Import its starter slice as ${module}/${slice}`)
   }
 }
