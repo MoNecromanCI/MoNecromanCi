@@ -689,6 +689,64 @@ the generated tree, so it runs afterwards, but still before the first write:
 a refusal leaves the target byte-identical to how it was found, and the staging
 copy is discarded.
 
+### Adopting a flat Go module
+
+A repository with its own `go.mod`, a root `main.go` and `internal/` packages is the
+other common starting point, and `--into` takes it as it is. Measured on a clone of a
+real one (twelve `internal/` packages, its own `release.yml`):
+
+- **`go.mod` and `go.sum` are never touched.** `add go-*` skips the module bootstrap
+  when a `go.mod` exists, so the module path, the `require` lines and the Go version
+  survive byte for byte, and no `go.work` is created.
+- **The Go plugin is registered anyway.** The bootstrap that registers it in `nx.json`
+  is the one that is skipped, which used to leave the plugin installed and unlisted:
+  every target worked, and Nx had **no Go project graph**, so `nx affected` skipped an
+  app that imports a changed library, silently. `add go-*` now registers it, `mnci
+  upgrade` repairs a workspace that adopted before, and `mnci doctor` fails while Go
+  projects exist and it is missing.
+- **Your own workflow coexists.** A release workflow that fires on `v*` tags and the
+  generated `ci.yml`, which fires on pushes and pull requests to `main`, do not overlap.
+  mnci tags a released app `<name>@<version>`, so once `--release` and its GitHub
+  Release assets do what yours did, delete the old workflow.
+- **The format step can fail on a file you already had**, and says so without failing
+  the run: a UTF-16 `.json` at the root made `eslint .` report a parse error. The root
+  lint covers root-level files, so a repository's existing JSON, Markdown and YAML are
+  now inside it; fix or delete what it names.
+
+Landing the code is mechanical, so it is a recipe, not a command (`git mv` and one
+import rewrite are the whole job, and a command would have to guess your layout). With
+`youtube-downloader` as the module path, `mvd-cli` as the app and `mvd-core` as the
+library:
+
+```sh
+mnci add go-app mvd-cli
+mnci add go-internal-lib mvd-core
+
+# The generated starters are placeholders: drop them.
+rm apps/mvd-cli/main.go apps/mvd-cli/main_test.go
+rm -r libs/mvd-core/mvdcore
+
+# git mv, not mv, so `git log --follow` reaches the history before the move.
+git mv main.go apps/mvd-cli/main.go
+for slice in internal/*/; do git mv "$slice" "libs/mvd-core/$(basename "$slice")"; done
+
+# Rewrite the import paths (macOS: sed -i '').
+grep -rl 'youtube-downloader/internal/' --include=*.go apps libs \
+  | xargs sed -i 's#youtube-downloader/internal/#youtube-downloader/libs/mvd-core/#g'
+
+npx nx run-many -t test,build --projects=mvd-cli,mvd-core
+```
+
+Use `nx` and not a bare `go test ./...` from the root: `./...` also walks
+`node_modules`, where npm packages that contain Go code sit (one did here). On the
+repository measured, this left `go build` clean, every test passing, 62 renames
+detected by git, and the app depending on the library in the project graph. The e2e
+(`go adoption`) runs this recipe on a fixture and asserts each of those.
+
+Not measured here: whether `golangci-lint`, which is what each Go project's `lint`
+runs, passes on a codebase that has never been linted. Run `nx run <lib>:lint` before
+relying on it, and expect to fix or silence what it reports.
+
 ## Layout convention = release scoping
 
 | Directory          | Contents                                                       | Released?                              |

@@ -2855,6 +2855,113 @@ section('go', ['alt stack'], () => {
     skip('the entire Go section', 'the Go toolchain is not on PATH')
   }
 })
+section('go adoption', [], () => {
+  /* ---------------------------------------------------------------------------
+   * Adopting a flat Go module (#261): a repository that already has its own
+   * go.mod, a root main.go and `internal/` slices, taken into an mnci workspace.
+   *
+   * What was measured against a clone of MVD before this was written: `new --into`
+   * accepts it, `add go-*` leaves go.mod byte-identical and writes no go.work, the
+   * move into apps/ and libs/ is `git mv` plus one import rewrite, and the plugin
+   * was never registered in nx.json (the bootstrap that does it is skipped when a
+   * go.mod exists), so Nx had no Go project graph.
+   * ------------------------------------------------------------------------- */
+  if (!hasGo()) {
+    skip('the entire go adoption section', 'the Go toolchain is not on PATH')
+
+    return
+  }
+  const flat = path.join(temporary, 'flat-go')
+  const write = (file, content) => {
+    mkdirSync(path.dirname(path.join(flat, file)), { recursive: true })
+    writeFileSync(path.join(flat, file), content)
+  }
+  const GO_MOD = 'module flatmod\n\ngo 1.22\n'
+  write('go.mod', GO_MOD)
+  write('README.md', '# flat\n')
+  write('main.go', 'package main\n\nimport (\n\t"fmt"\n\n\t"flatmod/internal/count"\n\t"flatmod/internal/greet"\n)\n\nfunc main() {\n\tfmt.Println(greet.Hello("adopted"), count.Of("adopted"))\n}\n')
+  write('internal/greet/greet.go', 'package greet\n\nfunc Hello(name string) string {\n\treturn "hello " + name\n}\n')
+  write('internal/greet/greet_test.go', 'package greet\n\nimport "testing"\n\nfunc TestHello(t *testing.T) {\n\tif Hello("a") != "hello a" {\n\t\tt.Fatal("Hello")\n\t}\n}\n')
+  write('internal/count/count.go', 'package count\n\nfunc Of(text string) int {\n\treturn len(text)\n}\n')
+  write('internal/count/count_test.go', 'package count\n\nimport "testing"\n\nfunc TestOf(t *testing.T) {\n\tif Of("abc") != 3 {\n\t\tt.Fatal("Of")\n\t}\n}\n')
+  const commit = message => run(`git add -A && git -c user.email=e2e@test -c user.name=e2e commit -q -m "${message}"`, flat)
+  run('git init -q -b main', flat)
+  commit('feat: the flat module')
+
+  run(`node ${CLI} new --into . --yes --registry npm --scope @flat --ci github`, flat)
+  commit('feat: initial workspace')
+  run(`node ${CLI} add go-app cli`, flat)
+  run(`node ${CLI} add go-internal-lib core`, flat)
+
+  const nxJson = JSON.parse(readFileSync(path.join(flat, 'nx.json'), 'utf8'))
+  enforce(
+    'go adoption: add go-* leaves the repository\'s own go.mod alone, and creates no go.work',
+    readFileSync(path.join(flat, 'go.mod'), 'utf8') === GO_MOD && !existsSync(path.join(flat, 'go.work')),
+    readFileSync(path.join(flat, 'go.mod'), 'utf8'),
+  )
+  enforce(
+    'go adoption: the Go plugin is registered in nx.json, though the bootstrap that does it was skipped',
+    nxJson.plugins.some(entry => (typeof entry === 'string' ? entry : entry.plugin) === '@nx-go/nx-go'),
+    JSON.stringify(nxJson.plugins),
+  )
+
+  // The recipe in the README, step for step: drop the generated starters, move the
+  // code with git mv so history follows, and rewrite the import paths.
+  rmSync(path.join(flat, 'apps/cli/main.go'), { force: true })
+  rmSync(path.join(flat, 'apps/cli/main_test.go'), { force: true })
+  const starters = readdirSync(path.join(flat, 'libs/core'), { withFileTypes: true })
+  for (const entry of starters) {
+    if (entry.isDirectory()) {
+      rmSync(path.join(flat, 'libs/core', entry.name), { recursive: true, force: true })
+    }
+  }
+  run('git mv main.go apps/cli/main.go', flat)
+  for (const slice of ['greet', 'count']) {
+    run(`git mv internal/${slice} libs/core/${slice}`, flat)
+  }
+  for (const file of ['apps/cli/main.go', 'libs/core/greet/greet.go', 'libs/core/greet/greet_test.go', 'libs/core/count/count.go', 'libs/core/count/count_test.go']) {
+    const source = readFileSync(path.join(flat, file), 'utf8')
+    writeFileSync(path.join(flat, file), source.replaceAll('flatmod/internal/', 'flatmod/libs/core/'))
+  }
+  commit('refactor: move the flat module into apps and libs')
+
+  const mainSource = readFileSync(path.join(flat, 'apps/cli/main.go'), 'utf8')
+  enforce(
+    'go adoption: the imports are rewritten from internal/ to libs/<lib>/',
+    mainSource.includes('flatmod/libs/core/greet') && !mainSource.includes('/internal/'),
+    mainSource,
+  )
+  // `./...` from the root would also walk node_modules, which npm packages with Go code sit in.
+  const built = tryRunCapture('go build ./apps/... ./libs/... && go test ./apps/... ./libs/...', flat)
+  enforce('go adoption: the converted module builds and its tests pass', built.ok, built.output)
+  const history = tryRunCapture('git log --follow --format=%s -- libs/core/greet/greet.go', flat)
+  enforce(
+    'go adoption: history follows the move (git log --follow reaches the commit before it)',
+    history.ok && history.output.includes('feat: the flat module'),
+    history.output,
+  )
+
+  const graph = tryRunCapture('npx nx graph --print', flat)
+  let dependencies
+  try {
+    dependencies = JSON.parse(graph.output.slice(graph.output.indexOf('{'), graph.output.lastIndexOf('}') + 1)).graph.dependencies
+  } catch {
+    dependencies = {}
+  }
+  enforce(
+    'go adoption: Nx sees the app depend on the lib it imports',
+    (dependencies.cli ?? []).some(edge => edge.target === 'core'),
+    JSON.stringify(dependencies.cli ?? []),
+  )
+  const affected = tryRunCapture('npx nx show projects --affected --files=libs/core/greet/greet.go', flat)
+  enforce(
+    'go adoption: a change to the lib marks the app affected',
+    affected.ok && affected.output.includes('cli') && affected.output.includes('core'),
+    affected.output,
+  )
+  const targets = tryRunCapture('npx nx run-many -t test,build --projects=cli,core', flat)
+  enforce('go adoption: nx test and build are green for the converted projects', targets.ok, targets.output)
+})
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
    * C# — @nx/dotnet (the official Nx plugin, inference-only: build/test/restore/

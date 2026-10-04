@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import { hasGoProject, registerNxGoPlugin } from '../go-workspace'
 import { runFormatter } from '../nx-workspace'
 import {
   addGoPlatformTargets,
@@ -350,6 +351,12 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (refreshGoReleaseScript(workspaceRoot)) {
     logger.step('Updating the releasable Go app script')
     logger.detail(`updated ${GO_RELEASE_SCRIPT_PATH}`)
+  }
+  // Repairs a workspace that adopted a Go module before the plugin was registered for it:
+  // every target worked and the project graph had no Go edge, so `affected` skipped apps.
+  if (hasGoProject(workspaceRoot) && registerNxGoPlugin(workspaceRoot)) {
+    logger.step('Registering the Go plugin in nx.json, so Nx can see which Go project imports which')
+    logger.detail('updated nx.json')
   }
   const upgradedDtsPlugins = upgradeDeclarationSpecifierPlugins(workspaceRoot)
   if (upgradedDtsPlugins.length > 0) {
