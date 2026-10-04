@@ -16,6 +16,7 @@ import { runAdd } from './add-project.use-case'
 import {
   pinVscodeExtensionProjectNames,
   refreshVscodeExtensionScript,
+  VSCODE_ENGINE_FLOOR,
   VSCODE_EXTENSION_SCRIPT,
   VSCODE_EXTENSION_SCRIPT_PATH,
   VSCODE_SIDECAR_TARGETS,
@@ -94,8 +95,10 @@ beforeEach(() => {
   jest.spyOn(process, 'cwd').mockReturnValue(workspaceRoot)
   jest.spyOn(console, 'log').mockImplementation(() => {})
   mockRunShell.mockImplementation((command, arguments_) => {
-    // `npm install --save-dev @types/vscode @vscode/vsce`: record it like npm would.
-    if (command === 'npm' && arguments_.includes('@types/vscode')) {
+    // `npm install --save-dev @types/vscode@~<floor> @vscode/vsce`: record it like npm would.
+    // Deliberately writes a FUTURE version (1.140.0, VS Code's next, unreleased minor) so the
+    // engines.vscode assertion proves the manifest no longer tracks the installed types (#277).
+    if (command === 'npm' && arguments_.some(argument => argument.startsWith('@types/vscode'))) {
       mkdirSync(join(workspaceRoot, 'node_modules/@types/vscode'), { recursive: true })
       writeFileSync(join(workspaceRoot, 'node_modules/@types/vscode/package.json'), JSON.stringify({ version: '1.140.0' }))
     }
@@ -126,7 +129,7 @@ describe('runAdd vscode-extension', () => {
     expect(mockRunNx).toHaveBeenCalledWith(expect.arrayContaining(['g', '@nx/node:application', 'apps/ext', '--framework=none']), workspaceRoot)
     expect(mockRunShell).toHaveBeenCalledWith(
       'npm',
-      ['install', '--save-dev', '@types/vscode', '@vscode/vsce', '--no-audit', '--no-fund'],
+      ['install', '--save-dev', `@types/vscode@~${VSCODE_ENGINE_FLOOR}`, '@vscode/vsce', '--no-audit', '--no-fund'],
       workspaceRoot,
     )
   })
@@ -138,7 +141,7 @@ describe('runAdd vscode-extension', () => {
       command === 'npm' && arguments_.join(' ') === 'install --package-lock-only --no-audit --no-fund')
     expect(refresh).toBeGreaterThan(-1)
     // After the reshape, which is what changed the name the lock is keyed by.
-    const toolchain = mockRunShell.mock.calls.findIndex(([, arguments_]) => arguments_.includes('@types/vscode'))
+    const toolchain = mockRunShell.mock.calls.findIndex(([, arguments_]) => arguments_.some(argument => argument.startsWith('@types/vscode')))
     expect(refresh).toBeGreaterThan(toolchain)
   })
 
@@ -149,7 +152,9 @@ describe('runAdd vscode-extension', () => {
     // vsce rejects a scoped name, and refuses types newer than the engine range.
     expect(written.name).toBe('ext')
     expect(written.publisher).toBe('demo')
-    expect(written.engines).toEqual({ vscode: '^1.140.0' })
+    // engines.vscode is the released floor, NOT the installed @types/vscode (1.140.0 here, a
+    // future unreleased VS Code) — deriving it from @latest bricked Marketplace installs (#277).
+    expect(written.engines).toEqual({ vscode: `^${VSCODE_ENGINE_FLOOR}` })
     expect(written.main).toBe('./dist/main.js')
     expect(written.activationEvents).toEqual([])
     expect(written.contributes.commands).toEqual([{ command: 'ext.hello', title: 'ext: Hello' }])
