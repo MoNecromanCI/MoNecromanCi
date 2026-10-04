@@ -566,3 +566,70 @@ describeOnPosix("the generated pipeline's pack-apps guard, run against a bare .c
     expect(readFileSync(log, 'utf8').trim()).toBe('nx run-many -t package')
   })
 })
+
+/** Scaffolds a csharp-lib and returns its nx-release-publish command string. */
+async function csharpLibPublishCommand (): Promise<string> {
+  await runAdd('csharp-lib', 'sdk', {})
+
+  return String(readProjectJson('packages/sdk').targets['nx-release-publish'].options?.command)
+}
+
+/**
+ * Runs a publish command with a logging `dotnet` stub on PATH and NUGET_PAT set.
+ *
+ * @param command - The nx-release-publish command string.
+ * @param extraArguments - Appended to the command, as nx appends `--dryRun=true`.
+ * @param extraEnvironment - Merged over the base environment (e.g. NX_DRY_RUN).
+ * @returns The exit status, stdout, and whatever the `dotnet` stub was asked to run.
+ */
+function runCsharpPublish (
+  command: string,
+  extraArguments: string,
+  extraEnvironment: NodeJS.ProcessEnv,
+): { status: number | null; stdout: string; dotnetLog: string } {
+  const log = join(workspaceRoot, 'dotnet.log')
+  mkdirSync(join(workspaceRoot, 'stub-bin'))
+  writeFileSync(join(workspaceRoot, 'stub-bin/dotnet'), `#!/bin/sh\necho "$@" >> "${log}"\nexit 0\n`, { mode: 0o755 })
+  const result = spawnSync(`${command} ${extraArguments}`, {
+    cwd:      workspaceRoot,
+    shell:    true,
+    encoding: 'utf8',
+    env:      {
+      ...process.env,
+      NUGET_PAT: 'secret',
+      PATH:      `${join(workspaceRoot, 'stub-bin')}${delimiter}${process.env.PATH ?? ''}`,
+      ...extraEnvironment,
+    },
+  })
+
+  return { status: result.status, stdout: result.stdout ?? '', dotnetLog: existsSync(log) ? readFileSync(log, 'utf8') : '' }
+}
+
+describeOnPosix("the generated csharp-lib nx-release-publish target's dry-run handling (#245)", () => {
+  it('skips the real dotnet pack and nuget push when --dryRun=true reaches argv, even with NUGET_PAT set', async () => {
+    // Passed after `--` so `node -e` forwards it into process.argv as a script arg rather than
+    // rejecting it as an unknown node option — the shape the argv branch of the guard is for.
+    const run = runCsharpPublish(await csharpLibPublishCommand(), '-- --dryRun=true', {})
+
+    expect(run.status).toBe(0)
+    expect(run.stdout).toContain('Dry run - would')
+    // dotnet was never invoked at all: the dry-run guard exits before pack and push.
+    expect(run.dotnetLog).toBe('')
+  })
+
+  it('skips them on NX_DRY_RUN=true too, even with NUGET_PAT set', async () => {
+    const run = runCsharpPublish(await csharpLibPublishCommand(), '', { NX_DRY_RUN: 'true' })
+
+    expect(run.status).toBe(0)
+    expect(run.stdout).toContain('Dry run - would')
+    expect(run.dotnetLog).toBe('')
+  })
+
+  it('runs dotnet for real when NUGET_PAT is set and it is not a dry run — so the empty log above is meaningful', async () => {
+    const run = runCsharpPublish(await csharpLibPublishCommand(), '', {})
+
+    expect(run.status).toBe(0)
+    // Reaches the real `dotnet pack`; no push follows only because the stub emits no .nupkg.
+    expect(run.dotnetLog).toContain('pack')
+  })
+})
