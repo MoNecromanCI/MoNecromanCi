@@ -49,10 +49,10 @@
     "directory": "packages/nx-flutter"
   },
   "peerDependencies": {
-    "@nx/devkit": ">=21.0.0",
     "nx": ">=21.0.0"
   },
   "dependencies": {
+    "@nx/devkit": ">=21.0.0",
     "cross-spawn": "^7.0.6"
   },
   "nx": {
