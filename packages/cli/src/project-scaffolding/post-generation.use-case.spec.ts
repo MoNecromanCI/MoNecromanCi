@@ -18,6 +18,7 @@ import {
   relocateRootRuntimeDependencies,
   removeGeneratedEslintConfig,
   renameScaffoldPlaceholder,
+  reshapeReactAppScaffold,
   reshapeReactScaffold,
   rootRuntimeDependencies,
 } from './post-generation.use-case'
@@ -206,6 +207,45 @@ describe('reshapeReactScaffold', () => {
     reshapeReactScaffold(library(), 'utils')
     expect(read('src/index.ts')).toBe(once)
     expect(() => reshapeReactScaffold(join(workspaceRoot, 'libs/missing'), 'missing')).not.toThrow()
+  })
+})
+
+/** Lays out what `@nx/react:app` writes under src/. */
+function reactAppScaffold (): void {
+  writeFileSync(join(library(), 'src/main.tsx'), lines("import App from './app/app'", '', 'console.log(App)'))
+  mkdirSync(join(library(), 'src/app'), { recursive: true })
+  writeFileSync(join(library(), 'src/app/app.tsx'), lines('import NxWelcome from "./nx-welcome";', '', 'export function App () {', '  return NxWelcome', '}', '', 'export default App'))
+  writeFileSync(join(library(), 'src/app/app.spec.tsx'), lines("import App from './app'", '', "describe('App', () => {})"))
+  writeFileSync(join(library(), 'src/app/nx-welcome.tsx'), lines('export function NxWelcome () {}', '', 'export default NxWelcome'))
+  writeFileSync(join(library(), 'src/app/app.module.css'), lines('.x {}'))
+}
+
+describe('reshapeReactAppScaffold', () => {
+  it('gives src/app files the component role, a barrel, and repoints main through it', () => {
+    mkdirSync(join(library(), 'src'), { recursive: true })
+    reactAppScaffold()
+
+    reshapeReactAppScaffold(library())
+
+    expect(exists('src/app/app.component.tsx')).toBe(true)
+    expect(exists('src/app/app.tsx')).toBe(false)
+    expect(exists('src/app/nx-welcome.component.tsx')).toBe(true)
+    expect(exists('src/app/app.module.css')).toBe(true)
+    expect(read('src/app/app.component.tsx')).toContain('from "./nx-welcome.component"')
+    expect(read('src/app/app.component.spec.tsx')).toContain("from './app.component'")
+    expect(read('src/app/index.ts')).toContain("export { default } from './app.component'")
+    expect(read('src/main.tsx')).toContain("from './app'")
+  })
+
+  it('is a no-op once reshaped, and when the app is absent', () => {
+    mkdirSync(join(library(), 'src'), { recursive: true })
+    reactAppScaffold()
+    reshapeReactAppScaffold(library())
+    const once = read('src/main.tsx')
+
+    reshapeReactAppScaffold(library())
+    expect(read('src/main.tsx')).toBe(once)
+    expect(() => reshapeReactAppScaffold(join(workspaceRoot, 'apps/missing'))).not.toThrow()
   })
 })
 

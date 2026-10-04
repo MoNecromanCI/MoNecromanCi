@@ -454,6 +454,23 @@ reach the same logic without going through scaffolding) and re-applied on `mnci 
   with a passing `echo`, which is otherwise invisible to CI. Absences must be
   recorded in `ABSENT_BY_DESIGN` with a reason.
 
+### Opinionated scaffolds: the generator's `src/` becomes a slice (#290)
+
+mnci replaces the Nx generator's default `src/` shape with the vertical-slice one, so
+a fresh project lints clean with `verticalSlices` on and no override. Done so far
+(each is a `reshape*` function in `project-scaffolding/post-generation.use-case.ts`,
+re-applied on add): JS libraries (`renameScaffoldPlaceholder`), React libraries
+(`reshapeReactScaffold`), React apps (`reshapeReactAppScaffold`), Go libraries, and
+`node-function-app` (a `src/hello/` slice written directly). Still open on #290: the
+other app kinds, a realistic worked example per family, and the `--empty` flag.
+
+Two traps from doing it: Nx writes **double quotes and semicolons** and the formatter
+only normalises them after the reshape runs, so a specifier rewrite must match both
+quote styles (`repointSpecifier`); and front-end roles (`.component`, `.route`,
+`.section`, `.hook`, `.content`) are accepted on `.tsx` files by
+`@mnci/eslint-config` with no option (`mnci/vertical-slices-tsx`), while the non-JSX
+ones (`.style`, `.mock`) still need `roles`.
+
 ### Linting and formatting: ESLint only
 
 There is no Prettier and no oxfmt. `@mnci/eslint-config` is the whole opinion — code

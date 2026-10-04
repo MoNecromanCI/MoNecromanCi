@@ -8,6 +8,7 @@ import {
   ensurePlugin,
   registerProjectCommands,
   removeGeneratedEslintConfig,
+  reshapeReactAppScaffold,
   type WorkspaceStack,
 } from './post-generation.use-case'
 
@@ -162,6 +163,8 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
   }
   allowEnvFiles(workspaceRoot)
   addNxTargets(join(reactAppRoot, 'package.json'), reactAppTargets(name))
+  // src/app/*.tsx get the .component role and a barrel, so the slice rules accept them.
+  reshapeReactAppScaffold(reactAppRoot)
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
   // Vite's inferred 'serve' target (the dev server) is what @nx/react:app
   // already wires — no per-env variant needed for local dev, unlike build.
