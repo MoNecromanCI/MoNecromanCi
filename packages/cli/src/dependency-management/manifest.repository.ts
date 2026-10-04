@@ -738,6 +738,77 @@ export function collectInventory (
 }
 
 /**
+ * Where each ecosystem's per-project manifests live, for locating a project by name.
+ *
+ * @remarks
+ * The same roots {@link MANIFEST_GLOBS} uses, except Go: multi-module
+ * (MoNecromanCI/MoNecromanCi#289) gives every Go project its own `go.mod`, so a project's
+ * module is locatable exactly the way every other ecosystem's manifest is. This
+ * is deliberately separate from {@link MANIFEST_GLOBS} (whose `go` entry stays
+ * empty) because reading Go *dependencies* is still rooted on the workspace
+ * `go.mod`; only project *location* is per-module.
+ */
+const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
+  ...MANIFEST_GLOBS,
+  go: ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
+}
+
+/**
+ * Where one project lives, and which toolchain owns it.
+ *
+ * @remarks
+ * Produced by {@link locateProjects}, one per project manifest. The `dir` and
+ * `name` are the two ways `mnci install -w` lets a user address the project.
+ *
+ * @typeParam None - this type has no generic type parameters.
+ */
+export interface ProjectLocation {
+  /** The ecosystem whose manifest was found. */
+  ecosystem:    Ecosystem
+  /** Workspace-relative project directory, forward-slashed (e.g. `apps/goapi`). */
+  dir:          string
+  /** The directory's basename (e.g. `goapi`), the usual short name a user types. */
+  name:         string
+  /** Absolute path to the project's manifest. */
+  manifestPath: string
+}
+
+/**
+ * Locates every project in the workspace, with its ecosystem and manifest.
+ *
+ * @remarks
+ * The resolution `mnci install -w <project>` needs: a project is addressed by
+ * either its directory (`apps/goapi`) or its basename (`goapi`), and its
+ * ecosystem decides which native tool adds a dependency. Unlike
+ * {@link collectInventory}, this reports one entry per *project*, not one per
+ * declared package, and it reads nothing inside the manifests.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One {@link ProjectLocation} per project manifest found.
+ * @throws Never - only globs the filesystem.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function locateProjects (workspaceRoot: string): ProjectLocation[] {
+  const locations: ProjectLocation[] = []
+
+  for (const ecosystem of ECOSYSTEMS) {
+    const relativePaths = globSync(PROJECT_GLOBS[ecosystem], { cwd: workspaceRoot })
+    for (const relativePath of relativePaths) {
+      const posix = toPosix(relativePath)
+      const dir = posix.slice(0, posix.lastIndexOf('/'))
+      locations.push({
+        ecosystem,
+        dir,
+        name:         dir.slice(dir.lastIndexOf('/') + 1),
+        manifestPath: join(workspaceRoot, relativePath),
+      })
+    }
+  }
+
+  return locations
+}
+
+/**
  * Rewrites one declaration's spec in place, leaving the rest of the file alone.
  *
  * @remarks
@@ -826,6 +897,70 @@ export function replacePipSpec (content: string, name: string, spec: string): st
     new RegExp(String.raw`(^|["'\s])(${escaped})\s*(?:[<>=!~^][^"'\n,]*)?(?=["'\n]|$)`, 'gm'),
     (match, lead: string, matched: string) => `${lead}${matched}${spec}`,
   )
+}
+
+/**
+ * Adds a new entry to a `pyproject.toml`'s `[project].dependencies` array.
+ *
+ * @remarks
+ * The add-side counterpart of {@link replacePipSpec}, which only edits an entry
+ * that already exists. pip has no "add a dependency to pyproject" command the
+ * way npm/go/dotnet/flutter each do, so `mnci install` edits the manifest
+ * itself. Minimal text surgery, not parse-and-re-emit, for the reason
+ * {@link rewriteSpec} gives: a `pyproject.toml` carries comments a serialiser
+ * would discard. The `entry` is written verbatim, so a caller may pass a bare
+ * name (`flask`) or a pinned requirement (`flask>=3`); an entry already
+ * declared (matched by name) is left alone rather than duplicated. The original
+ * newline style is preserved.
+ *
+ * @param content - The file's current text.
+ * @param entry - The PEP 508 requirement to add, verbatim.
+ * @returns The updated text, unchanged when the dependency is already declared
+ *   or no `[project].dependencies` array exists.
+ * @throws Never - performs string surgery only.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addPipDependency (content: string, entry: string): string {
+  const name = parseRequirement(entry)?.name
+  const already = name !== undefined &&
+    pyprojectDependencies(content).some(existing => parseRequirement(existing)?.name === name)
+  if (already) {
+    return content
+  }
+
+  const newline = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = content.split(/\r?\n/)
+  const quoted = `"${entry}"`
+  let inProjectTable = false
+
+  for (let index = 0; index < lines.length; index++) {
+    const trimmed = lines[index].trim()
+    if (trimmed.startsWith('[')) {
+      inProjectTable = trimmed === '[project]'
+      continue
+    }
+    if (!inProjectTable) {
+      continue
+    }
+    const opener = /^(\s*)dependencies\s*=\s*\[(.*)$/.exec(lines[index])
+    if (!opener) {
+      continue
+    }
+    const [, indent, rest] = opener
+    if (rest.includes(']')) {
+      // Single-line array (the scaffold default is `dependencies = []`).
+      const inner = rest.slice(0, rest.lastIndexOf(']')).trim().replace(/,+\s*$/, '')
+      const list = inner.length > 0 ? `${inner}, ${quoted}` : quoted
+      lines[index] = `${indent}dependencies = [${list}]`
+    } else {
+      // Multi-line array: insert as the first element.
+      lines.splice(index + 1, 0, `${indent}    ${quoted},`)
+    }
+
+    return lines.join(newline)
+  }
+
+  return content
 }
 
 /**

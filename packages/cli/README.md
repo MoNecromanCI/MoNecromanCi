@@ -75,7 +75,7 @@ helpers — they have no interest in adding a project. The concept now sits in i
 own slice that depends on nothing above it (`file-system` alone), and all three
 consumers point at it.
 
-## Commands (deliberately just seven)
+## Commands (deliberately few)
 
 ```sh
 mnci new my-repo            # create a monorepo (prompts scope + registry)
@@ -100,7 +100,7 @@ mnci add python-lib shared         # publishable -> python-packages/ (twine uplo
 mnci add python-internal-lib core  # private shared lib -> libs/
 mnci add python-vendor shared --lib core  # wire core's module into shared's built wheel
 
-# Go (@nx-go/nx-go — one root go.mod, golangci-lint + go test)
+# Go (@nx-go/nx-go — multi-module: one go.mod per project + a root go.work, golangci-lint + go test)
 mnci add go-app api            # executable -> apps/ (binary, zipped into the drop)
 mnci add go-app cli --release  # ...released: tag + per-platform zips on the GitHub Release
 mnci add go-app tray --cgo     # needs a C toolchain: built on a runner of each OS
@@ -131,6 +131,12 @@ mnci sync --check             # ...report and exit non-zero, writing nothing
 
 mnci up                       # what has a newer release, grouped; pick what to update
 mnci up --check               # ...report only (the default when output is piped)
+
+mnci i -w web left-pad        # add a dep to ONE project, using its toolchain (alias: mnci install)
+mnci i -w api github.com/x/y  # ...go get in the Go module; dotnet/flutter/pip all dispatched the same way
+mnci i -w ui -w web react     # ...-w repeats, to add to several projects at once
+mnci i -w svc jest -D         # ...--save-dev where the ecosystem has a dev-dependency notion
+mnci i                        # no -w: install/restore the whole workspace (the one-shot bootstrap)
 ```
 
 ## Where a dependency belongs: root vs project
@@ -145,13 +151,16 @@ One rule, and it is the same in every language mnci supports:
 | npm      | each project's `package.json`                                        | `package.json` — scripts, devDependencies, `overrides` (root-only by npm's rules) |
 | pip      | each project's `pyproject.toml` (a function app: its `requirements.txt`) | `requirements-dev.txt` — the shared toolchain, nothing else            |
 | pub      | each member's `pubspec.yaml`                                         | `pubspec.yaml` — the member list and an SDK floor, **no** dependency blocks |
-| go       | *(nothing per-project)*                                              | `go.mod` — the whole module's requirements                            |
+| go       | each project's own `go.mod` (multi-module)                           | `go.work` — the `use` list only; mnci owns it, no requirements         |
 
-**Go is the stated exception.** Its single-root-module layout means there are no
-per-project manifests to own anything, so every Go dependency is a root
-dependency by construction. That is deliberate — the multi-module `go.work`
-alternative was rejected because one stale `use` entry makes `go list -m -json`
-fail, which breaks the entire Nx project graph, not just the Go projects.
+**Go follows the same rule as everything else** (MoNecromanCI/MoNecromanCi#289). Each
+project has its own `go.mod` with a fetchable module path
+(`<host>/<org>/<repo>/<dir>`, derived from the git origin), tied together by a
+root `go.work` that mnci owns. That is what lets `mnci i -w <go-project> <pkg>`
+`go get` into exactly that module. The one hazard it introduces —
+a stale `use` entry whose directory is gone makes `go list -m` fail and breaks
+the whole Nx project graph — is caught by `mnci doctor`, which fails on it and
+names the line to remove.
 
 ### Why hoisting a runtime dependency to the root is a bug, not a tidy-up
 

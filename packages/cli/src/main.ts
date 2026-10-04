@@ -4,6 +4,7 @@ import { PROJECT_KINDS, runAdd, type AddOptions, type ProjectKind } from './proj
 import { runDoctor } from './workspace-diagnostics'
 import { runInteractive } from './workspace-creation'
 import { runNew, type NewOptions } from './workspace-creation'
+import { runInstall, type InstallOptions } from './dependency-management'
 import { runSync, type SyncOptions } from './dependency-management'
 import { runUp, type UpOptions } from './dependency-management'
 import { runUpgrade, type UpgradeOptions } from './workspace-upgrade'
@@ -139,6 +140,19 @@ export function buildProgram (cliVersion: string): Command {
     .option('--no-install', 'update the manifests but skip the reinstall step')
     .action(async (options: UpOptions) => {
       await runUp(process.cwd(), options)
+    })
+
+  program
+    .command('install')
+    .alias('i')
+    .argument('[packages...]', 'packages to add (a bare name or a pinned spec); omit to install only')
+    .description(
+      "Add a dependency to a specific project using its own toolchain (npm/pip/pub/nuget/go), or — with no package — install everything. Each project owns its dependencies, so a package needs a target: 'mnci i -w <project> <package>'",
+    )
+    .option('-w, --workspace <project...>', 'target project, by directory (apps/foo) or basename (foo); repeatable')
+    .option('-D, --save-dev', 'add as a development dependency, where the ecosystem distinguishes one')
+    .action((packages: string[], options: InstallOptions) => {
+      runInstall(process.cwd(), packages, options)
     })
 
   program

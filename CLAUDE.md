@@ -96,7 +96,8 @@ committing an upgrade.
 - **`packages/cli/src/workspace-diagnostics/check-invariants.use-case.ts`** — read-only invariant check (`mnci doctor`); exits non-zero on any finding, and every finding names its remedy
 - **`packages/cli/src/dependency-management/sync-dependencies.use-case.ts`** — `mnci sync`: converge every external dependency range declared at more than one version, then run `nx sync` for TypeScript project references. Owns the one call to `nx sync` (`mnci add` imports it from here)
 - **`packages/cli/src/dependency-management/update-dependencies.use-case.ts`** — `mnci up`: `npm-check -u`'s grouped report and multiselect, plus the projects column, across npm/pip/pub/nuget/go
-- **`packages/cli/src/dependency-management/`** — the cross-language machinery both commands share: `manifest.repository.ts` (read and minimally rewrite every manifest shape), `semver.algorithm.ts` (parse, compare, bucket), `registry.client.ts` (latest version per ecosystem)
+- **`packages/cli/src/dependency-management/install-dependencies.use-case.ts`** — `mnci install` / `mnci i` (#291): add a dependency to ONE project using its own toolchain, enforcing the per-project-dependency philosophy. Dispatches by the target's ecosystem (resolved via `locateProjects`): `npm install -w`, `go get` in the project module, `dotnet add package`, `flutter pub add`, and — the one that has no native "add to manifest" verb — a `pyproject.toml` edit (`addPipDependency`) then the editable install. A bare `mnci i` installs/restores the whole workspace (Go via `go work sync`, not the old single-module `go mod tidy`); a package with no `-w` target is refused rather than added to the root
+- **`packages/cli/src/dependency-management/`** — the cross-language machinery the commands share: `manifest.repository.ts` (read and minimally rewrite every manifest shape; `locateProjects` finds a project by name/dir, including per-project `go.mod`), `semver.algorithm.ts` (parse, compare, bucket), `registry.client.ts` (latest version per ecosystem)
 
 ### Core Implementation
 
@@ -593,8 +594,17 @@ to one is mirrored in the other by construction:
   failure via a corrupted Nx project graph). `workspace-overlay/overlay.use-case.spec.ts` has a permanent
   regression test for this.
 
-### Workspace tooling: `mnci sync`, `mnci up`, `mnci doctor`
+### Workspace tooling: `mnci install`, `mnci sync`, `mnci up`, `mnci doctor`
 
+- `mnci install` / `mnci i` (#291) adds a dependency to ONE project with its own
+  toolchain — the per-project-dependency philosophy made a single verb: `mnci i -w
+  <project> <pkg>`, repeatable `-w`, dispatched by the target's ecosystem. Four
+  ecosystems have a native add verb (`npm install -w`, `go get`, `dotnet add
+  package`, `flutter pub add`); pip is the exception (no "add to pyproject"
+  command), so it edits `[project].dependencies` and runs the editable install.
+  A bare `mnci i` installs/restores everything (Go via `go work sync`). A package
+  with no `-w` is refused — adding to the private root is exactly the bug the
+  philosophy forbids. The Go path is what the multi-module switch (#289) unblocked.
 - `nx sync` reconciles **TypeScript project references only** — it has no opinion
   on dependency versions, and npm has no `catalog:` mechanism, so nothing else
   enforces one-version-per-workspace.
