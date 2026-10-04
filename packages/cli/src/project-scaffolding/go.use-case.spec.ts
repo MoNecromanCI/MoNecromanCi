@@ -667,7 +667,7 @@ describe('runAdd go', () => {
     await runAdd('go-internal-lib', 'util', {})
 
     // @nx-go/nx-go 4.1.1 appends `./...` itself and runs from the project root
-    // (russoedu/MoNecromanCi#233), so the slice packages below the root are
+    // (MoNecromanCI/MoNecromanCi#233), so the slice packages below the root are
     // tested and linted. Passing a package list here would override that.
     const { targets } = readProjectJson('libs/util')
     expect(targets.test).toEqual({ executor: '@nx-go/nx-go:test' })

@@ -1521,7 +1521,7 @@ pipeline installs `golangci-lint` itself (see below).
   test file's import). That matters because the pipeline verifies only the
   affected projects on a pull request: a missing edge would let a lib change
   pass without testing the apps that use it. The e2e pins the edges and the
-  affected sets (russoedu/MoNecromanCi#260), since they are the plugin's
+  affected sets (MoNecromanCI/MoNecromanCi#260), since they are the plugin's
   behaviour rather than mnci's.
 - **Lint is `golangci-lint`, pinned deliberately.** The plugin's `lint`
   executor defaults to `go fmt`, which only reformats — a green lint step
@@ -1572,7 +1572,7 @@ pipeline installs `golangci-lint` itself (see below).
     `linux-arm64` and `windows-arm64` are not built: they need an Intel macOS
     runner, an arm Linux runner or a cross-compiler. The legs are fixed in the
     generated pipeline today, so adding one means editing a file `mnci upgrade`
-    rewrites (russoedu/MoNecromanCi#269 is about giving that a safe place).
+    rewrites (MoNecromanCI/MoNecromanCi#269 is about giving that a safe place).
   - **Releasing one.** With `--release` as well, each leg, on a push to main and
     after the `ci` job has tagged, runs
     `node tools/go-app-release.cjs assets --native`, which builds

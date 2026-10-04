@@ -510,7 +510,7 @@ export function goLibraryIdentifiers (projectName: string): {
  * slice → role-suffixed files, with only an entry point at the root), and a
  * library that grows from it grows as one flat package that never splits.
  * Found while bootstrapping Lore Master, whose three Go libraries are each
- * several slice packages (russoedu/MoNecromanCi#227).
+ * several slice packages (MoNecromanCI/MoNecromanCi#227).
  *
  * After this runs, the root holds only `doc.go` (the capability's package
  * comment) and the generator's sample code lives in one starter slice:
@@ -533,7 +533,7 @@ export function goLibraryIdentifiers (projectName: string): {
  *
  * The project's `test` and `lint` targets need no change: the plugin's
  * executors run `go test ./...` and `<linter> run ./...` from the project
- * root, so the slice package below it is covered (russoedu/MoNecromanCi#233).
+ * root, so the slice package below it is covered (MoNecromanCI/MoNecromanCi#233).
  *
  * Idempotent: the root placeholders are removed with `force`, and the slice
  * files are only written when absent, so a user's edits survive a re-run.

@@ -1242,7 +1242,7 @@ describe('azurePipelinesYaml', () => {
   ])('%s: installs a PINNED golangci-lint from its checksum-verified prebuilt release, with go install as the fallback', (_provider, pipeline) => {
     // `@latest` made CI non-reproducible (a golangci-lint release could turn every
     // workspace red overnight), and compiling it cost 68 s of a ~2 min job, where
-    // the prebuilt archive takes ~1 s. russoedu/MoNecromanCi#239.
+    // the prebuilt archive takes ~1 s. MoNecromanCI/MoNecromanCi#239.
     expect(pipeline).not.toContain('golangci-lint@latest')
     expect(pipeline).toContain(`const v='${GOLANGCI_LINT_VERSION}'`)
     expect(pipeline).toContain('https://github.com/golangci/golangci-lint/releases/download/v')
