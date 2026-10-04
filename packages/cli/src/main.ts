@@ -114,8 +114,8 @@ export function buildProgram (cliVersion: string): Command {
     .description(
       'Run a phase of the CI pipeline here, the same way CI runs it: `verify` is the sync check and then every project (or, in a pull request, the affected ones) through lint, typecheck, test and build. Exits non-zero when it fails',
     )
-    .action((phase: CiPhase) => {
-      process.exitCode = runCiPhase(phase, process.cwd())
+    .action(async (phase: CiPhase) => {
+      process.exitCode = await runCiPhase(phase, process.cwd())
     })
 
   program

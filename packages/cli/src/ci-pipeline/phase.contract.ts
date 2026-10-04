@@ -31,4 +31,11 @@ export interface CiDependencies {
   environment: NodeJS.ProcessEnv
   processes:   CiProcesses
   log:         (message: string) => void
+  /**
+   * Returns the HTTP status of a GET, for the one advisory check that needs the
+   * network — `release`'s "this will create new PyPI projects" note. Injected so
+   * that check is testable without a real request; defaults to a real `fetch`
+   * with a short timeout. A phase that reads nothing from the network ignores it.
+   */
+  fetchStatus: (url: string) => Promise<number>
 }
