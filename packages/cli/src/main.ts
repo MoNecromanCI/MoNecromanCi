@@ -1,4 +1,5 @@
 import { Argument, Command } from 'commander'
+import { CI_PHASES, runCiPhase, type CiPhase } from './ci-pipeline'
 import { PROJECT_KINDS, runAdd, type AddOptions, type ProjectKind } from './project-scaffolding'
 import { runDoctor } from './workspace-diagnostics'
 import { runInteractive } from './workspace-creation'
@@ -13,12 +14,15 @@ import { checkForUpdate, readCliVersion } from './cli-version'
  * Builds the commander program for the CLI.
  *
  * @remarks
- * Six commands: `new`, `add`, `upgrade` (re-applies the overlay to an existing
+ * Seven commands: `new`, `add`, `upgrade` (re-applies the overlay to an existing
  * workspace), `doctor` (read-only invariant check), `sync` (converge dependency
- * ranges and TypeScript project references) and `up` (report and apply
- * available upgrades). Everything else a generated repo needs day-to-day
- * (build/test/lint/release) is plain Nx, so the CLI deliberately has no wrapper
- * commands for those.
+ * ranges and TypeScript project references), `up` (report and apply
+ * available upgrades) and `ci` (runs a phase of the CI pipeline here, as CI runs
+ * it). Everything else a generated repo needs day-to-day (build/test/lint/release)
+ * is plain Nx, so the CLI deliberately has no wrapper commands for those. `ci` is
+ * the one apparent exception and is not a shortcut for them: it is the pipeline's
+ * own logic, moving out of inline scripts in the generated YAML into tested code,
+ * so a laptop and a pipeline run the same thing (#269).
  *
  * `sync` and `up` exist because Nx covers neither: `nx sync` runs the
  * workspace's sync generators, and the only one registered is
@@ -101,6 +105,16 @@ export function buildProgram (cliVersion: string): Command {
     )
     .action(() => {
       runDoctor(process.cwd())
+    })
+
+  program
+    .command('ci')
+    .addArgument(new Argument('<phase>', 'which phase of the pipeline to run').choices(CI_PHASES))
+    .description(
+      'Run a phase of the CI pipeline here, the same way CI runs it: `verify` is the sync check and then every project (or, in a pull request, the affected ones) through lint, typecheck, test and build. Exits non-zero when it fails',
+    )
+    .action((phase: CiPhase) => {
+      process.exitCode = runCiPhase(phase, process.cwd())
     })
 
   program

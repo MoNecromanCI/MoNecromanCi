@@ -2802,8 +2802,11 @@ const NPM_AUDIT_STEP = 'node -e "const cp=require(\'node:child_process\');const 
  * `typecheck` is not covered by `build`: a bundler-built project (esbuild, swc)
  * strips types without reading them, so a workspace can be green on
  * lint+test+build while carrying real type errors.
+ *
+ * Exported because `mnci ci verify` runs the same list: the pipeline and the command it
+ * is being moved into must not be able to disagree about what verified means.
  */
-const VERIFY_TARGETS = 'lint,typecheck,test,build'
+export const VERIFY_TARGETS = 'lint,typecheck,test,build'
 
 /**
  * The portable `node -e` one-liner that verifies the workspace: only the
