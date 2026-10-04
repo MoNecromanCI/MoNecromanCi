@@ -990,11 +990,11 @@ section('js stack', [], () => {
 
   /*
    * The scaffold as generated, BEFORE the fixtures below overwrite it. Every
-   * later step replaces `src/lib/utils.use-case.ts` and writes its own barrel,
-   * so a broken generated barrel was invisible until a fixture happened to
-   * leave it in place: the scaffold wrote `./lib/utils.use-case` against a
-   * `tsc` ESM build that needs the `.js` suffix kept, and `Cannot find module
-   * './lib/utils.js'` came out of build and test alike.
+   * later step replaces `src/<name>/<name>.use-case.ts` (the slice mnci reshapes
+   * the @nx/js:lib placeholder into), so a broken generated barrel was invisible
+   * until a fixture happened to leave it in place: against a `tsc` ESM build the
+   * barrels need the `.js` suffix kept, and a missing one came out of build and
+   * test alike.
    */
   enforce(
     'internal-lib: the freshly generated scaffold builds and tests as it is',
@@ -1028,14 +1028,14 @@ section('js stack', [], () => {
   if (!msSource.includes(MS_SOURCE_MARKER)) {
     throw new Error(`ms@${msVersion} source changed — update the e2e's inline-detection marker`)
   }
-  // The fixtures replace the scaffold's own `<name>.use-case.ts` (and its spec),
-  // not a sibling file next to it: `src/index.ts` exports `./lib/<name>.use-case`,
-  // so a differently named file is an orphan nothing imports. That is how the sdk
-  // bundle came to hold the untouched placeholder and return `sdk` instead of
+  // The fixtures replace the scaffold's own slice file `src/<name>/<name>.use-case.ts`
+  // (and its spec), not a sibling file next to it: the barrels export that slice, so
+  // a differently named file is an orphan nothing imports. That is how the sdk bundle
+  // came to hold the untouched placeholder and return `sdk` instead of
   // `sdk uses utils and 1m`, failing two assertions below for a reason that looked
   // like a bundler fault.
   writeFileSync(
-    path.join(workspace, 'libs/utils/src/lib/utils.use-case.ts'),
+    path.join(workspace, 'libs/utils/src/utils/utils.use-case.ts'),
     "export function utils(): string {\n  return 'utils';\n}\n",
   )
   const sdkManifestPath = path.join(workspace, 'packages/sdk/package.json')
@@ -1046,11 +1046,11 @@ section('js stack', [], () => {
   }
   writeFileSync(sdkManifestPath, `${JSON.stringify(sdkManifestForDependency, undefined, 2)}\n`)
   writeFileSync(
-    path.join(workspace, 'packages/sdk/src/lib/sdk.use-case.ts'),
+    path.join(workspace, 'packages/sdk/src/sdk/sdk.use-case.ts'),
     "import ms from 'ms';\nimport { utils } from '@demo/utils';\n\nexport function sdk(): string {\n  return 'sdk uses ' + utils() + ' and ' + ms(60_000);\n}\n",
   )
   writeFileSync(
-    path.join(workspace, 'packages/sdk/src/lib/sdk.use-case.spec.ts'),
+    path.join(workspace, 'packages/sdk/src/sdk/sdk.use-case.spec.ts'),
     "import { sdk } from './sdk.use-case.js';\n\ndescribe('sdk', () => {\n  it('uses the internal lib and the external dependency', () => {\n    expect(sdk()).toEqual('sdk uses utils and 1m');\n  });\n});\n",
   )
   run('npx nx sync', workspace)

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored } from '../workspace-overlay'
@@ -537,45 +537,44 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
 }
 
 /**
- * Renames `@nx/js:lib`'s placeholder to a name mnci's own lint rule accepts.
+ * Reshapes `@nx/js:lib`'s placeholder into a vertical-slice the rules accept.
  *
  * @remarks
- * `@nx/js:lib` scaffolds `src/lib/<name>.ts` — a bare name with no role suffix —
- * and `vertical-slices/file-role`, which ships in `@mnci/eslint-config`, rejects
- * it on the first lint:
+ * `@nx/js:lib` scaffolds `src/lib/<name>.ts` — a bare name with no role suffix,
+ * inside a generic `lib/` bucket. Both are vertical-slice violations: the
+ * `vertical-slices/file-role` rule (shipped in `@mnci/eslint-config`) rejects
+ * the bare name, and `lib` is exactly the kind of technology bucket the
+ * architecture forbids a folder to be. So mnci's own opinionated structure was
+ * failed by mnci's own generator output.
+ *
+ * This moves the placeholder into a real slice named after the project, with
+ * its own barrel — the shape every hand-authored slice has:
  *
  * ```
- * A production file ends in its role - .handler .use-case .algorithm ... -
- * so "studio.ts" says what it is   vertical-slices/file-role
+ * src/
+ *   index.ts          -> export * from './<name>'   (the package's public API)
+ *   <name>/
+ *     index.ts        -> export * from './<name>.use-case'  (the slice's API)
+ *     <name>.use-case.ts
+ *     <name>.use-case.spec.ts
  * ```
  *
- * So mnci's own opinionated config failed mnci's own generator output, every
- * time, for any workspace that turned the slice rules on. Reproduced on a
- * freshly generated workspace: of the 14 problems `eslint` reports on a new
- * `npm-lib`, 13 are stylistic and `--fix` away — this one cannot, because the
- * only fix is a rename.
+ * `use-case` is the role: the generic one for a library's public behaviour,
+ * which is what the placeholder stands in for.
  *
- * `use-case` is the role: it is the generic one for a library's public
- * behaviour, and it is what the placeholder is standing in for.
- *
- * **Unconditional, not gated on the rule being active.** Detecting that would
- * mean parsing the workspace's own `eslint.config.mjs`, which is user-owned
+ * **Unconditional, not gated on the slice rules being active.** Detecting that
+ * would mean parsing the workspace's own `eslint.config.mjs`, user-owned
  * arbitrary JavaScript, and mnci has twice shipped a correct conditional that
  * could never fire — see `NX_PEER_OVERRIDES` and `ensurePythonArtefactsIgnored`.
- * A role-suffixed placeholder costs nothing when the rule is off, and the
- * scaffold then demonstrates by example the convention the config enforces.
+ * The slice shape costs nothing when the rules are off, and the scaffold then
+ * demonstrates by example the convention the config enforces.
  *
- * Both the spec and the barrel's re-export are repointed, so the scaffold still
- * builds and its sample test still runs. A no-op when the placeholder is absent
- * or has already been renamed.
- *
- * **Both specifier forms are repointed, and the `.js` suffix is kept.** The
- * rollup `npm-lib` scaffold writes `'./lib/<name>'`, but the `tsc` `internal-lib`
- * scaffold writes ESM specifiers, `'./lib/<name>.js'`. Matching only the first
- * moved the file and left the barrel and the spec pointing at nothing, so a
- * freshly generated internal-lib failed its own `build` and `test`. The unit
- * test had faked the barrel in the bare form, and the e2e rewrote the missing file
- * itself, so neither noticed.
+ * **Both specifier forms are handled.** The rollup `npm-lib` scaffold writes a
+ * bundler specifier (`'./lib/<name>'`), the `tsc` `internal-lib` scaffold an ESM
+ * one (`'./lib/<name>.js'`). The package barrel is repointed at the slice — the
+ * directory for the bundler, `'./<name>/index.js'` for ESM, since a directory
+ * import does not resolve under NodeNext. The slice barrel this writes matches
+ * the project's own form (the `.js` suffix only when the scaffold used it).
  *
  * `react-lib` is deliberately NOT covered: `@nx/react:library` scaffolds a
  * component, and `component` is not one of the shipped roles — renaming it to
@@ -585,35 +584,47 @@ function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<stri
  * @param projectRoot - Absolute path to the generated project's directory.
  * @param name - The project name the generator used for the placeholder.
  * @returns Nothing.
- * @throws Propagates any `fs` error renaming or rewriting the files.
+ * @throws Propagates any `fs` error moving or rewriting the files.
  * @typeParam None - this function has no generic type parameters.
  */
 export function renameScaffoldPlaceholder (projectRoot: string, name: string): void {
-  const placeholder = join(projectRoot, 'src', 'lib', `${name}.ts`)
+  const sourceDir = join(projectRoot, 'src')
+  const placeholder = join(sourceDir, 'lib', `${name}.ts`)
   if (!existsSync(placeholder)) {
     return
   }
-  renameSync(placeholder, join(projectRoot, 'src', 'lib', `${name}.use-case.ts`))
 
-  const spec = join(projectRoot, 'src', 'lib', `${name}.spec.ts`)
+  const sliceDir = join(sourceDir, name)
+  mkdirSync(sliceDir, { recursive: true })
+  renameSync(placeholder, join(sliceDir, `${name}.use-case.ts`))
+
+  const spec = join(sourceDir, 'lib', `${name}.spec.ts`)
   if (existsSync(spec)) {
-    const renamed = join(projectRoot, 'src', 'lib', `${name}.use-case.spec.ts`)
+    const renamed = join(sliceDir, `${name}.use-case.spec.ts`)
     renameSync(spec, renamed)
     writeFileEnsured(
       renamed,
+      // The spec still sits beside the implementation, so only its role suffix changes.
       repointSpecifier(readFileSync(renamed, 'utf8'), `./${name}`, `./${name}.use-case`),
     )
   }
 
-  // The barrel re-exports `./lib/<name>`; without this the package has no
-  // entry point at all, which the build would catch but only after the fact.
-  const barrel = join(projectRoot, 'src', 'index.ts')
+  // The package barrel re-exports the slice, not the old ./lib/<name>. Whether the
+  // slice's own barrel carries the ESM `.js` suffix follows the form the scaffold used.
+  const barrel = join(sourceDir, 'index.ts')
+  const esm = existsSync(barrel) && readFileSync(barrel, 'utf8').includes(`./lib/${name}.js'`)
+  writeFileEnsured(join(sliceDir, 'index.ts'), `export * from './${name}.use-case${esm ? '.js' : ''}'\n`)
   if (existsSync(barrel)) {
     writeFileEnsured(
       barrel,
-      repointSpecifier(readFileSync(barrel, 'utf8'), `./lib/${name}`, `./lib/${name}.use-case`),
+      readFileSync(barrel, 'utf8')
+        .replaceAll(`./lib/${name}.js'`, () => `./${name}/index.js'`)
+        .replaceAll(`./lib/${name}'`, () => `./${name}'`),
     )
   }
+
+  // The generic lib/ bucket is now empty; the slice replaces it.
+  rmSync(join(sourceDir, 'lib'), { recursive: true, force: true })
 }
 
 /**
