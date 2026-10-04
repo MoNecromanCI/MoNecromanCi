@@ -1,35 +1,7 @@
-import { runCapture, runShell, type CaptureResult } from '../nx-workspace'
+import { runCapture, runShell } from '../nx-workspace'
 import { GO_CGO_TAG, hasNativeGoApp, VERIFY_TARGETS } from '../workspace-overlay'
 import { detectCiHost, groupEnd, groupStart, pullRequestTarget } from './ci-environment.client'
-
-/**
- * The processes a phase starts.
- *
- * @remarks
- * Injectable so every branch can be tested without a repository.
- *
- * @typeParam None - this interface has no generic type parameters.
- */
-export interface CiProcesses {
-  /** Runs a command with its output going straight through, and returns its exit status. */
-  run:     (command: string, arguments_: string[]) => number
-  /** Runs a command and returns what it printed. */
-  capture: (command: string, arguments_: string[]) => CaptureResult
-}
-
-/**
- * What {@link runVerify} reads from outside.
- *
- * @remarks
- * All of it defaults to the real thing; a test overrides the parts it needs to control.
- *
- * @typeParam None - this interface has no generic type parameters.
- */
-export interface VerifyDependencies {
-  environment: NodeJS.ProcessEnv
-  processes:   CiProcesses
-  log:         (message: string) => void
-}
+import type { CiDependencies } from './phase.contract'
 
 /**
  * Runs the verify phase: the sync check, then every Nx target CI verifies.
@@ -61,7 +33,7 @@ export interface VerifyDependencies {
  * @throws Never - a command that fails is a status, not an exception.
  * @typeParam None - this function has no generic type parameters.
  */
-export function runVerify (workspaceRoot: string, dependencies: Partial<VerifyDependencies> = {}): number {
+export function runVerify (workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): number {
   const environment = dependencies.environment ?? process.env
   const processes = dependencies.processes ?? {
     run:     (command, arguments_) => runShell(command, arguments_, workspaceRoot),
