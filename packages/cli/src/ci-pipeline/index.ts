@@ -11,14 +11,30 @@
 
 import { runVerify, type VerifyDependencies } from './verify.use-case'
 
-/** The phases that exist. More arrive as their guards are ported. */
+/**
+ * The phases that exist.
+ *
+ * @remarks
+ * More arrive as their guards are ported from the generated pipelines.
+ */
 export const CI_PHASES = ['verify'] as const
 
-/** One of {@link CI_PHASES}. */
+/**
+ * One of {@link CI_PHASES}.
+ *
+ * @remarks
+ * Derived from the list, so adding a phase there is the only edit that makes it a valid name.
+ *
+ * @typeParam None - this type has no generic type parameters.
+ */
 export type CiPhase = typeof CI_PHASES[number]
 
 /**
  * Runs one phase of the pipeline.
+ *
+ * @remarks
+ * The single entry point `mnci ci <phase>` calls, so the command line and the tests reach a
+ * phase the same way.
  *
  * @param phase - Which phase.
  * @param workspaceRoot - Absolute path to the workspace.
