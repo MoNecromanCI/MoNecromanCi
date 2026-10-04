@@ -98,7 +98,15 @@ func main() {
 }
 `
 
-/** The test of an app that serves its frontend: the embed holds a page, for a file and for a route. */
+/**
+ * The test of an app that serves its frontend: the embed holds a page, for a file and for a route.
+ *
+ * @remarks
+ * It asserts the handler answers `200` with an `<html` body for both the root and an
+ * arbitrary client-side route, which is what the `index.html` fallback in {@link GO_WEB_SOURCE}
+ * guarantees. It needs the staged `web/` directory to exist to compile, which is why
+ * `test` is one of {@link TARGETS_NEEDING_THE_FRONTEND}.
+ */
 export const GO_WEB_MAIN_TEST = `package main
 
 import (
