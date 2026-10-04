@@ -25,8 +25,9 @@ describe('appGenerator', () => {
     expect(pyproject).toContain('name = "svc"')
     expect(pyproject).toContain('packages = ["svc"]')
 
-    expect(tree.read('apps/svc/svc/__init__.py', 'utf8')).toContain('def hello')
-    expect(tree.read('apps/svc/tests/test_svc.py', 'utf8')).toContain('from svc import hello')
+    expect(tree.read('apps/svc/svc/svc_use_case.py', 'utf8')).toContain('def hello')
+    expect(tree.read('apps/svc/svc/__init__.py', 'utf8')).toContain('__all__')
+    expect(tree.read('apps/svc/tests/test_svc_use_case.py', 'utf8')).toContain('from svc import hello')
   })
 
   it('does not mark an application as typed — nothing imports an app, so there is no consumer to promise types to', async () => {

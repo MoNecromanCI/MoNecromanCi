@@ -169,13 +169,33 @@ export function pythonReadme (name: string, moduleDirectory: string): string {
  * paired with {@link pythonSampleTest}.
  *
  * @param moduleDirectory - The project's module directory basename.
- * @returns The `<module>/__init__.py` contents.
+ * @returns The `<module>/<module>_use_case.py` contents.
  * @throws Never - pure string build.
  * @typeParam None - this function has no generic type parameters.
  */
 export function pythonSampleModule (moduleDirectory: string): string {
   return `def hello() -> str:
     return "hello from ${moduleDirectory}"
+`
+}
+
+/**
+ * The package's barrel: its public API, re-exported from the role-named module.
+ *
+ * @remarks
+ * The vertical-slice rules put the implementation in a role-suffixed module
+ * (`<module>_use_case.py`) and keep `__init__.py` as the door, re-exporting the
+ * public names with `__all__`. `from <module> import hello` keeps working.
+ *
+ * @param moduleDirectory - The project's module directory basename.
+ * @returns The `<module>/__init__.py` contents.
+ * @throws Never - pure string build.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function pythonSampleBarrel (moduleDirectory: string): string {
+  return `from .${moduleDirectory}_use_case import hello
+
+__all__ = ["hello"]
 `
 }
 
@@ -218,7 +238,7 @@ export function pythonTypedMarkerPath (moduleDirectory: string): string {
  * target is green out of the box, no wiring needed.
  *
  * @param moduleDirectory - The project's module directory basename.
- * @returns The `tests/test_<module>.py` contents.
+ * @returns The `tests/test_<module>_use_case.py` contents.
  * @throws Never - pure string build.
  * @typeParam None - this function has no generic type parameters.
  */

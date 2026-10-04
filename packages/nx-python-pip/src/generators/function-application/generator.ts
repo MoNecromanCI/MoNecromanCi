@@ -46,7 +46,7 @@ export default async function functionAppGenerator (
   tree.write(`${root}/function_app.py`, pythonFunctionAppMain(moduleDirectory))
   tree.write(`${root}/host.json`, PYTHON_FUNCTION_APP_HOST_JSON)
   tree.write(`${root}/requirements.txt`, PYTHON_FUNCTION_APP_REQUIREMENTS)
-  tree.write(`${root}/${moduleDirectory}/greeting.py`, PYTHON_FUNCTION_APP_GREETING)
-  tree.write(`${root}/tests/test_greeting.py`, pythonFunctionAppGreetingTest(moduleDirectory))
+  tree.write(`${root}/${moduleDirectory}/greeting_algorithm.py`, PYTHON_FUNCTION_APP_GREETING)
+  tree.write(`${root}/tests/test_greeting_algorithm.py`, pythonFunctionAppGreetingTest(moduleDirectory))
   await formatFiles(tree)
 }
