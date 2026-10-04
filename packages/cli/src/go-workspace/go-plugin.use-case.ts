@@ -48,6 +48,10 @@ export function hasGoProject (workspaceRoot: string): boolean {
 /**
  * Whether `nx.json` lists the Go plugin, as a bare name or with options.
  *
+ * @remarks
+ * Both spellings count, because Nx accepts either and a workspace that wrote the plugin with
+ * options is just as registered as one that wrote it as a string.
+ *
  * @param workspaceRoot - Absolute path to the workspace.
  * @returns True when it does. False when there is no `nx.json`.
  * @throws Error when `nx.json` is not valid JSON.

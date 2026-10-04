@@ -1,4 +1,12 @@
-/** Where a pipeline phase is running. `local` is a developer's machine: no provider variable is set. */
+/**
+ * Where a pipeline phase is running.
+ *
+ * @remarks
+ * `local` is a developer's machine: no provider variable is set, so the phase prints plain
+ * headings instead of provider log markers.
+ *
+ * @typeParam None - this type has no generic type parameters.
+ */
 export type CiHost = 'github' | 'azure' | 'local'
 
 /**
@@ -74,6 +82,10 @@ export function groupStart (host: CiHost, title: string): string {
 
 /**
  * The line that closes the group {@link groupStart} opened.
+ *
+ * @remarks
+ * Only the providers have a closing marker. Locally a heading needs no closing, so there is
+ * nothing to print, and `undefined` tells the caller to print nothing.
  *
  * @param host - Where the phase is running.
  * @returns The marker line, or `undefined` locally, where a heading needs no closing.

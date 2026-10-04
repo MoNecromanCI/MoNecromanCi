@@ -2,7 +2,14 @@ import { runCapture, runShell, type CaptureResult } from '../nx-workspace'
 import { GO_CGO_TAG, hasNativeGoApp, VERIFY_TARGETS } from '../workspace-overlay'
 import { detectCiHost, groupEnd, groupStart, pullRequestTarget } from './ci-environment.client'
 
-/** The processes a phase starts, injectable so every branch can be tested without a repository. */
+/**
+ * The processes a phase starts.
+ *
+ * @remarks
+ * Injectable so every branch can be tested without a repository.
+ *
+ * @typeParam None - this interface has no generic type parameters.
+ */
 export interface CiProcesses {
   /** Runs a command with its output going straight through, and returns its exit status. */
   run:     (command: string, arguments_: string[]) => number
@@ -10,7 +17,14 @@ export interface CiProcesses {
   capture: (command: string, arguments_: string[]) => CaptureResult
 }
 
-/** What {@link runVerify} reads from outside: all of it defaults to the real thing. */
+/**
+ * What {@link runVerify} reads from outside.
+ *
+ * @remarks
+ * All of it defaults to the real thing; a test overrides the parts it needs to control.
+ *
+ * @typeParam None - this interface has no generic type parameters.
+ */
 export interface VerifyDependencies {
   environment: NodeJS.ProcessEnv
   processes:   CiProcesses
