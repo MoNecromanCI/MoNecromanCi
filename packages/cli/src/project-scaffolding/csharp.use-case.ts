@@ -523,6 +523,12 @@ function addInitialVersion (csprojPath: string): void {
  * "you can use any string as its value"); the real auth is the
  * `packageSourceCredentials` entry keyed to that same source.
  *
+ * A dry run is safe whether or not `NUGET_PAT` is set. A dry-run release still runs every
+ * `nx-release-publish` target, appending `--dryRun=true` and setting `NX_DRY_RUN=true`
+ * (measured on Nx 23, #245). The one-liner checks both, scanning the whole `process.argv`
+ * (a `node -e` script puts the appended flag at `argv[1]`, not after a script path), and
+ * prints what it would push and exits before the `NUGET_PAT` gate and any real push.
+ *
  * **Unverified without a real SDK/Azure feed** — the same caveat every
  * other C# kind carries; the gated e2e (tracked separately) is what
  * confirms it.
@@ -534,7 +540,7 @@ function addInitialVersion (csprojPath: string): void {
  */
 function csharpLibPublishTarget (projectRoot: string): Record<string, unknown> {
   const outDir = `${projectRoot}/dist`
-  const command = `node -e "if(!process.env.NUGET_PAT){console.log('NuGet publish is not configured for this registry choice (no NUGET_PAT) - skipping. Regenerate with --registry azure-artifacts, or run dotnet nuget push manually.');process.exit(0)}const cp=require('node:child_process');const pack=cp.spawnSync('dotnet',['pack','${projectRoot}','-c','Release','-o','${outDir}'],{stdio:'inherit',shell:true});if(pack.status!==0)process.exit(pack.status??1);const fs=require('node:fs');for(const pkg of fs.globSync('${outDir}/*.nupkg')){const push=cp.spawnSync('dotnet',['nuget','push',pkg,'--source','${NUGET_AZURE_SOURCE}','--api-key','AZ'],{stdio:'inherit',shell:true});if(push.status!==0)process.exit(push.status??1)}"`
+  const command = `node -e "if(process.argv.some((a)=>a==='--dryRun'||a==='--dryRun=true')||process.env.NX_DRY_RUN==='true'){console.log('Dry run - would dotnet pack ${projectRoot} and dotnet nuget push the resulting .nupkg to ${NUGET_AZURE_SOURCE}.');process.exit(0)}if(!process.env.NUGET_PAT){console.log('NuGet publish is not configured for this registry choice (no NUGET_PAT) - skipping. Regenerate with --registry azure-artifacts, or run dotnet nuget push manually.');process.exit(0)}const cp=require('node:child_process');const pack=cp.spawnSync('dotnet',['pack','${projectRoot}','-c','Release','-o','${outDir}'],{stdio:'inherit',shell:true});if(pack.status!==0)process.exit(pack.status??1);const fs=require('node:fs');for(const pkg of fs.globSync('${outDir}/*.nupkg')){const push=cp.spawnSync('dotnet',['nuget','push',pkg,'--source','${NUGET_AZURE_SOURCE}','--api-key','AZ'],{stdio:'inherit',shell:true});if(push.status!==0)process.exit(push.status??1)}"`
 
   return { executor: 'nx:run-commands', options: { command } }
 }
