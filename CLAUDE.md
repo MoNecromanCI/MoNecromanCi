@@ -467,8 +467,16 @@ behind an `__init__.py` barrel with `__all__`, and the function app's helper is
 `greeting_algorithm.py`. `node-app`, `vscode-extension`, `npm-lib` and `internal-lib`
 already lint clean (measured on generated projects). Not enforced anywhere yet, so
 not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
-#290: a realistic worked example per family, and `--empty` for the kinds other than
-the four TypeScript libraries.
+#290: the worked example for the other families, and `--empty` for the kinds other
+than the four TypeScript libraries.
+
+The default `npm-lib`/`internal-lib` scaffold is a **worked example of two roles**
+(`writeWorkedExample`): `<name>.contract.ts` (a `Greeting`), `<name>.use-case.ts`
+(`greet`) and its spec, behind a barrel exporting both. It keeps the project-named
+files the placeholder had, so the barrel and any importer of `./<name>.use-case` keep
+working (the e2e overwrites that file and, with it, the spec). `.js` specifiers only in
+an ESM project. React libraries keep their component + CSS module + spec, which is
+already a realistic front-end example.
 
 `mnci add <lib kind> --empty` (npm-lib, internal-lib, react-lib, react-internal-lib)
 keeps the slice folder with only an `index.ts` (`export {}`) and drops the sample and
