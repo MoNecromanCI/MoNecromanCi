@@ -27,6 +27,22 @@ import {
 export const VSCODE_EXTENSION_SCRIPT_PATH = 'tools/vscode-extension.cjs'
 
 /**
+ * The VS Code version a scaffolded extension requires, and the `@types/vscode` it builds against.
+ *
+ * @remarks
+ * A deliberate pin, bumped by hand like the golangci-lint and Flutter SDK pins — and it must
+ * stay at or below the latest **released** VS Code. `@types/vscode@latest` tracks VS Code's
+ * **next, unreleased** version (the types publish ahead of stable), so deriving
+ * `engines.vscode` from `@types/vscode@latest` ships an extension that no real editor can
+ * install — `vsce` packages it happily (it only checks `@types/vscode <= engines.vscode`),
+ * and the failure appears at install time: "not compatible with the current version of Visual
+ * Studio Code" (#277). So both the installed `@types/vscode` ({@link ensureVscodeToolchain},
+ * pinned with `~` to this minor) and `engines.vscode` ({@link reshapeManifest}, `^` of this)
+ * come from this floor, never from whatever `@latest` currently resolves to.
+ */
+export const VSCODE_ENGINE_FLOOR = '1.96.0'
+
+/**
  * The Marketplace targets a sidecar build packages, and the Go platform each takes its binary from.
  *
  * @remarks
@@ -371,13 +387,17 @@ function mapVscodeToStub (projectRoot: string, testRunner: WorkspaceStack['testR
  * @typeParam None - this function has no generic type parameters.
  */
 function ensureVscodeToolchain (workspaceRoot: string): void {
-  const missing = ['@types/vscode', '@vscode/vsce'].filter(name => !hasPlugin(workspaceRoot, name))
-  if (missing.length === 0) {
-    return
+  // @types/vscode is (re)pinned to the released floor on every add: @latest tracks the next,
+  // UNRELEASED VS Code (#277), and a workspace scaffolded before this fix may carry that
+  // floating version — npm no-ops when it is already at the floor. @vscode/vsce has no such
+  // trap, so it is installed only when missing.
+  const toInstall = [`@types/vscode@~${VSCODE_ENGINE_FLOOR}`]
+  if (!hasPlugin(workspaceRoot, '@vscode/vsce')) {
+    toInstall.push('@vscode/vsce')
   }
-  logger.step(`Installing the VS Code extension toolchain (${missing.join(', ')})`)
-  if (runShell('npm', ['install', '--save-dev', ...missing, '--no-audit', '--no-fund'], workspaceRoot) !== 0) {
-    throw new Error(`npm install of ${missing.join(', ')} failed`)
+  logger.step(`Installing the VS Code extension toolchain (${toInstall.join(', ')})`)
+  if (runShell('npm', ['install', '--save-dev', ...toInstall, '--no-audit', '--no-fund'], workspaceRoot) !== 0) {
+    throw new Error(`npm install of ${toInstall.join(', ')} failed`)
   }
 }
 
@@ -409,8 +429,10 @@ function defaultPublisher (workspaceRoot: string): string {
  *   afterwards (the Marketplace id need not match the folder, #247); without it Nx
  *   takes the project name from `name`, and renaming the extension would orphan
  *   every root script, task and launch entry that names the project.
- * - `engines.vscode` is pinned to the installed `@types/vscode` (`vsce` refuses a
- *   package whose types are newer than its engine range).
+ * - `engines.vscode` is `^`{@link VSCODE_ENGINE_FLOOR} — a released floor, never the
+ *   installed `@types/vscode` version, which can be the next unreleased VS Code and would
+ *   brick installs (#277). `vsce` still accepts the package because the types are pinned to
+ *   the same floor, so `@types/vscode <= engines.vscode` holds.
  * - The build bundles (`bundle`, `thirdParty`): a `.vsix` ships no `node_modules`,
  *   so the generator's un-bundled mirror of the source tree cannot run in the
  *   extension host. `vscode` stays external, it is the host's.
@@ -421,12 +443,11 @@ function defaultPublisher (workspaceRoot: string): string {
  * @param projectRoot - Absolute path to the extension project.
  * @param name - The project name.
  * @param publisher - The Marketplace publisher id.
- * @param typesVersion - The installed `@types/vscode` version.
  * @returns Nothing.
  * @throws Propagates any `fs`/JSON error.
  * @typeParam None - this function has no generic type parameters.
  */
-function reshapeManifest (projectRoot: string, name: string, publisher: string, typesVersion: string): void {
+function reshapeManifest (projectRoot: string, name: string, publisher: string): void {
   const manifestPath = join(projectRoot, 'package.json')
   const manifest = readJson<Record<string, unknown> & {
     nx?: { tags?: string[]; targets?: Record<string, { options?: Record<string, unknown> }> }
@@ -455,7 +476,7 @@ function reshapeManifest (projectRoot: string, name: string, publisher: string, 
       displayName:      name,
       version:          rest.version ?? '0.0.1',
       publisher,
-      engines:          { vscode: `^${typesVersion}` },
+      engines:          { vscode: `^${VSCODE_ENGINE_FLOOR}` },
       categories:       ['Other'],
       main:             './dist/main.js',
       activationEvents: [],
@@ -747,8 +768,7 @@ export function addVscodeExtension (
   runNodeApp(workspaceRoot, name, stack, 'none')
   ensureVscodeToolchain(workspaceRoot)
   const projectRoot = join(workspaceRoot, 'apps', name)
-  const typesVersion = readJson<{ version: string }>(join(workspaceRoot, 'node_modules/@types/vscode/package.json')).version
-  reshapeManifest(projectRoot, name, options.publisher ?? defaultPublisher(workspaceRoot), typesVersion)
+  reshapeManifest(projectRoot, name, options.publisher ?? defaultPublisher(workspaceRoot))
   addVscodeTypes(join(projectRoot, 'tsconfig.app.json'))
   addVscodeTypes(join(projectRoot, 'tsconfig.spec.json'))
   writeFileEnsured(join(projectRoot, 'src/main.ts'), vscodeExtensionMain(name))
