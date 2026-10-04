@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
-import { registerNxGoPlugin } from '../go-workspace'
+import { goModulePrefix, registerNxGoPlugin } from '../go-workspace'
 import { GO_CGO_TAG } from '../workspace-overlay'
 import { makeGoAppReleasable } from './go-release.use-case'
 import { assertWebApp, wireGoAppToWeb } from './go-web.use-case'
@@ -166,6 +166,33 @@ function goModulePathFor (workspaceRoot: string, projectDir: string): string | u
   const rootModule = readGoModModule(join(workspaceRoot, 'go.mod'))
 
   return rootModule === undefined ? undefined : `${rootModule}/${projectDir}`
+}
+
+/**
+ * Rewrites a freshly generated project's `go.mod` module path to `<modulePrefix>/<projectDir>`.
+ *
+ * @remarks
+ * `@nx-go/nx-go` 4.1.1 names a workspace module after its directory alone (`apps/api`), which
+ * is not a fetchable VCS path (its `modulePrefix` plugin option is honoured only by unreleased
+ * versions). So mnci sets the path itself from the git origin ({@link goModulePrefix}), which
+ * is what makes `go get <prefix>/libs/<name>` work and what {@link registerNxGoPlugin}'s option
+ * records for a future plugin that reads it. No-op when there is no origin (keep the plugin's
+ * default) or no per-project `go.mod` (a single-module/adopted workspace).
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectDir - The project's workspace-relative directory (e.g. `apps/api`).
+ * @returns Nothing.
+ * @throws Propagates an `fs` write error; a missing `go.mod` is a no-op, not a throw.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function setGoModulePath (workspaceRoot: string, projectDir: string): void {
+  const prefix = goModulePrefix(workspaceRoot)
+  const goModPath = join(workspaceRoot, projectDir, 'go.mod')
+  if (prefix === undefined || !fileExists(goModPath)) {
+    return
+  }
+  const rewritten = readFileSync(goModPath, 'utf8').replace(/^module\s+\S+/m, () => `module ${prefix}/${projectDir}`)
+  writeFileEnsured(goModPath, rewritten)
 }
 
 /**
@@ -668,6 +695,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `apps/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     build: goBuildTarget(name),
     test:  goTestTarget(),
@@ -734,6 +762,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `apps/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
     'test':        goTestTarget(),
@@ -779,6 +808,7 @@ export function addGoLib (workspaceRoot: string, name: string): void {
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `packages/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'packages', name, 'project.json'), {
     test: goTestTarget(),
     lint: goLintTarget(),
@@ -821,6 +851,7 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
     ],
     workspaceRoot,
   )
+  setGoModulePath(workspaceRoot, `libs/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'libs', name, 'project.json'), {
     test: goTestTarget(),
     lint: goLintTarget(),
