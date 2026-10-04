@@ -8,7 +8,10 @@ jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), se
 // fetch prettier from the network — slow, and flaky offline. Mocked, and
 // asserted on directly below, since "upgrade formats what it rewrote" is one of
 // the behaviours under test.
-jest.mock('../nx-workspace', () => ({ runFormatter: jest.fn() }))
+// runCapture is mocked to report no git origin (status 1), so the Go plugin
+// registration that upgrade now performs keeps the plugin's default module
+// prefix instead of shelling out to `git` from a bare temp dir.
+jest.mock('../nx-workspace', () => ({ runFormatter: jest.fn(), runCapture: jest.fn(() => ({ status: 1, stdout: '' })) }))
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
