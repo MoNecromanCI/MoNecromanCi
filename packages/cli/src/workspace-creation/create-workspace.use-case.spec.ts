@@ -40,7 +40,8 @@ import { join } from 'node:path'
 import { runNpx, runFormatter, runShell } from '../nx-workspace'
 import { applyOverlay } from '../workspace-overlay'
 import { promptCi, promptNxCloud, promptRegistry, promptStack, promptText } from '../terminal'
-import { runNew } from './create-workspace.use-case'
+import { PROJECT_KINDS } from '../project-scaffolding'
+import { projectKindHintLines, runNew, type NewOptions } from './create-workspace.use-case'
 
 const mockRmSync = jest.mocked(rmSync)
 const mockRunNpx = jest.mocked(runNpx)
@@ -471,5 +472,38 @@ describe('runNew', () => {
     await expect(runNew('', { yes: true })).rejects.toThrow("Workspace name '' is invalid")
 
     expect(mockRunNpx).not.toHaveBeenCalled()
+  })
+
+  it('fails loudly on an invalid --ci under --yes, naming the valid values, before scaffolding (#231)', async () => {
+    await expect(runNew('demo', { yes: true, ci: 'githb' as NewOptions['ci'] }))
+      .rejects.toThrow(/Invalid --ci 'githb'.*azure.*github.*both/)
+
+    expect(mockRunNpx).not.toHaveBeenCalled()
+  })
+
+  it('fails loudly on an invalid --registry under --yes, naming the valid values, before scaffolding (#231)', async () => {
+    await expect(runNew('demo', { yes: true, registry: 'nugett' as NewOptions['registry'] }))
+      .rejects.toThrow(/Invalid --registry 'nugett'.*azure-artifacts.*npm/)
+
+    expect(mockRunNpx).not.toHaveBeenCalled()
+  })
+})
+
+describe('projectKindHintLines', () => {
+  it('lists every add-able kind, so the hint cannot go stale (the C# kinds were missing, #231)', () => {
+    const output = projectKindHintLines().join('\n')
+
+    for (const kind of PROJECT_KINDS) {
+      expect(output).toContain(kind)
+    }
+    // The specific regression this fixes: the C# family was absent from the literal.
+    expect(output).toContain('csharp-app')
+    expect(output).toContain('csharp-function-app')
+  })
+
+  it('word-wraps so no line runs unreasonably long in a terminal', () => {
+    for (const line of projectKindHintLines()) {
+      expect(line.length).toBeLessThanOrEqual(80)
+    }
   })
 })

@@ -1,4 +1,4 @@
-import { Argument, Command } from 'commander'
+import { Argument, Command, Option } from 'commander'
 import { CI_PHASES, runCiPhase, type CiPhase } from './ci-pipeline'
 import { PROJECT_KINDS, runAdd, type AddOptions, type ProjectKind } from './project-scaffolding'
 import { runDoctor } from './workspace-diagnostics'
@@ -49,7 +49,7 @@ export function buildProgram (cliVersion: string): Command {
     .description('Create a new monorepo (Nx TS preset + release/pipeline overlay)')
     .option('-y, --yes', 'accept defaults for anything not passed as a flag')
     .option('--scope <scope>', 'npm scope for publishable packages (e.g. @demo)')
-    .option('--registry <kind>', 'azure-artifacts | npm')
+    .addOption(new Option('--registry <kind>', 'package registry').choices(['azure-artifacts', 'npm']))
     .option('--organization <name>', 'Azure DevOps organization')
     .option('--project <name>', 'Azure DevOps project')
     .option('--artifacts-feed <name>', 'Azure Artifacts feed')
@@ -62,7 +62,7 @@ export function buildProgram (cliVersion: string): Command {
       '--npm-auth <mode>',
       'how npm authenticates to an Azure Artifacts feed: pat (default) | build-identity (npmAuthenticate@0, no PAT; --ci azure only)',
     )
-    .option('--ci <provider>', 'CI provider: azure | github | both')
+    .addOption(new Option('--ci <provider>', 'CI provider').choices(['azure', 'github', 'both']))
     .option('--test-runner <runner>', 'unit-test runner: jest | vitest')
     .option('--nx-cloud', 'connect the workspace to Nx Cloud (remote caching + CI insights)')
     .option(
