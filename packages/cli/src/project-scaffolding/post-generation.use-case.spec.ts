@@ -108,13 +108,28 @@ describe('renameScaffoldPlaceholder', () => {
     // The generic lib/ bucket is gone, replaced by a slice named after the project.
     expect(exists('src/lib')).toBe(false)
     expect(exists('src/utils/utils.use-case.ts')).toBe(true)
-    expect(read('src/utils/index.ts')).toBe(`export * from './utils.use-case${suffix}'\n`)
+    // The barrel exports both roles of the worked example, with the suffix the scaffold used.
+    expect(read('src/utils/index.ts')).toBe(
+      `export * from './utils.contract${suffix}'\nexport * from './utils.use-case${suffix}'\n`,
+    )
     expect(read('src/utils/utils.use-case.spec.ts')).toContain(`from './utils.use-case${suffix}'`)
     // The package barrel re-exports the slice: the directory for the bundler, the
     // slice barrel's index for ESM (a bare directory import does not resolve there).
     expect(read('src/index.ts')).toBe(
       suffix === '.js' ? "export * from './utils/index.js'\n" : "export * from './utils'\n",
     )
+  })
+
+  it.each(['', '.js'])('writes a worked example of two roles that imports and tests itself (suffix %j)', suffix => {
+    scaffold(suffix)
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    expect(read('src/utils/utils.contract.ts')).toContain('export interface Greeting')
+    expect(read('src/utils/utils.use-case.ts')).toContain(`from './utils.contract${suffix}'`)
+    expect(read('src/utils/utils.use-case.ts')).toContain('export function greet')
+    expect(read('src/utils/utils.use-case.spec.ts')).toContain(`from './utils.use-case${suffix}'`)
+    expect(read('src/utils/utils.use-case.spec.ts')).toContain("{ message: 'Hello, world!' }")
   })
 
   // The assertion that would have caught it: the previous tests only checked that

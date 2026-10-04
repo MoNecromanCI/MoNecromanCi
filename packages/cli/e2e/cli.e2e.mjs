@@ -1000,6 +1000,13 @@ section('js stack', [], () => {
     'internal-lib: the freshly generated scaffold builds and tests as it is',
     tryRun('npx nx run-many -t build,test --projects=@demo/utils', workspace),
   )
+  enforce(
+    'internal-lib: the scaffold is a slice with a worked example (contract + use case + spec + barrel), not the generator bucket',
+    ['utils.contract.ts', 'utils.use-case.ts', 'utils.use-case.spec.ts', 'index.ts'].every(file =>
+      existsSync(path.join(workspace, 'libs/utils/src/utils', file)),
+    ) && !existsSync(path.join(workspace, 'libs/utils/src/lib')),
+    'libs/utils/src/utils is missing a file of the worked example, or src/lib is still there',
+  )
 
   /* ---------------------------------------------------------------------------
    * The dependency chain: a PUBLISHED package using a PRIVATE internal lib AND a
@@ -1037,6 +1044,13 @@ section('js stack', [], () => {
   writeFileSync(
     path.join(workspace, 'libs/utils/src/utils/utils.use-case.ts'),
     "export function utils(): string {\n  return 'utils';\n}\n",
+  )
+  // The scaffold's own spec tests the worked example's `greet`, which this fixture just
+  // replaced, so it is replaced with it. (The unused contract file stays: the barrel
+  // still exports it, and it compiles on its own.)
+  writeFileSync(
+    path.join(workspace, 'libs/utils/src/utils/utils.use-case.spec.ts'),
+    "import { utils } from './utils.use-case.js';\n\ndescribe('utils', () => {\n  it('returns its name', () => {\n    expect(utils()).toEqual('utils');\n  });\n});\n",
   )
   const sdkManifestPath = path.join(workspace, 'packages/sdk/package.json')
   const sdkManifestForDependency = JSON.parse(readFileSync(sdkManifestPath, 'utf8'))

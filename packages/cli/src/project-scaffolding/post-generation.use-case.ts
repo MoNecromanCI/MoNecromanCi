@@ -756,7 +756,77 @@ function reshapeScaffoldSlice (projectRoot: string, name: string, extension: str
 
   if (empty) {
     emptySlice(projectRoot, sliceDir)
+  } else if (role === 'use-case') {
+    writeWorkedExample(sliceDir, name, esm)
   }
+}
+
+/**
+ * Replaces the generator's one-line sample with a worked example of two roles.
+ *
+ * @remarks
+ * The slice holds a `<name>.contract.ts` (the data a call returns) and a
+ * `<name>.use-case.ts` (one outcome, `greet`) with its spec, behind a barrel that
+ * exports both. Two roles, not all of them: it shows how a slice is shaped and what
+ * a role suffix means without a pile of files to delete. The files keep the project's
+ * name, as the placeholder did, so the barrel and anything that already imports
+ * `./<name>.use-case` keep working. The example avoids template literals so the
+ * generated text needs no escaping, and takes `.js` specifiers only in an ESM
+ * project, as the scaffold it replaces did.
+ *
+ * @param sliceDir - Absolute path to the reshaped slice.
+ * @param name - The project name, which names the files.
+ * @param esm - Whether relative specifiers need the `.js` suffix.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error writing the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function writeWorkedExample (sliceDir: string, name: string, esm: boolean): void {
+  const suffix = esm ? '.js' : ''
+  writeFileEnsured(
+    join(sliceDir, `${name}.contract.ts`),
+    `/** What greeting someone returns. */
+export interface Greeting {
+  readonly message: string
+}
+`,
+  )
+  writeFileEnsured(
+    join(sliceDir, `${name}.use-case.ts`),
+    `import type { Greeting } from './${name}.contract${suffix}'
+
+/**
+ * Greets someone by name.
+ *
+ * @remarks
+ * A worked example of a use case: one outcome, returning a contract. Replace it
+ * with your own.
+ *
+ * @param name - Who to greet.
+ * @returns The greeting.
+ */
+export function greet (name: string): Greeting {
+  return { message: 'Hello, ' + name + '!' }
+}
+`,
+  )
+  writeFileEnsured(
+    join(sliceDir, `${name}.use-case.spec.ts`),
+    `import { greet } from './${name}.use-case${suffix}'
+
+describe('greet', () => {
+  it('greets by name', () => {
+    expect(greet('world')).toEqual({ message: 'Hello, world!' })
+  })
+})
+`,
+  )
+  writeFileEnsured(
+    join(sliceDir, 'index.ts'),
+    `export * from './${name}.contract${suffix}'
+export * from './${name}.use-case${suffix}'
+`,
+  )
 }
 
 /**
