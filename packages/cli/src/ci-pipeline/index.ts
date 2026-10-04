@@ -10,6 +10,7 @@
  */
 
 import { runPack } from './pack.use-case'
+import { runRelease } from './release.use-case'
 import { runVerify } from './verify.use-case'
 import type { CiDependencies } from './phase.contract'
 
@@ -19,9 +20,9 @@ import type { CiDependencies } from './phase.contract'
  * @remarks
  * More arrive as their guards are ported from the generated pipelines. The order is the one
  * the pipeline runs them in: `verify` gates every run; `pack` builds, on main, the per-app
- * artifacts a release then publishes.
+ * artifacts a release then publishes; `release` versions, tags and publishes.
  */
-export const CI_PHASES = ['verify', 'pack'] as const
+export const CI_PHASES = ['verify', 'pack', 'release'] as const
 
 /**
  * One of {@link CI_PHASES}.
@@ -43,17 +44,20 @@ export type CiPhase = typeof CI_PHASES[number]
  * @param phase - Which phase.
  * @param workspaceRoot - Absolute path to the workspace.
  * @param dependencies - Overrides for the environment, the process runner and the logger, for tests.
- * @returns The phase's exit status.
+ * @returns The phase's exit status; a promise for `release`, which reads the network for one advisory check.
  * @throws Never - a failing command is a status, not an exception.
  * @typeParam None - this function has no generic type parameters.
  */
-export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): number {
+export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): number | Promise<number> {
   switch (phase) {
     case 'verify': {
       return runVerify(workspaceRoot, dependencies)
     }
     case 'pack': {
       return runPack(workspaceRoot, dependencies)
+    }
+    case 'release': {
+      return runRelease(workspaceRoot, dependencies)
     }
   }
 }
