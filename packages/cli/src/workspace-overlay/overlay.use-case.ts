@@ -1044,7 +1044,7 @@ export const ESLINT_VERSION = '^10.8.0'
  *   constant maintained in parallel, so there is still exactly one source of
  *   truth to bump.
  * - **Flutter is NOT a feature**, because no maintained one exists — the same
- *   reason `@mnci/nx-flutter` had to be written. The SDK guard clones a pinned
+ *   reason `@mnci/nx-flutter` had to be written. `mnci ci setup` clones a pinned
  *   tag into the home directory, which is what CI does, so the version matches
  *   by construction.
  *
@@ -1070,9 +1070,9 @@ export function devcontainerJson (workspaceName: string): string {
       // precisely the drift this file exists to remove.
       `npm install -g npm@${NPM_VERSION}`,
       'npm ci',
-      'npm run python:install',
-      GOLANGCI_LINT_INSTALL_GUARD,
-      FLUTTER_SDK_INSTALL_GUARD,
+      // The same command the pipeline runs: the Python, Go and Flutter toolchains, each
+      // skipped when the workspace has no project in that language.
+      'npx mnci ci setup',
     ].join(' && '),
     // The same recommendations the `.code-workspace` file carries, so opening
     // the folder in a container suggests the identical toolset.
@@ -2366,60 +2366,6 @@ const PYTHON_INSTALL_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\'req
 const PYTHON_WORKSPACE_INSTALL_GUARD = 'node -e "const fs=require(\'node:fs\'),path=require(\'node:path\');const editableDirs=[...fs.globSync(\'apps/*/pyproject.toml\'),...fs.globSync(\'python-packages/*/pyproject.toml\'),...fs.globSync(\'libs/*/pyproject.toml\')].map((p)=>path.dirname(p));const requirementsFiles=fs.globSync(\'apps/*/requirements.txt\');if(editableDirs.length===0&&requirementsFiles.length===0){console.log(\'No Python projects - skipping.\');process.exit(0)}const args=[\'-m\',\'pip\',\'install\',\'--quiet\',...editableDirs.flatMap((d)=>[\'-e\',d]),...requirementsFiles.flatMap((f)=>[\'-r\',f])];const py=process.platform===\'win32\'?\'python\':\'python3\';process.exit(require(\'node:child_process\').spawnSync(py,args,{stdio:\'inherit\'}).status ?? 1)"'
 
 /**
- * The portable `node -e` one-liner that runs `pip-audit` against the shared
- * Python environment, non-blocking (warn-only).
- *
- * @remarks
- * Shared bit-for-bit by {@link azurePipelinesYaml} and {@link githubActionsYaml}.
- * Runs after {@link PYTHON_WORKSPACE_INSTALL_GUARD}, so the environment it
- * scans already has every project's real dependencies installed (not just
- * the fixed toolchain) — a bare `pip-audit` with no arguments audits
- * whatever is currently installed, which by this point in the pipeline is
- * the workspace's actual dependency set. Skips cleanly when the workspace
- * has no Python projects (same `requirements-dev.txt` check every other
- * Python guard here uses).
- *
- * **Deliberately non-blocking**: `pip-audit`'s own exit code is discarded
- * (`process.exit(0)` always) rather than failing the build. An upstream-only
- * advisory with no user-actionable fix (a transitive dependency of a pinned
- * tool, not patchable by editing this workspace's own manifest) would
- * otherwise turn every build red for a problem nobody here can fix.
- *
- * **This no longer matches its npm sibling, and the asymmetry is a limitation
- * rather than a preference.** {@link NPM_AUDIT_STEP} now fails on an advisory
- * that has a published fix and passes the rest, because `npm audit --json`
- * reports `fixAvailable` per advisory. `pip-audit`'s output carries no
- * equivalent field, so the actionable/unactionable line cannot be drawn here
- * without resolving each advisory's fixed version by hand. Until that is
- * built, report-only is the honest choice: the alternative is a gate that goes
- * red on findings nobody can act on. Do not "align" the two by making this one
- * blocking — that trades a weak gate for a false one.
- */
-const PIP_AUDIT_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\'requirements-dev.txt\')){console.log(\'No Python projects - skipping.\');process.exit(0)}const py=process.platform===\'win32\'?\'python\':\'python3\';require(\'node:child_process\').spawnSync(py,[\'-m\',\'pip_audit\'],{stdio:\'inherit\'});process.exit(0)"'
-
-/**
- * The portable `node -e` one-liner that downloads the workspace's Go module
- * dependencies.
- *
- * @remarks
- * Shared bit-for-bit by {@link azurePipelinesYaml} and {@link githubActionsYaml},
- * and gated on the workspace-root `go.mod` that `add/go.ts` writes on the
- * first `mnci add go-*` — so a workspace with no Go projects skips cleanly,
- * exactly like the Python guards skip on a missing `requirements-dev.txt`.
- *
- * One root `go.mod` is the whole story here: mnci generates Go projects into
- * a single module (see `add/go.ts`), so there is no per-project manifest to
- * walk and no `go.work` to keep in step — a plain `go mod download` at the
- * root fetches everything every Go project needs.
- *
- * Strictly speaking this step is optional, since `go build` and `go test`
- * both fetch on demand. It is here so a network failure surfaces as an
- * obvious "download dependencies" failure rather than as a confusing error
- * inside the build, matching what the Python install steps do.
- */
-const GO_MODULE_DOWNLOAD_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\'go.mod\')){console.log(\'No Go projects - skipping.\');process.exit(0)}process.exit(require(\'node:child_process\').spawnSync(\'go\',[\'mod\',\'download\'],{stdio:\'inherit\'}).status ?? 1)"'
-
-/**
  * The golangci-lint version every generated workspace installs.
  *
  * @remarks
@@ -2438,107 +2384,6 @@ const GO_MODULE_DOWNLOAD_GUARD = 'node -e "if(!require(\'node:fs\').existsSync(\
  * assert it.
  */
 export const GOLANGCI_LINT_VERSION = '2.14.0'
-
-/**
- * The portable `node -e` one-liner that installs `golangci-lint` when the
- * workspace has Go projects and the agent does not already provide it.
- *
- * @remarks
- * Needed because mnci's generated Go `lint` target pins
- * `linter: golangci-lint` — `@nx-go/nx-go`'s own default is `go fmt`, which
- * only reformats and would make a green lint step meaningless. Hosted agents
- * ship Go but not golangci-lint, so CI has to supply it.
- *
- * **Downloads the project's prebuilt release instead of compiling it.** The
- * previous `go install …@latest` built golangci-lint from source on every run:
- * 68 s of a ~2 min job on Lore Master's first CI run, more than install, lint,
- * test and build together. The prebuilt archive (≈14 MB) downloads and extracts
- * in about a second. In order:
- *
- * 1. Map `process.platform`/`process.arch` to the release asset name.
- * 2. Fetch the release's `checksums.txt` and the archive, and refuse the archive
- *    unless its SHA-256 matches, so a tampered or truncated download is never
- *    executed.
- * 3. Extract it with `tar -xf`. On Windows that is the absolute
- *    `%SystemRoot%\System32\tar.exe` (bsdtar, shipped with Windows 10 and
- *    later), which reads the `.zip` the Windows builds come as. Not the bare
- *    `tar`: on an agent with Git installed the one that wins on `PATH` can be
- *    GNU tar, which cannot read zip files. Not PowerShell either, which the
- *    pipeline avoids by design.
- * 4. Copy the binary into `GOPATH/bin`, the directory the "Add Go tool bin to
- *    PATH" step already publishes, so nothing downstream changes.
- *
- * Any failure (an unmapped platform, a network error, a checksum mismatch, a
- * failed extract) falls back to `go install` **at the same pinned version**, so
- * an outage of GitHub's release CDN costs speed, never the build. The reason is
- * printed first.
- *
- * Skips when `golangci-lint` is already resolvable, so a self-hosted agent that
- * pre-installs it pays nothing.
- *
- * Constraints every guard here shares: one line, single quotes inside, and no
- * colon-space, no space-hash, no backtick, `$` or `%`, so the same text is a
- * valid YAML plain scalar and survives bash, PowerShell and `cmd.exe` quoting.
- */
-const GOLANGCI_LINT_INSTALL_GUARD = 'node -e "' +
-  "const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');" +
-  "if(!fs.existsSync('go.mod')){console.log('No Go projects - skipping.');process.exit(0)}" +
-  "if(cp.spawnSync('golangci-lint',['--version'],{stdio:'ignore'}).status===0){console.log('golangci-lint already installed - skipping.');process.exit(0)}" +
-  `const v='${GOLANGCI_LINT_VERSION}';` +
-  "const fallback=reason=>{console.log('Prebuilt golangci-lint '+v+' unavailable ('+reason+') - building it with go install instead.');process.exit(cp.spawnSync('go',['install','github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v'+v],{stdio:'inherit'}).status ?? 1)};" +
-  "const plat={linux:'linux',darwin:'darwin',win32:'windows'}[process.platform],arch={x64:'amd64',arm64:'arm64'}[process.arch];" +
-  "if(!plat||!arch)fallback('no prebuilt release for '+process.platform+'/'+process.arch);" +
-  "const gopath=cp.spawnSync('go',['env','GOPATH'],{encoding:'utf8'});if(gopath.status!==0)fallback('go env GOPATH failed');" +
-  "const name='golangci-lint-'+v+'-'+plat+'-'+arch,file=name+(plat==='windows'?'.zip':'.tar.gz'),base='https://github.com/golangci/golangci-lint/releases/download/v'+v+'/';" +
-  "const get=async u=>{const r=await fetch(u,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw new Error('HTTP '+r.status+' for '+u);return Buffer.from(await r.arrayBuffer())};" +
-  '(async()=>{' +
-  String.raw`const sums=(await get(base+'golangci-lint-'+v+'-checksums.txt')).toString('utf8').split('\n').map(l=>l.trim().split(' ').filter(Boolean));` +
-  "const entry=sums.find(p=>p[1]===file);if(!entry)throw new Error(file+' is not in the release checksums');" +
-  'const archive=await get(base+file);' +
-  "if(crypto.createHash('sha256').update(archive).digest('hex')!==entry[0])throw new Error('checksum mismatch for '+file);" +
-  "const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'golangci-lint-')),archivePath=path.join(tmp,file);fs.writeFileSync(archivePath,archive);" +
-  "const tar=plat==='windows'?path.join(process.env.SystemRoot||'','System32','tar.exe'):'tar';" +
-  "const x=cp.spawnSync(tar,['-xf',archivePath,'-C',tmp],{stdio:'inherit'});" +
-  "if(x.status!==0)throw new Error('could not extract '+file);" +
-  "const exe='golangci-lint'+(plat==='windows'?'.exe':''),bin=path.join(gopath.stdout.trim(),'bin');fs.mkdirSync(bin,{recursive:true});" +
-  'fs.copyFileSync(path.join(tmp,name,exe),path.join(bin,exe));fs.chmodSync(path.join(bin,exe),0o755);fs.rmSync(tmp,{recursive:true,force:true});' +
-  "console.log('golangci-lint '+v+' installed from its checksum-verified prebuilt release into '+bin)" +
-  '})().catch(error=>fallback(error.message))"'
-
-/**
- * The shared prelude that resolves `GOPATH/bin` — where
- * {@link GOLANGCI_LINT_INSTALL_GUARD} puts the linter (whether downloaded or built).
- *
- * @remarks
- * Not a step on its own: {@link GO_TOOL_PATH_AZURE} and
- * {@link GO_TOOL_PATH_GITHUB} each append the one line that publishes the
- * directory to the rest of the job, because the two providers use entirely
- * different mechanisms for that (a logging command vs a file). Everything up
- * to that point — the skip-when-no-Go check and reading `go env GOPATH` —
- * is identical, so it lives here once.
- */
-const GO_TOOL_PATH_PRELUDE = 'const fs=require(\'node:fs\'),cp=require(\'node:child_process\');if(!fs.existsSync(\'go.mod\')){console.log(\'No Go projects - skipping.\');process.exit(0)}const r=cp.spawnSync(\'go\',[\'env\',\'GOPATH\'],{encoding:\'utf8\'});if(r.status!==0){console.log(\'Could not resolve GOPATH - skipping.\');process.exit(0)}const bin=require(\'node:path\').join(r.stdout.trim(),\'bin\');'
-
-/**
- * Azure Pipelines: publishes `GOPATH/bin` to later steps in the job.
- *
- * @remarks
- * Uses the `task.prependpath` logging command — Azure's supported way for a
- * step to alter `PATH` for the steps that follow it. Skips cleanly when the
- * workspace has no Go projects, so this is inert in a JS-only repo.
- */
-const GO_TOOL_PATH_AZURE = `node -e "${GO_TOOL_PATH_PRELUDE}console.log('##vso[task.prependpath]'+bin)"`
-
-/**
- * GitHub Actions: publishes `GOPATH/bin` to later steps in the job.
- *
- * @remarks
- * Appends to the file named by `GITHUB_PATH`, the documented equivalent of
- * Azure's `prependpath` logging command. Skips cleanly both when the
- * workspace has no Go projects and when `GITHUB_PATH` is unset (i.e. when
- * the same script is run outside Actions).
- */
-const GO_TOOL_PATH_GITHUB = `node -e "${GO_TOOL_PATH_PRELUDE}if(!process.env.GITHUB_PATH){console.log('Not running in GitHub Actions - skipping.');process.exit(0)}fs.appendFileSync(process.env.GITHUB_PATH,bin+${String.raw`'\n'`})"`
 
 /**
  * The Flutter SDK version the generated pipeline installs.
@@ -2677,169 +2522,6 @@ export const DOTNET_SDK_VERSION = '10.0.x'
 const DOTNET_DETECT_AZURE = 'node -e "const fs=require(\'node:fs\');const has=[...fs.globSync(\'apps/*/*.csproj\'),...fs.globSync(\'packages/*/*.csproj\'),...fs.globSync(\'libs/*/*.csproj\')].length>0;console.log(\'##vso[task.setvariable variable=hasDotnetProjects]\'+has)"'
 
 /**
- * The shared expression that resolves where the Flutter SDK is installed.
- *
- * @remarks
- * Deliberately **outside** the workspace, under the agent's home directory —
- * not in a workspace-local `.flutter-sdk`. Two reasons, and the second is the
- * serious one:
- *
- * 1. Nothing needs adding to `.gitignore` for it. The overlay still owns no
- *    `.gitignore` of its own — `create-nx-workspace` does — but it does now
- *    append the one entry a decision made here needs (see
- *    {@link ensureEslintCacheIgnored}); this SDK path was chosen specifically
- *    so it would never need a second one.
- * 2. The Flutter SDK ships **its own `pubspec.yaml` files** — dozens of them,
- *    across `packages/flutter`, `packages/flutter_test` and the rest. Cloning
- *    it inside the workspace would drop those into the pub workspace's own
- *    tree, where `pub` treats a stray nested pubspec as an error to resolve
- *    around, and would give Nx thousands of extra files to glob for its
- *    project graph.
- *
- * Keyed by version, so bumping {@link FLUTTER_SDK_VERSION} provisions a fresh
- * clone instead of leaving a stale checkout on a cached agent. Computed
- * identically by the install guard and the PATH guards so they always agree.
- */
-const FLUTTER_SDK_DIRECTORY_EXPRESSION = `require('node:path').join(require('node:os').homedir(),'.mnci-flutter-${FLUTTER_SDK_VERSION}')`
-
-/**
- * The portable `node -e` one-liner that installs the Flutter SDK.
- *
- * @remarks
- * Flutter is the one toolchain the pipeline genuinely has to install: Python
- * and Go both ship on every hosted agent image, Flutter does not. So unlike
- * the Python and Go guards — which only fetch *dependencies* — this one
- * fetches the SDK itself.
- *
- * Installed by shallow `git clone` at a pinned tag, which is Flutter's own
- * documented install method and the only one that is genuinely uniform across
- * agents: the release archives differ by platform (`.tar.xz` on Linux,
- * `.zip` on macOS/Windows), which would force a platform switch and an
- * extractor into what is meant to be one portable line. `git` is already a
- * hard requirement of this pipeline, so nothing new is assumed.
- * `--depth 1` keeps it to a single revision.
- *
- * Two levels of skip, mirroring {@link GOLANGCI_LINT_INSTALL_GUARD}: nothing
- * happens without a workspace-root `pubspec.yaml` (so a JS-only repo pays
- * nothing), and nothing happens when `flutter` already resolves — so a
- * self-hosted agent with a preinstalled SDK, or a second run on a warm
- * workspace, skips the download entirely.
- */
-const FLUTTER_SDK_INSTALL_GUARD = `node -e "const fs=require('node:fs'),cp=require('node:child_process');if(!fs.existsSync('pubspec.yaml')){console.log('No Flutter projects - skipping.');process.exit(0)}if(cp.spawnSync('flutter',['--version'],{stdio:'ignore',shell:process.platform==='win32'}).status===0){console.log('Flutter SDK already on PATH - skipping.');process.exit(0)}const sdk=${FLUTTER_SDK_DIRECTORY_EXPRESSION};if(fs.existsSync(sdk)){console.log('Flutter SDK already installed at '+sdk+' - skipping.');process.exit(0)}process.exit(cp.spawnSync('git',['clone','--depth','1','--branch','${FLUTTER_SDK_VERSION}','https://github.com/flutter/flutter.git',sdk],{stdio:'inherit'}).status ?? 1)"`
-
-/**
- * The shared prelude that resolves the Flutter SDK's `bin` directory.
- *
- * @remarks
- * Not a step on its own — {@link FLUTTER_TOOL_PATH_AZURE} and
- * {@link FLUTTER_TOOL_PATH_GITHUB} each append the one line that publishes the
- * directory, exactly as the Go pair does. Skips when there are no Flutter
- * projects, and also when the SDK was never cloned because one was already on
- * `PATH` (in which case there is nothing to publish).
- */
-const FLUTTER_TOOL_PATH_PRELUDE = `const fs=require('node:fs'),path=require('node:path');if(!fs.existsSync('pubspec.yaml')){console.log('No Flutter projects - skipping.');process.exit(0)}const sdk=${FLUTTER_SDK_DIRECTORY_EXPRESSION};if(!fs.existsSync(sdk)){console.log('Flutter SDK was not installed by mnci (already on PATH) - skipping.');process.exit(0)}const bin=path.join(sdk,'bin');`
-
-/**
- * Azure Pipelines: publishes the Flutter SDK's `bin` to later steps.
- *
- * @remarks
- * Uses the `task.prependpath` logging command, the same mechanism
- * {@link GO_TOOL_PATH_AZURE} uses.
- */
-const FLUTTER_TOOL_PATH_AZURE = `node -e "${FLUTTER_TOOL_PATH_PRELUDE}console.log('##vso[task.prependpath]'+bin)"`
-
-/**
- * GitHub Actions: publishes the Flutter SDK's `bin` to later steps.
- *
- * @remarks
- * Appends to the file named by `GITHUB_PATH`, mirroring
- * {@link GO_TOOL_PATH_GITHUB}, and skips cleanly when run outside Actions.
- */
-const FLUTTER_TOOL_PATH_GITHUB = `node -e "${FLUTTER_TOOL_PATH_PRELUDE}if(!process.env.GITHUB_PATH){console.log('Not running in GitHub Actions - skipping.');process.exit(0)}fs.appendFileSync(process.env.GITHUB_PATH,bin+${String.raw`'\n'`})"`
-
-/**
- * The portable `node -e` one-liner that resolves every Dart dependency.
- *
- * @remarks
- * **This is the dependency-injection step for Flutter**, and it is a single
- * command for the whole workspace by design. Because every project is a
- * member of the root pub workspace (`workspace:` in the root `pubspec.yaml`,
- * `resolution: workspace` in each member), one `flutter pub get` at the root
- * resolves **internal and external dependencies together** into one
- * `pubspec.lock` and one `.dart_tool/package_config.json` — pub even deletes
- * any stale per-package copies.
- *
- * That is why there is no second, workspace-wide step here of the kind Python
- * needs ({@link PYTHON_WORKSPACE_INSTALL_GUARD} exists only because pip has no
- * workspace protocol and every project must be editable-installed by hand).
- * Dart has a real workspace protocol, so this one line is the whole story —
- * and a project importing an internal lib resolves it with a plain version
- * constraint, no `path:` and no vendoring.
- *
- * Runs with `shell: true` on Windows only, where `flutter` is a `.bat` shim
- * that `spawnSync` cannot execute directly.
- */
-const FLUTTER_PUB_GET_GUARD = 'node -e "const fs=require(\'node:fs\');if(!fs.existsSync(\'pubspec.yaml\')){console.log(\'No Flutter projects - skipping.\');process.exit(0)}process.exit(require(\'node:child_process\').spawnSync(\'flutter\',[\'pub\',\'get\'],{stdio:\'inherit\',shell:process.platform===\'win32\'}).status ?? 1)"'
-
-/**
- * The `npm audit` step: blocks on an **actionable** advisory, reports the rest.
- *
- * @remarks
- * Shared bit-for-bit by {@link azurePipelinesYaml} and {@link githubActionsYaml}.
- *
- * **This replaced a warn-only step, and the reason is that the step's own
- * justification had stopped being true.** It used to be
- * `npm audit --audit-level=high || echo ...`, documented as non-blocking
- * because "every flagged vulnerability traced back to `nx`'s and `verdaccio`'s
- * own bundled transitive dependencies ... nothing an edit to *this* workspace's
- * manifest could fix". That was measured, and it has since inverted: a real
- * audit of this monorepo reported **9 advisories, 9 of them with
- * `fixAvailable`**, and every one was fixed by a targeted `overrides` entry —
- * exactly the edit the old note said was impossible. Same shape as the stale
- * `js-yaml` pin that audit run uncovered: a decision resting on a measurement
- * nothing re-checks.
- *
- * So the split is **actionable vs not**, which is a property `npm audit --json`
- * reports per advisory (`fixAvailable`) rather than a severity guess:
- *
- * - A published, **applyable** fix exists, at `moderate` or above → **exit 1**.
- *   The remedy is a reviewed `overrides` entry, and leaving it to a human who
- *   never sees a red build is how a fix sits unapplied for weeks.
- * - No fix exists upstream → printed, exit 0. This preserves the whole of the
- *   original concern: going red for something nobody in this workspace can fix
- *   is a gate that only teaches people to ignore it.
- * - **A fix npm marks `isSemVerMajor` → printed, exit 0.** `npm audit` sets
- *   `fixAvailable` to a `{name,version,isSemVerMajor:true}` object even when the
- *   only "fix" is a semver-**major** change to a *parent* that drops the
- *   dependency path — frequently a downgrade, not a patch to the vulnerable
- *   package at all (measured: `braces`/`http-cache-semantics` advisories whose
- *   leaf was already at the newest published version, "fixed" by downgrading
- *   `verdaccio` and `@swc/cli`). Blocking on that taught the gate to fire on
- *   advisories nobody can actually clear with an override. A semver-major upgrade
- *   is a deliberate, reviewed bump, never an automatic CI gate; it is reported so
- *   it is not forgotten, but it does not go red.
- *
- * Three deliberate choices worth not undoing:
- *
- * - **Dev dependencies are included.** Measured: `npm audit --omit=dev` on the
- *   tree that had those 9 advisories reports **0**. Every one arrived through a
- *   devDependency (verdaccio, ts-jest's istanbul chain, eslint-plugin-tsdoc,
- *   commitlint, Vite). Omitting them would have reported nothing and verified
- *   nothing.
- * - **The threshold is `moderate`, not `high`.** The old `--audit-level=high`
- *   would have missed the `postcss` advisory outright, which was moderate and
- *   had a fix.
- * - **A broken audit does not fail the build.** No parseable JSON (registry
- *   outage, npm change) exits 0 with the reason printed. A gate that cannot read
- *   its input should say so, not guess.
- *
- * Verified by execution against two real dependency trees, not by reading it:
- * this monorepo's fixed tree exits 0, and the pre-fix tree exits 1 listing all
- * nine. The unit tests drive the remaining branches with a stub `npm` on PATH.
- */
-const NPM_AUDIT_STEP = 'node -e "const cp=require(\'node:child_process\');const r=cp.spawnSync(\'npm\',[\'audit\',\'--json\'],{encoding:\'utf8\',shell:process.platform===\'win32\',maxBuffer:33554432});let d;try{d=JSON.parse(r.stdout)}catch{console.log(\'npm audit produced no JSON (exit \'+r.status+\') - not blocking on a broken audit.\');process.exit(0)}const all=Object.values(d.vulnerabilities||{});const BLOCK=[\'critical\',\'high\',\'moderate\'];const major=v=>v.fixAvailable&&typeof v.fixAvailable===\'object\'&&v.fixAvailable.isSemVerMajor;const act=all.filter(v=>v.fixAvailable&&BLOCK.includes(v.severity)&&!major(v));const rest=all.filter(v=>!act.includes(v));for(const v of rest)console.log(\'  note [\'+v.severity+\'] \'+v.name+(!v.fixAvailable?\' - NO fix available upstream, nothing to do here\':major(v)?\' - only a semver-major change would remove it (often a parent downgrade), not applied automatically\':\' - fix available, below the blocking threshold\'));if(act.length===0){console.log(\'npm audit - \'+all.length+\' advisory(ies), none actionable at moderate or above.\');process.exit(0)}for(const v of act)console.log(\'  BLOCKING [\'+v.severity+\'] \'+v.name+\' - fix available\');console.log(\'Each has a published fix. Add a targeted overrides entry in package.json rather than npm audit fix --force.\');process.exit(1)"'
-
-/**
  * The Nx targets every CI run verifies.
  *
  * @remarks
@@ -2853,84 +2535,12 @@ const NPM_AUDIT_STEP = 'node -e "const cp=require(\'node:child_process\');const 
 export const VERIFY_TARGETS = 'lint,typecheck,test,build'
 
 /**
- * The portable `node -e` one-liner that verifies the workspace: only the
- * **affected** projects on a pull request, **every** project otherwise.
- *
- * @remarks
- * Shared bit-for-bit by {@link azurePipelinesYaml} and {@link githubActionsYaml},
- * which matters more here than for the other guards: the two providers detect a
- * pull request through different environment variables, and a mechanism that
- * drifted would change *what CI verifies* rather than merely how it is spelled.
- *
- * **Every failure path falls back to `run-many`, never to nothing.** That is the
- * whole safety design, and it is deliberate rather than defensive habit. Getting
- * the base *too wide* costs a few minutes; getting it *too narrow* means CI runs
- * almost nothing, passes green, and has verified nothing — a silently weakened
- * gate, which is far worse than a slow one. So a missing target ref, an
- * unresolvable merge-base (a shallow clone, a missing remote branch) and a
- * non-PR run all take the full path.
- *
- * `main` needs no special case for the same reason: neither provider sets a
- * pull-request target branch on a push, so a release run always verifies
- * everything before publishing. That falls out of the fallback rather than being
- * a second condition to keep in step.
- *
- * The base is a real `git merge-base`, not the provider's "base SHA" field. Both
- * providers expose something base-ish, but those drift once the target branch
- * moves ahead of where the PR started, and a merge-base is correct in both by
- * construction — one mechanism instead of two.
- *
- * It resolves the merge-base against `origin/<target>` first and, only if that
- * ref is absent, **fetches the target branch once** and retries against
- * `FETCH_HEAD`. Both providers are configured for a full-depth clone, so
- * `origin/<target>` is normally there — but if it ever is not, the bare fallback
- * would make every run take the full path while still reporting success, so this
- * step would look like it worked and verify nothing selectively, forever. One
- * fetch is a cheap way to not depend on that.
- *
- * Uses a plain string `replace` rather than a regex for the `refs/heads/` prefix
- * (Azure sends the full ref, GitHub the bare branch name): this whole command
- * has to survive quoting under both `cmd.exe` and POSIX `sh`, and a regex
- * literal would drag backslashes into that.
- *
- * `exclude` is for a workspace with a native (cgo) app, which this single agent
- * cannot build: it is added to both the full and the affected command. Empty, the
- * command is exactly the one every workspace had before it existed.
- *
- * @param exclude - An Nx `--exclude=...` argument, or `''` for none.
- * @returns The full `node -e` verify one-liner.
- * @throws Never - pure string building.
- * @typeParam None - this function has no generic type parameters.
- */
-function affectedOrAllGuard (exclude = ''): string {
-  const extra = exclude === '' ? '' : `+' ${exclude}'`
-
-  return `node -e "const cp=require('node:child_process');const T='${VERIFY_TARGETS}';const all=()=>process.exit(cp.spawnSync('npx nx run-many -t '+T${extra},{stdio:'inherit',shell:true}).status ?? 1);const ref=process.env.GITHUB_BASE_REF||process.env.SYSTEM_PULLREQUEST_TARGETBRANCH||'';if(!ref){console.log('Not a pull request - verifying EVERY project.');all()}const target=ref.replace('refs/heads/','');const mergeBase=r=>{const o=cp.spawnSync('git',['merge-base',r,'HEAD'],{encoding:'utf8'});return o.status===0?o.stdout.trim():''};let base=mergeBase('origin/'+target);if(!base){console.log('No origin/'+target+' ref - fetching it to resolve a merge-base.');cp.spawnSync('git',['fetch','--no-tags','origin',target],{stdio:'inherit'});base=mergeBase('FETCH_HEAD')}if(!base){console.log('Could not resolve a merge-base with '+target+' - verifying EVERY project.');all()}console.log('Pull request against '+target+' - verifying projects affected since '+base);process.exit(cp.spawnSync('npx nx affected -t '+T+' --base='+base${extra},{stdio:'inherit',shell:true}).status ?? 1)"`
-}
-
-/** The verify step of a workspace with no native app: the one every workspace had. */
-const AFFECTED_OR_ALL_GUARD = affectedOrAllGuard()
-
-/** The same, leaving out the apps that need a C toolchain, which the native job builds. */
-const AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE = affectedOrAllGuard(`--exclude=tag:${GO_CGO_TAG}`)
-
-/**
  * The Nx targets a native job runs on each OS: lint, test, then build and package for that host.
  *
  * @remarks
  * Shared by the generated pipelines and `mnci ci native`, so the two cannot name different targets.
  */
 export const NATIVE_TARGETS = 'lint,test,build-native,package-native'
-
-/**
- * What a native job runs on each OS: lint, test, then build and package for that host.
- *
- * @remarks
- * `package-native` depends on `build-native`, so naming both is for the reader. The
- * apps are selected by {@link GO_CGO_TAG}, the same tag the single-agent verify
- * leaves out, so every cgo app is built by exactly one of the two jobs' steps.
- */
-const NATIVE_BUILD_COMMAND = `npx nx run-many -t ${NATIVE_TARGETS} --projects=tag:${GO_CGO_TAG}`
 
 /**
  * The Linux prerequisites of a native build, as the one line both providers run.
@@ -2955,12 +2565,11 @@ const NATIVE_LINUX_PREREQUISITES = 'sudo apt-get update && sudo apt-get install 
  *
  * @param npmAuthName - The environment variable `npm ci` reads its registry token from.
  * @param npmAuthValue - The GitHub Actions expression that supplies it.
- * @param onMain - The condition that is true on a push to main, and only then.
  * @returns The job, as YAML starting with a newline, to append under `jobs:`.
  * @throws Never - pure string building.
  * @typeParam None - this function has no generic type parameters.
  */
-function githubNativeJob (npmAuthName: string, npmAuthValue: string, onMain: string): string {
+function githubNativeJob (npmAuthName: string, npmAuthValue: string): string {
   return `
   # Apps that need a C toolchain (mnci add go-app --cgo) cannot be cross-compiled
   # from the job above, so each is linted, tested, built and packaged here, on a
@@ -2995,14 +2604,10 @@ function githubNativeJob (npmAuthName: string, npmAuthValue: string, onMain: str
         env:
           ${npmAuthName}: ${npmAuthValue}
 
-      - run: ${GO_MODULE_DOWNLOAD_GUARD}
-        name: Download Go module dependencies
-
-      - run: ${GOLANGCI_LINT_INSTALL_GUARD}
-        name: Install golangci-lint
-
-      - run: ${GO_TOOL_PATH_GITHUB}
-        name: Add Go tool bin to PATH
+      # The Go toolchain: the modules, and a checksum-verified golangci-lint put
+      # on PATH. The other toolchains are skipped cleanly when absent.
+      - run: npx mnci ci setup
+        name: Set up the Go toolchain
 
       # A C compiler and pkg-config, which is all mnci can know a cgo app needs.
       # Add the -dev packages your app links to this line, for example
@@ -3012,22 +2617,20 @@ function githubNativeJob (npmAuthName: string, npmAuthValue: string, onMain: str
         name: Install native prerequisites (Linux)
         if: \${{ runner.os == 'Linux' }}
 
-      - run: ${NATIVE_BUILD_COMMAND}
+      # Lints, tests, builds and packages the native apps on this OS. On a push to
+      # main, a releasable native app (--cgo with --release) also gets this OS's zip
+      # attached to the GitHub Release the ci job just created, stamped with the
+      # tag's version.
+      - run: npx mnci ci native
         name: Lint, test, build and package the native apps
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@${ACTION_VERSIONS['actions/upload-artifact']}
         with:
           name: native-\${{ matrix.os }}
           path: dist/drop
           if-no-files-found: ignore
-
-      # A releasable native app (--cgo with --release) gets this OS's zip attached to
-      # the GitHub Release the ci job just created, stamped with the tag's version.
-      - run: node tools/go-app-release.cjs assets --native
-        name: Attach this OS's zip to the GitHub Release (releasable native apps)
-        if: \${{ ${onMain} && hashFiles('tools/go-app-release.cjs') != '' }}
-        env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 `
 }
 
@@ -3103,229 +2706,6 @@ ${indentYaml(nativeSteps, 4)}
 }
 
 /**
- * The portable `node -e` one-liner that packs every app into
- * `dist/drop/<type>-<name>.zip` via each app's own `package` target.
- *
- * @remarks
- * Shared bit-for-bit by {@link azurePipelinesYaml} and {@link githubActionsYaml}.
- * Skips cleanly when the workspace has no apps yet.
- *
- * **Detects a project the way Nx itself does — `apps/*\/project.json`, an
- * `apps/*\/package.json` carrying an `nx` key, OR an `apps/*\/*.csproj` — not
- * `project.json` alone.** `@nx/node:application` and `@nx/react:application`
- * write no `project.json` at all: their targets are inferred, and
- * `add/*.ts`'s `addNxTargets` layers the `package` target on through the
- * manifest's own `nx.targets` field (see its doc comment) specifically to
- * avoid the project-name clash a second `project.json` would risk in a
- * TS-solution workspace. `@nx/dotnet` (C#) is inference-only for the same
- * reason but has no manifest at all to carry an `nx` key on — verified
- * against the real published package, whose own `createNodes` glob is keyed
- * on `.csproj` directly — so `csharp.ts` creates a minimal `project.json`
- * itself purely to carry mnci's own `package` target, which the plain
- * `hasProjectJson` check already covers once that file exists. The
- * `*.csproj` branch below exists for the case a user later drops that
- * `project.json`, or for a `.csproj` this CLI never generated at all: a
- * `project.json`-only check would go back to never seeing that project. A
- * `project.json`-only check historically never saw a `node-app` or
- * `react-app` project at all either: the step silently logs "No apps to pack
- * - skipping", `dist/drop` stays empty, and every step downstream
- * (`PublishBuildArtifacts`, the per-app build tag) has nothing to work with —
- * a green run with no artifact. Go, Python and Flutter apps all get a real
- * generator-written `project.json`, so they were never affected.
- */
-const PACK_APPS_GUARD = 'node -e "const fs=require(\'node:fs\');fs.mkdirSync(\'dist/drop\',{recursive:true});const hasProjectJson=fs.globSync(\'apps/*/project.json\').length>0;const hasInlineNx=fs.globSync(\'apps/*/package.json\').some((f)=>{try{return Boolean(JSON.parse(fs.readFileSync(f,\'utf8\')).nx)}catch{return false}});const hasCsproj=fs.globSync(\'apps/*/*.csproj\').length>0;if(!hasProjectJson&&!hasInlineNx&&!hasCsproj){console.log(\'No apps to pack - skipping.\');process.exit(0)}process.exit(require(\'node:child_process\').spawnSync(\'npx nx run-many -t package\',{stdio:\'inherit\',shell:true}).status ?? 1)"'
-
-/**
- * The portable `node -e` one-liner that fails the run when the checkout is a
- * shallow clone, before `nx release` ever gets to run.
- *
- * @remarks
- * `release.version.fallbackCurrentVersionResolver: 'disk'` ({@link releaseConfig})
- * exists so a brand-new, never-tagged package's first release does not hard-error
- * the whole release graph — nx's own recommended mechanism for that case
- * (`--first-release`) is a one-shot CLI flag, not something a fixed, non-interactive
- * CI command can apply selectively to only the projects that actually need it, so
- * the config-level fallback is the only option that keeps `mnci add npm-lib` (or
- * `python-lib`, `flutter-lib`, `csharp-lib`) followed by an ordinary release working
- * out of the box.
- *
- * That fallback is dangerous for every OTHER project, the ones already published:
- * with `git.commit: false`, a manifest's on-disk version is permanently whatever the
- * generator scaffolded (`0.0.1`/`1.0.0`), so if nx cannot resolve a project's tag for
- * ANY reason it silently falls back to that stale disk value and proposes a version
- * relative to it — which reads as a normal release and can propose (and, if nothing
- * stops it, publish) a downgrade. Reproduced against a real multi-package workspace:
- * a dry run with the release tags unreachable from the current branch proposed
- * `0.2.0` against a published `0.7.0`.
- *
- * The generated CI is safe today ONLY because both providers unconditionally fetch
- * full history and tags before releasing, and release only ever runs from `main` —
- * but nothing in `nx.json` expresses that this is load-bearing, so a well-meaning
- * future edit to the checkout step (shallower fetch, a cache shortcut) would
- * silently reintroduce the downgrade path with no error, anywhere. This guard turns
- * that implicit dependency into an explicit, checked precondition: `nx release`
- * NEVER runs against a shallow checkout, full stop — a hard, loud, immediate failure
- * naming the fix, instead of a quiet wrong version discovered after the fact.
- *
- * @returns The full `node -e` shallow-clone guard one-liner.
- * @throws Never - pure string building.
- * @typeParam None - this function has no generic type parameters.
- */
-/**
- * Proves npm will accept this workspace's token BEFORE `nx release` does
- * anything irreversible.
- *
- * @remarks
- * `nx release` versions, tags, pushes the tag, and only THEN publishes. So a
- * missing or rejected token does not simply fail the run - it leaves a version
- * tagged with nothing on the registry, and because the next release resolves
- * the current version from the newest tag, that version number is skipped
- * FOREVER. A real workspace lost `0.0.2` exactly that way, which is where this
- * guard comes from.
- *
- * `npm whoami` is the cheapest thing that exercises the whole auth path at
- * once: the secret reaching the step, `.npmrc`'s `${NODE_AUTH_TOKEN}`
- * expanding, and the registry accepting the token. Checking the variable alone
- * would pass for an expired or under-scoped token, which fails at exactly the
- * same late moment.
- *
- * The empty-token branch is separate from the rejected-token branch on
- * purpose: an unset secret renders as blank in the step's env log rather than
- * as `***`, so naming that case explicitly turns the most common setup mistake
- * into one sentence instead of a registry error to interpret.
- *
- * PUBLIC NPM ONLY. An Azure Artifacts feed answers reads anonymously, so
- * `whoami` there proves nothing about whether a WRITE would be accepted - and
- * its auth story is Basic-with-a-PAT, which this repo has already been wrong
- * about once. A guard that passes without testing anything is worse than no
- * guard, so the Azure case deliberately gets none.
- */
-const NPM_AUTH_PREFLIGHT = 'node -e "const fs=require(\'node:fs\'),cp=require(\'node:child_process\');if(fs.globSync(\'packages/*/package.json\').length===0){console.log(\'No npm packages to release - skipping.\');process.exit(0)}if(!process.env.NODE_AUTH_TOKEN){console.error(\'NPM_TOKEN is empty or unset, so the publish would fail AFTER nx release has already tagged. Add it as a repository secret named exactly NPM_TOKEN - under Actions, not the Dependabot or Codespaces tab, and not an Environment secret. Use an npm Automation token - a Publish token is refused by 2FA in CI.\');process.exit(1)}const r=cp.spawnSync(\'npm\',[\'whoami\',\'--registry=https://registry.npmjs.org/\'],{encoding:\'utf8\',shell:process.platform===\'win32\'});if(r.status!==0){console.error(\'NPM_TOKEN is set but the registry rejected it - \'+((r.stderr||\'\')+(r.stdout||\'\')).trim()+\'. Check that it has not expired and that it grants publish rights on this scope.\');process.exit(1)}console.log(\'npm auth OK as \'+r.stdout.trim())"'
-
-/**
- * The preflight step body for a registry kind, or `''` where none applies.
- *
- * @param registryKind - The workspace's registry kind.
- * @returns The `node -e` command, or `''` for a non-npm registry.
- * @throws Never - pure mapping.
- * @typeParam None - this function has no generic type parameters.
- */
-function npmAuthPreflight (registryKind: RegistryConfig['kind']): string {
-  return registryKind === 'npm' ? NPM_AUTH_PREFLIGHT : ''
-}
-
-/**
- * Names the PyPI projects a release would have to CREATE, before it tags.
- *
- * @remarks
- * **There is deliberately no token check here**, and that is the whole reason
- * this guard looks nothing like {@link NPM_AUTH_PREFLIGHT}. PyPI has no
- * `whoami`: the only endpoint that authenticates is the upload itself, and a
- * bare `POST` to it answers `405` whether the credentials are good, bad or
- * absent - measured against the live endpoint. Anything calling itself a PyPI
- * auth preflight would therefore pass without testing anything, which is the
- * same reason the Azure case already gets no npm preflight. What CAN be
- * checked without publishing is the token's SHAPE: every PyPI API token
- * begins with `pypi-`, so a password or a truncated paste is caught here
- * rather than at upload time, after nx release has tagged.
- *
- * What it does test is the failure that actually happens. PyPI rate limits
- * NEW PROJECT creation per account, and `nx release` tags first and publishes
- * last, so a `429` lands after the tags are pushed: those versions are then
- * tagged with nothing published, and skipped for ever, because the next run
- * resolves the current version from the newest tag. The public JSON API says
- * which projects do not exist yet, with no credentials at all, so the step
- * names them up front and says what to do when it happens.
- *
- * It never fails on that count - a first publish has to create the project,
- * and blocking it would block every new package for ever - nor when PyPI
- * cannot be reached, since a release must not hinge on this step's own
- * network.
- *
- * Written as a `String.raw` template rather than the single-quoted style its
- * npm counterpart uses. The body is one long `node -e` script full of single
- * quotes, and it splits on a newline escape - hand-escaping both kinds is how
- * a guard acquires a silent syntax error that only a real release would
- * reveal. A plain template literal would turn that newline escape into a real
- * newline in the middle of a string literal, which is a parse error in the
- * script node then runs. `String.raw` passes both through untouched, so what
- * is written here is exactly what runs.
- *
- * NO COLON-SPACE ANYWHERE IN THE MESSAGES. The command is emitted as an
- * unquoted YAML plain scalar after `run:`/`script:`, so a `: ` inside it reads
- * as a nested mapping and the whole pipeline file stops parsing. Every message
- * here uses ` - ` where prose wants a colon; `https://` is fine, since only
- * colon-SPACE ends a scalar. `pipeline-drift.integration.spec.ts` parses both
- * generated files, so this is caught, but it is caught as an unhelpful
- * `bad indentation of a mapping entry`.
- *
- * PUBLIC PYPI ONLY, mirroring {@link npmAuthPreflight}. An Azure Artifacts
- * feed takes a PAT rather than a `pypi-` token and answers reads
- * anonymously, so neither half would mean anything there.
- */
-const PYPI_RELEASE_PREFLIGHT = String.raw`node -e "const fs=require('node:fs');const files=fs.globSync('python-packages/*/pyproject.toml');if(files.length===0){console.log('No Python packages to release - skipping.');process.exit(0)}if(!process.env.PYPI_TOKEN){console.error('PYPI_TOKEN is empty or unset, so the publish would fail AFTER nx release has already tagged. Add it as a repository secret named exactly PYPI_TOKEN - under Actions, not the Dependabot or Codespaces tab, and not an Environment secret.');process.exit(1)}if(!process.env.PYPI_TOKEN.startsWith('pypi-')){console.error('PYPI_TOKEN does not look like a PyPI API token - every one of them begins with pypi-. A password or a truncated paste is rejected only at upload time, which is AFTER nx release has tagged.');process.exit(1)}const names=files.map(f=>{const t=fs.readFileSync(f,'utf8');const b=t.slice(t.indexOf('[project]'));const l=b.split('\n').find(x=>x.trim().startsWith('name'));return l?l.split('=')[1].replace(/[^a-zA-Z0-9._-]/g,''):''}).filter(Boolean);(async()=>{const fresh=[];for(const n of names){try{const r=await fetch('https://pypi.org/pypi/'+n.toLowerCase().replace(/[-_.]+/g,'-')+'/json',{signal:AbortSignal.timeout(10000)});if(r.status===404)fresh.push(n)}catch{console.log('Could not reach PyPI to check '+n+' - continuing.')}}if(fresh.length===0){console.log('Every Python package already exists on PyPI - this release creates none.');return}console.log('NOTE - this release may CREATE '+fresh.length+' new PyPI project(s) - '+fresh.join(', ')+'. Project creation is rate limited per account, and a 429 there arrives AFTER nx release has tagged - leaving those versions tagged with nothing published, and skipped forever, because the next run resolves the current version from the newest tag. If that happens, delete the tags for the versions that did not publish before releasing again. PyPI offers no way to check the limit, or the token, in advance.')})()"`
-
-/**
- * The PyPI preflight step body for a registry kind, or `''` where none applies.
- *
- * @param registryKind - The workspace's registry kind.
- * @returns The `node -e` command, or `''` for a non-public registry.
- * @throws Never - pure mapping.
- * @typeParam None - this function has no generic type parameters.
- */
-function pypiReleasePreflight (registryKind: RegistryConfig['kind']): string {
-  return registryKind === 'npm' ? PYPI_RELEASE_PREFLIGHT : ''
-}
-
-const SHALLOW_CLONE_GUARD = 'node -e "const r=require(\'node:child_process\').spawnSync(\'git\',[\'rev-parse\',\'--is-shallow-repository\'],{encoding:\'utf8\'});if(r.status!==0){console.error(\'Could not determine whether this checkout has full history (git rev-parse --is-shallow-repository failed) - refusing to release. \'+(r.stderr||\'\').trim());process.exit(1)}if(r.stdout.trim()===\'true\'){console.error(\'This checkout is a shallow clone. nx release resolves the current version of each package from its git tag, and silently falls back to the permanently-stale on-disk version when a tag cannot be found - which can propose, and publish, a version DOWNGRADE. Fetch full history before releasing - set fetchDepth (Azure) or fetch-depth (GitHub) to 0.\');process.exit(1)}"'
-
-/**
- * Builds the portable `node -e` one-liner that versions, tags and publishes
- * every releasable project — `packages/*` (npm, C#, Dart) and
- * `python-packages/*` (Python) — via `nx release`.
- *
- * @remarks
- * Shared bit-for-bit by {@link azurePipelinesYaml} and {@link githubActionsYaml}
- * — `pythonPublishEnv` is the only provider-specific fragment (both providers
- * decode the same base64 `PAT` env var, so the fragment itself is identical
- * too; only the caller decides whether to inject it). Skips cleanly when
- * there is nothing to release (`nx release` hard-errors on an empty scope).
- *
- * **Every manifest shape `release.projects` can match must be counted here**,
- * and a Dart one is the reason that is stated rather than assumed. The four
- * globs mirror `releaseConfig`'s `['packages/*', 'python-packages/*']`: npm
- * (`package.json`), C# (`*.csproj`), Python (`pyproject.toml`) and Dart
- * (`pubspec.yaml`). A publishable `flutter-lib` lands in `packages/` with a
- * `pubspec.yaml` and **no `package.json`** (see `@mnci/nx-flutter`'s library
- * generator), so while it was missing here a Flutter-only workspace logged
- * "Nothing to release - skipping" and exited 0 on every single release run —
- * green, and never releasing. Dart is also the one kind with no publish step
- * at all (Azure Artifacts has no pub feed, so publishing IS the git tag),
- * which is exactly why nothing downstream would ever have surfaced the miss.
- *
- * A `vscode-extension` is the one releasable project outside those folders: it
- * lives in `apps/` and is in scope through its tag (#229), so it is counted by the
- * same tag, read from its `package.json`. Without it an extension-only workspace
- * would log "Nothing to release" for ever, the Dart failure again.
- *
- * The same count also feeds the `RELEASE_SPECIFIER` keyword check below, so
- * under-counting weakened that guard too: one npm lib plus one flutter lib
- * counted as 1, and a bare keyword — the input that silently under-bumps
- * interdependent packages — was accepted for a workspace with 2.
- *
- * @param pythonPublishEnv - A `node -e`-fragment that exports `TWINE_*` when
- * there are Python packages and a configured feed, or `''` to export nothing.
- * @param nugetPublishEnv - A `node -e`-fragment that exports `NUGET_PAT` when
- * there are C# packages and a configured feed, or `''` to export nothing.
- * @returns The full `node -e` release one-liner.
- * @throws Never - pure string building.
- * @typeParam None - this function has no generic type parameters.
- */
-function releaseGuard (pythonPublishEnv: string, nugetPublishEnv: string): string {
-  return String.raw`node -e "const fs=require('node:fs'),cp=require('node:child_process');const npmCount=fs.globSync('packages/*/package.json').length;const csharpCount=fs.globSync('packages/*/*.csproj').length;const pythonCount=fs.globSync('python-packages/*/pyproject.toml').length;const dartCount=fs.globSync('packages/*/pubspec.yaml').length;const vscodeCount=fs.globSync('apps/*/package.json').filter(p=>{try{return(JSON.parse(fs.readFileSync(p,'utf8')).nx?.tags||[]).includes('${VSCODE_EXTENSION_TAG}')}catch{return false}}).length;const goCount=fs.globSync('apps/*/project.json').filter(p=>{try{return(JSON.parse(fs.readFileSync(p,'utf8')).tags||[]).includes('${GO_RELEASE_TAG}')}catch{return false}}).length;const hasNpm=npmCount>0;const hasPython=pythonCount>0;const hasCsharp=csharpCount>0;const hasDart=dartCount>0;const hasVscode=vscodeCount>0;const hasGo=goCount>0;if(!hasNpm&&!hasPython&&!hasCsharp&&!hasDart&&!hasVscode&&!hasGo){console.log('Nothing to release - skipping.');process.exit(0)}const specifier=process.env.RELEASE_SPECIFIER||'';let releaseCmd='npx nx release --yes';if(specifier){if(!/^(major|minor|patch|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/.test(specifier)){console.error('RELEASE_SPECIFIER value \''+specifier+'\' is invalid - use major, minor, patch, or an exact version like 1.2.3.');process.exit(1)}const releaseProjectCount=npmCount+csharpCount+pythonCount+dartCount+vscodeCount+goCount;if(/^(major|minor|patch)$/.test(specifier)&&releaseProjectCount>1){console.error('RELEASE_SPECIFIER is a keyword (\''+specifier+'\') but this workspace has '+releaseProjectCount+' releasable packages - a keyword under-bumps interdependent packages, because nx computes the dependency-bump pass from a stale cached version. Set RELEASE_SPECIFIER to an exact version instead, or clear it.');process.exit(1)}releaseCmd='npx nx release '+specifier+' --yes'}const env={...process.env};${pythonPublishEnv}${nugetPublishEnv}process.exit(cp.spawnSync(releaseCmd,{stdio:'inherit',shell:true,env}).status ?? 1)"`
-}
-
-/**
  * The env var each registry kind carries a PyPI-side credential in.
  *
  * @remarks
@@ -3346,37 +2726,6 @@ export const PYPI_TOKEN_VARIABLE = 'PYPI_TOKEN'
  * constant rather than three string literals.
  */
 export const AZURE_PAT_VARIABLE = 'PAT'
-
-/**
- * The fail-fast an Azure Artifacts publish fragment opens with, so a missing
- * PAT stops the release instead of being decoded into an empty credential.
- *
- * @remarks
- * The same reasoning {@link pythonPublishEnvFragment} documents for public
- * PyPI, applied to the feed that had no check at all. Both Azure fragments used
- * to call `Buffer.from(process.env.PAT, 'base64')` unguarded, and an
- * unconfigured secret does not arrive as `undefined` - **both providers
- * substitute the empty string** - so the decode SUCCEEDED and produced `''`.
- *
- * For C# that was silent: `csharpLibPublishTarget()` self-gates on a falsy
- * `NUGET_PAT`, printing "NuGet publish is not configured" and exiting 0. Under
- * a tag-only release model that is the worst possible outcome - `nx release`
- * versions and TAGS the package, the publish step reports success, and nothing
- * reaches the feed. The next run resolves the current version from that tag and
- * bumps past it, so the skipped version is never retried and never exists.
- *
- * Checked here, before `nx release` runs, rather than inside the publish
- * target: once versioning has tagged, refusing to publish is already too late.
- *
- * @param countExpression - The in-fragment variable holding the package count.
- * @param subject - How the message names this ecosystem's packages.
- * @returns The `node -e` fragment fail-fast, for use inside an `if(has…){}`.
- * @throws Never - pure string mapping.
- * @typeParam None - this function has no generic type parameters.
- */
-function azurePatPreflight (countExpression: string, subject: string): string {
-  return `if(!process.env.${AZURE_PAT_VARIABLE}){console.error('This workspace has '+${countExpression}+' ${subject} package(s) to publish to Azure Artifacts but ${AZURE_PAT_VARIABLE} is empty. Add your base64-encoded Azure DevOps PAT as a secret named ${AZURE_PAT_VARIABLE}, or remove the ${subject} packages from release.projects.');process.exit(1)}`
-}
 
 /**
  * The extra `env:` line the release step needs to carry a PyPI token.
@@ -3406,73 +2755,6 @@ function pypiTokenEnvLine (
   return registryKind === 'npm'
     ? `
 ${indent}${PYPI_TOKEN_VARIABLE}: ${variableReference(PYPI_TOKEN_VARIABLE)}`
-    : ''
-}
-
-/**
- * Injected into {@link releaseGuard}: exports twine publish credentials when
- * the workspace has Python packages.
- *
- * @remarks
- * TWO genuinely different mechanisms, which is why this is not one template
- * with a swapped URL.
- *
- * Azure Artifacts is a multi-protocol feed: the same org/project/feed that
- * serves npm serves Python, so the upload URL is derived and the credential is
- * the same PAT, decoded from the base64 value both providers read.
- *
- * Public PyPI takes an API token under the literal username `__token__` - that
- * spelling is PyPI's own convention, not a placeholder - and needs NO
- * repository URL, since twine's default already points at
- * `upload.pypi.org/legacy/`. Writing one would be a chance to get it wrong for
- * no gain. `TWINE_NON_INTERACTIVE` is set because twine otherwise PROMPTS for
- * a missing password, and a prompt on a CI agent is a build that hangs until
- * it times out rather than one that fails.
- *
- * The empty-token check is a fail-fast rather than a credential probe. A HEAD
- * against the upload endpoint was considered and rejected: `twine check` only
- * validates the artefact, and an authenticated probe against the real registry
- * means a release step that can fail for reasons unrelated to this workspace.
- * The failure worth catching cheaply is the common one - the secret was never
- * configured - and that is knowable without a network call. A token that is
- * present but wrong still fails at upload, loudly, which is correct.
- *
- * @param pythonPublishUrl - The twine upload URL for an Azure Artifacts feed,
- * or `undefined` for any other registry.
- * @param registryKind - The workspace's registry kind.
- * @returns The `node -e` fragment for the workspace's registry kind.
- * @throws Never - pure string mapping.
- * @typeParam None - this function has no generic type parameters.
- */
-function pythonPublishEnvFragment (
-  pythonPublishUrl: string | undefined,
-  registryKind: RegistryConfig['kind'],
-): string {
-  if (pythonPublishUrl !== undefined) {
-    return `if(hasPython){${azurePatPreflight('pythonCount', 'Python')}env.TWINE_REPOSITORY_URL='${pythonPublishUrl}';env.TWINE_USERNAME='AzureArtifacts';env.TWINE_PASSWORD=Buffer.from(process.env.${AZURE_PAT_VARIABLE},'base64').toString()}`
-  }
-  if (registryKind !== 'npm') {
-    return ''
-  }
-
-  return `if(hasPython){if(!process.env.${PYPI_TOKEN_VARIABLE}){console.error('This workspace has '+pythonCount+' Python package(s) to publish but ${PYPI_TOKEN_VARIABLE} is empty. Add a PyPI API token as a secret named ${PYPI_TOKEN_VARIABLE}, or remove the Python packages from release.projects.');process.exit(1)}env.TWINE_USERNAME='__token__';env.TWINE_PASSWORD=process.env.${PYPI_TOKEN_VARIABLE};env.TWINE_NON_INTERACTIVE='1'}`
-}
-
-/**
- * Injected into {@link releaseGuard}: when there are C# packages and a
- * configured Azure feed, export the raw PAT `nuget.config`'s `%NUGET_PAT%`
- * placeholder reads (see {@link nugetConfigContent}'s remarks for why NuGet
- * takes the raw value, unlike `.npmrc`'s base64 `_password`).
- *
- * @param nugetFeedUrl - The NuGet v3 feed URL for C# packages, or
- * `undefined` to leave NuGet publishing unconfigured (public npm).
- * @returns The `node -e` fragment, or `''` when there is no NuGet feed.
- * @throws Never - pure string mapping.
- * @typeParam None - this function has no generic type parameters.
- */
-function nugetPublishEnvFragment (nugetFeedUrl?: string): string {
-  return nugetFeedUrl
-    ? `if(hasCsharp){${azurePatPreflight('csharpCount', 'C#')}env.NUGET_PAT=Buffer.from(process.env.${AZURE_PAT_VARIABLE},'base64').toString()}`
     : ''
 }
 
@@ -3764,66 +3046,25 @@ steps:
 ${npmAuthenticateStep}  - script: npm ci
     displayName: Install dependencies${npmCiEnv}
 
+  # Everything from here to the release is a command of the mnci CLI, a
+  # devDependency of this workspace, so the version is the lockfile's and a
+  # developer reproduces CI by running the same line. The guards that used to be
+  # inline here are tested TypeScript in the CLI's ci-pipeline slice. Node, the
+  # checkout and 'npm ci' stay above: Node must exist before 'npx' can run.
+
+  # The language toolchains the workspace needs: Python (ruff, pytest, build,
+  # twine, and every project installed into one shared environment), Go (the
+  # modules and a checksum-verified golangci-lint, put on PATH) and Flutter (the
+  # pinned SDK, put on PATH, and one pub get). Each is skipped cleanly when the
+  # workspace has no project in that language.
+  - script: npx mnci ci setup
+    displayName: Set up the language toolchains (Python, Go, Flutter)
+
   # Fails ONLY on an advisory that has a published fix, at moderate or above;
-  # anything upstream has not fixed is printed and passes. See NPM_AUDIT_STEP's
-  # remarks for why that split replaced a warn-only step.
-  - script: ${NPM_AUDIT_STEP}
-    displayName: npm audit (fails on an actionable advisory)
-
-  # Installs the fixed Python toolchain (ruff, pytest, build, twine, pip-audit)
-  # — written by 'mnci add' to requirements-dev.txt on the first Python
-  # project. Plain pip, no uv/Poetry: portable guard skips cleanly on a
-  # workspace with none.
-  - script: ${PYTHON_INSTALL_GUARD}
-    displayName: Install Python dependencies (ruff, pytest, build, twine, pip-audit)
-
-  # Editable-installs every Python project into one shared environment, the
-  # pip-world counterpart of 'npm install' hoisting every workspace package
-  # into one root node_modules — so a project that imports an internal lib
-  # (normally vendored only at build time) can resolve that import at
-  # lint/test time too. Portable guard skips cleanly on a workspace with none.
-  - script: ${PYTHON_WORKSPACE_INSTALL_GUARD}
-    displayName: Install Python project dependencies (editable, workspace-wide)
-
-  # Non-blocking, same reasoning as the npm audit step above. Runs after the
-  # workspace-wide install so it scans the workspace's actual dependency set,
-  # not just the fixed toolchain.
-  - script: ${PIP_AUDIT_GUARD}
-    displayName: pip-audit (non-blocking)
-
-  # Go, if the workspace has any: hosted agents ship the toolchain, so only
-  # the module cache and the linter need seeding. Both guards skip cleanly on
-  # a workspace with no root go.mod.
-  - script: ${GO_MODULE_DOWNLOAD_GUARD}
-    displayName: Download Go module dependencies
-
-  # golangci-lint is what the generated Go lint target actually runs (the
-  # plugin's own default is 'go fmt', which only reformats). The pinned,
-  # checksum-verified prebuilt release lands in GOPATH/bin (go install at the
-  # same version is the fallback), which is not on PATH by default on a hosted
-  # agent — so prepend it for every later step in the job.
-  - script: ${GOLANGCI_LINT_INSTALL_GUARD}
-    displayName: Install golangci-lint
-
-  - script: ${GO_TOOL_PATH_AZURE}
-    displayName: Add Go tool bin to PATH
-
-  # Flutter, if the workspace has any. Unlike Python and Go, hosted agents do
-  # NOT ship the Flutter SDK, so this installs it (shallow git clone at a
-  # pinned tag) and puts it on PATH. All three guards skip cleanly on a
-  # workspace with no root pubspec.yaml, and the install also skips when an
-  # SDK is already on PATH.
-  - script: ${FLUTTER_SDK_INSTALL_GUARD}
-    displayName: Install the Flutter SDK (${FLUTTER_SDK_VERSION})
-
-  - script: ${FLUTTER_TOOL_PATH_AZURE}
-    displayName: Add the Flutter SDK to PATH
-
-  # One command resolves EVERY Dart dependency, internal and external, for the
-  # whole workspace: the projects are pub workspace members, so this writes a
-  # single root pubspec.lock they all share.
-  - script: ${FLUTTER_PUB_GET_GUARD}
-    displayName: Resolve Dart dependencies (one pub get for the whole workspace)
+  # anything upstream has not fixed is printed and passes. pip-audit only
+  # reports: its output has no "a fix exists" field to draw that line with.
+  - script: npx mnci ci audit
+    displayName: Audit dependencies (fails on an actionable npm advisory)
 
   # .NET, if the workspace has any. Azure's 'condition:' expression language
   # has no glob function, so this script step detects C# projects first and
@@ -3839,29 +3080,18 @@ ${npmAuthenticateStep}  - script: npm ci
     inputs:
       version: ${DOTNET_SDK_VERSION}
 
-  # Fails fast, with an unambiguous message, when a stale TypeScript project
-  # reference (or another sync generator's drift) was never synced+committed
-  # locally — sync.applyChanges (nx.json) only auto-applies interactively, so
-  # CI still needs its own explicit, early check rather than surfacing this as
-  # a confusing failure buried inside the build step below.
-  - script: npx nx sync:check
-    displayName: Verify the workspace is synced (run 'npx nx sync' locally and commit if this fails)
-
-  # The one verify step, and deliberately the only one: affected projects on a
-  # pull request, EVERY project on anything else (a push to main included, so a
-  # release is always verified in full). Every fallback — no target branch, an
-  # unresolvable merge-base — takes the full path, because a run that verifies
-  # too little still reports green.
-  #
-  # 'npm run lint' is 'nx run-many -t lint', a strict subset of the targets
-  # below, so adding it back as its own step would only duplicate work — and on
-  # a pull request it would re-lint every project, discarding the point of this.
-  - script: ${nativeApps ? AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE : AFFECTED_OR_ALL_GUARD}
-    displayName: Verify (affected on a PR, every project on main)
+  # Fails fast on a stale TypeScript project reference, then the one verify
+  # step, and deliberately the only one: affected projects on a pull request,
+  # EVERY project on anything else (a push to main included, so a release is
+  # always verified in full). Every fallback takes the full path, because a run
+  # that verifies too little still reports green. Apps that need a C toolchain
+  # are left to the native job.
+  - script: npx mnci ci verify
+    displayName: Verify (sync check, then affected on a PR, every project on main)
 
   # Pack every app into dist/drop/<type>-<name>.zip via each app's 'package'
-  # target. Portable guard: skip cleanly when the workspace has no apps yet.
-  - script: ${PACK_APPS_GUARD}
+  # target; skipped cleanly when the workspace has no apps yet.
+  - script: npx mnci ci pack
     displayName: Pack all apps (one zip per app -> dist/drop)
     condition: ${onMain}
 
@@ -3879,64 +3109,23 @@ ${npmAuthenticateStep}  - script: npm ci
     displayName: Tag the run per app (type-name)
     condition: ${onMain}
 
-  # nx release resolves each package's current version from its git tag, and
-  # falls back to the (permanently stale, since git.commit is false) on-disk
-  # version when a tag cannot be resolved — which happens whenever this
-  # checkout lacks full history. This is currently guaranteed by fetchDepth 0
-  # above plus the explicit fetch below, but neither is expressed as a
-  # dependency anywhere else, so this makes it a hard, loud precondition
-  # instead of a silently wrong version discovered after release.
-  - script: ${SHALLOW_CLONE_GUARD}
-    displayName: Verify this is a full checkout (nx release needs the real tag history)
-    condition: ${onMain}
-${
-  npmAuthPreflight(registryKind)
-    ? `
-  # Prove npm will accept us BEFORE anything irreversible happens. nx release
-  # tags first and publishes last, so a rejected token leaves a version tagged
-  # with nothing on the registry - and that number is then skipped forever,
-  # because the next run resolves the current version from the newest tag.
-  - script: ${npmAuthPreflight(registryKind)}
-    displayName: Preflight — npm must accept the token before anything is tagged
-    condition: ${onMain}
-    env:
-      NODE_AUTH_TOKEN: $(NPM_TOKEN)
-`
-    : ''
-}${
-  pypiReleasePreflight(registryKind)
-    ? `
-  # PyPI cannot be asked whether a token is good - the only endpoint that
-  # authenticates is the upload itself - so this checks the token's SHAPE and
-  # names the projects this release would have to CREATE. Project creation is
-  # rate limited per account, and a 429 arrives AFTER nx release has tagged.
-  - script: ${pypiReleasePreflight(registryKind)}
-    displayName: Preflight — name the PyPI projects this release would create
-    condition: ${onMain}
-    env:
-      PYPI_TOKEN: $(PYPI_TOKEN)
-`
-    : ''
-}
-  # Version + tag + publish, in one release, for npm (packages/*), Python
-  # (python-packages/*) AND C# (packages/*/*.csproj) — conventional commits,
-  # tag-only push. Portable guard: nx release errors on an empty scope, so
-  # skip cleanly when there is nothing to release. When there are Python or
-  # C# packages and an Azure feed, twine/NuGet publish credentials are
-  # exported (raw PAT, decoded from the base64 variable).
+  # The release, in the order that keeps a failure safe: refuse a shallow
+  # clone, prove the npm token and name the PyPI projects it would create (all
+  # BEFORE anything is tagged), then version + tag + publish in one 'nx release'
+  # for npm, Python, C# and VS Code, then push the tags explicitly (nx release's
+  # own push never runs without a remote GitHub/GitLab Release configured, which
+  # this pipeline never does). Which registry is in use is read from the 'mnci'
+  # block of nx.json, not baked into this file. The secrets are mapped here, in
+  # the one place a command cannot reach.
   #
-  # RELEASE_SPECIFIER (the pipeline variable above) overrides the bump nx
-  # would compute from conventional commits for THIS run. In a workspace with
-  # more than one releasable package, a bare keyword ('major'/'minor'/'patch')
-  # is unreliable — nx versions interdependent packages in two passes (a
-  # dependency-bump pass, then the specifier pass), and the second pass
-  # computes from a version cached before the first pass ran, silently
-  # landing back on the same patch bump either way. An exact version ('1.2.3')
-  # does not have this problem, since both passes apply it verbatim — prefer
-  # it whenever more than one package is releasable. The guard below fails
-  # the run rather than under-bumping silently: clear the variable back to
-  # '' once the override is no longer needed.
-  - script: ${releaseGuard(pythonPublishEnvFragment(pythonPublishUrl, registryKind), nugetPublishEnvFragment(nugetFeedUrl))}
+  # RELEASE_SPECIFIER (the pipeline variable above) overrides the bump nx would
+  # compute from conventional commits for THIS run: 'major', 'minor', 'patch', or
+  # an exact version ('1.2.3'). With more than one releasable package a bare
+  # keyword is unreliable (nx versions interdependent packages in two passes, and
+  # the second computes from a version cached before the first), so the command
+  # fails the run rather than under-bumping silently: prefer an exact version,
+  # and clear the variable back to '' once the override is no longer needed.
+  - script: npx mnci ci release
     displayName: Release — version, tag and publish (npm + Python + C# + VS Code)
     condition: ${onMain}
     env:
@@ -3945,15 +3134,6 @@ ${
       # A VS Code extension publishes with it; tools/vscode-extension.cjs skips the
       # Marketplace when it is unset, including when Azure leaves it as '$(VSCE_PAT)'.
       VSCE_PAT: $(VSCE_PAT)
-
-  # nx release's own git push (release.git.push) is deliberately left off: it
-  # only runs when a remote GitHub/GitLab Release is configured, which this
-  # pipeline never does, so it would never push the tag the step above just
-  # created. Pushed explicitly, unconditionally (a no-op when nothing released)
-  # once tagging is guaranteed to have already happened.
-  - script: git push origin --tags
-    displayName: Push release tags (nx release's own push never runs without a remote Release configured)
-    condition: ${onMain}
 `
   if (!nativeApps) {
     return document
@@ -3979,14 +3159,10 @@ ${
 ${npmAuthenticateStep}  - script: npm ci
     displayName: Install dependencies${npmCiEnv}
 
-  - script: ${GO_MODULE_DOWNLOAD_GUARD}
-    displayName: Download Go module dependencies
-
-  - script: ${GOLANGCI_LINT_INSTALL_GUARD}
-    displayName: Install golangci-lint
-
-  - script: ${GO_TOOL_PATH_AZURE}
-    displayName: Add Go tool bin to PATH
+  # The Go toolchain: the modules, and a checksum-verified golangci-lint put on
+  # PATH. The other toolchains are skipped cleanly when absent.
+  - script: npx mnci ci setup
+    displayName: Set up the Go toolchain
 
   # A C compiler and pkg-config, which is all mnci can know a cgo app needs. Add the
   # -dev packages your app links to this line, for example libgtk-3-dev and
@@ -3996,7 +3172,7 @@ ${npmAuthenticateStep}  - script: npm ci
     displayName: Install native prerequisites (Linux)
     condition: eq(variables['Agent.OS'], 'Linux')
 
-  - script: ${NATIVE_BUILD_COMMAND}
+  - script: npx mnci ci native
     displayName: Lint, test, build and package the native apps
 
   - task: PublishBuildArtifacts@1
@@ -4154,66 +3330,25 @@ jobs:
         env:
           ${npmAuthName}: ${npmAuthValue}
 
-      # Fails ONLY on an advisory that has a published fix, at moderate or
-      # above; anything upstream has not fixed is printed and passes. See
-      # NPM_AUDIT_STEP's remarks for why that split replaced a warn-only step.
-      - run: ${NPM_AUDIT_STEP}
-        name: npm audit (fails on an actionable advisory)
+      # Everything from here to the release is a command of the mnci CLI, a
+      # devDependency of this workspace, so the version is the lockfile's and a
+      # developer reproduces CI by running the same line. The guards that used to be
+      # inline here are tested TypeScript in the CLI's ci-pipeline slice. Node,
+      # the checkout and 'npm ci' stay above: Node must exist before 'npx' can run.
 
-      # Installs the fixed Python toolchain (ruff, pytest, build, twine,
-      # pip-audit) — written by 'mnci add' to requirements-dev.txt on the
-      # first Python project. Plain pip, no uv/Poetry: portable guard skips
-      # cleanly on a workspace with none.
-      - run: ${PYTHON_INSTALL_GUARD}
-        name: Install Python dependencies (ruff, pytest, build, twine, pip-audit)
+      # The language toolchains the workspace needs: Python (ruff, pytest, build,
+      # twine, and every project installed into one shared environment), Go (the
+      # modules and a checksum-verified golangci-lint, put on PATH) and Flutter (the
+      # pinned SDK, put on PATH, and one pub get). Each is skipped cleanly when the
+      # workspace has no project in that language.
+      - run: npx mnci ci setup
+        name: Set up the language toolchains (Python, Go, Flutter)
 
-      # Editable-installs every Python project into one shared environment, the
-      # pip-world counterpart of 'npm install' hoisting every workspace package
-      # into one root node_modules — so a project that imports an internal lib
-      # (normally vendored only at build time) can resolve that import at
-      # lint/test time too. Portable guard skips cleanly on a workspace with none.
-      - run: ${PYTHON_WORKSPACE_INSTALL_GUARD}
-        name: Install Python project dependencies (editable, workspace-wide)
-
-      # Non-blocking, same reasoning as the npm audit step above. Runs after
-      # the workspace-wide install so it scans the workspace's actual
-      # dependency set, not just the fixed toolchain.
-      - run: ${PIP_AUDIT_GUARD}
-        name: pip-audit (non-blocking)
-
-      # Go, if the workspace has any: hosted runners ship the toolchain, so
-      # only the module cache and the linter need seeding. Both guards skip
-      # cleanly on a workspace with no root go.mod.
-      - run: ${GO_MODULE_DOWNLOAD_GUARD}
-        name: Download Go module dependencies
-
-      # golangci-lint is what the generated Go lint target actually runs (the
-      # plugin's own default is 'go fmt', which only reformats). The pinned,
-      # checksum-verified prebuilt release lands in GOPATH/bin (go install at the
-      # same version is the fallback), which is not on PATH by default on a
-      # hosted runner — so publish it for every later step in the job.
-      - run: ${GOLANGCI_LINT_INSTALL_GUARD}
-        name: Install golangci-lint
-
-      - run: ${GO_TOOL_PATH_GITHUB}
-        name: Add Go tool bin to PATH
-
-      # Flutter, if the workspace has any. Unlike Python and Go, hosted runners
-      # do NOT ship the Flutter SDK, so this installs it (shallow git clone at
-      # a pinned tag) and puts it on PATH. All three guards skip cleanly on a
-      # workspace with no root pubspec.yaml, and the install also skips when an
-      # SDK is already on PATH.
-      - run: ${FLUTTER_SDK_INSTALL_GUARD}
-        name: Install the Flutter SDK (${FLUTTER_SDK_VERSION})
-
-      - run: ${FLUTTER_TOOL_PATH_GITHUB}
-        name: Add the Flutter SDK to PATH
-
-      # One command resolves EVERY Dart dependency, internal and external, for
-      # the whole workspace: the projects are pub workspace members, so this
-      # writes a single root pubspec.lock they all share.
-      - run: ${FLUTTER_PUB_GET_GUARD}
-        name: Resolve Dart dependencies (one pub get for the whole workspace)
+      # Fails ONLY on an advisory that has a published fix, at moderate or above;
+      # anything upstream has not fixed is printed and passes. pip-audit only
+      # reports: its output has no "a fix exists" field to draw that line with.
+      - run: npx mnci ci audit
+        name: Audit dependencies (fails on an actionable npm advisory)
 
       # .NET, if the workspace has any. actions/setup-dotnet is the
       # maintained, cached installer GitHub itself ships, so this uses it
@@ -4225,30 +3360,18 @@ jobs:
         with:
           dotnet-version: ${DOTNET_SDK_VERSION}
 
-      # Fails fast, with an unambiguous message, when a stale TypeScript project
-      # reference (or another sync generator's drift) was never synced+committed
-      # locally — sync.applyChanges (nx.json) only auto-applies interactively, so
-      # CI still needs its own explicit, early check rather than surfacing this as
-      # a confusing failure buried inside the build step below.
-      - run: npx nx sync:check
-        name: Verify the workspace is synced (run 'npx nx sync' locally and commit if this fails)
-
-      # The one verify step, and deliberately the only one: affected projects on
-      # a pull request, EVERY project on anything else (a push to main included,
-      # so a release is always verified in full). Every fallback — no target
-      # branch, an unresolvable merge-base — takes the full path, because a run
-      # that verifies too little still reports green.
-      #
-      # 'npm run lint' is 'nx run-many -t lint', a strict subset of the targets
-      # below, so adding it back as its own step would only duplicate work — and
-      # on a pull request it would re-lint every project, discarding the point
-      # of this.
-      - run: ${nativeApps ? AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE : AFFECTED_OR_ALL_GUARD}
-        name: Verify (affected on a PR, every project on main)
+      # Fails fast on a stale TypeScript project reference, then the one verify
+      # step, and deliberately the only one: affected projects on a pull request,
+      # EVERY project on anything else (a push to main included, so a release is
+      # always verified in full). Every fallback takes the full path, because a run
+      # that verifies too little still reports green. Apps that need a C toolchain
+      # are left to the native job.
+      - run: npx mnci ci verify
+        name: Verify (sync check, then affected on a PR, every project on main)
 
       # Pack every app into dist/drop/<type>-<name>.zip via each app's 'package'
-      # target. Portable guard: skip cleanly when the workspace has no apps yet.
-      - run: ${PACK_APPS_GUARD}
+      # target; skipped cleanly when the workspace has no apps yet.
+      - run: npx mnci ci pack
         name: Pack all apps (one zip per app -> dist/drop)
         if: \${{ ${onMain} }}
 
@@ -4259,77 +3382,6 @@ jobs:
           path: dist/drop
           if-no-files-found: ignore
 
-      # nx release resolves each package's current version from its git tag,
-      # and falls back to the (permanently stale, since git.commit is false)
-      # on-disk version when a tag cannot be resolved — which happens
-      # whenever this checkout lacks full history. This is currently
-      # guaranteed by fetch-depth 0 above plus the explicit fetch below, but
-      # neither is expressed as a dependency anywhere else, so this makes it
-      # a hard, loud precondition instead of a silently wrong version
-      # discovered after release.
-      - run: ${SHALLOW_CLONE_GUARD}
-        name: Verify this is a full checkout (nx release needs the real tag history)
-        if: \${{ ${onMain} }}
-${
-  npmAuthPreflight(registryKind)
-    ? `
-      # Prove npm will accept us BEFORE anything irreversible happens. nx
-      # release tags first and publishes last, so a rejected token leaves a
-      # version tagged with nothing on the registry - and that number is then
-      # skipped forever, because the next run resolves the current version
-      # from the newest tag.
-      - run: ${npmAuthPreflight(registryKind)}
-        name: Preflight — npm must accept the token before anything is tagged
-        if: \${{ ${onMain} }}
-        env:
-          NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}
-`
-    : ''
-}${
-  pypiReleasePreflight(registryKind)
-    ? `
-      # PyPI cannot be asked whether a token is good - the only endpoint that
-      # authenticates is the upload itself - so this checks the token's SHAPE
-      # and names the projects this release would have to CREATE. Project
-      # creation is rate limited per account, and a 429 arrives AFTER nx
-      # release has tagged.
-      - run: ${pypiReleasePreflight(registryKind)}
-        name: Preflight — name the PyPI projects this release would create
-        if: \${{ ${onMain} }}
-        env:
-          PYPI_TOKEN: \${{ secrets.PYPI_TOKEN }}
-`
-    : ''
-}
-      # Version + tag + publish, in one release, for npm (packages/*), Python
-      # (python-packages/*) AND C# (packages/*/*.csproj) — conventional
-      # commits, tag-only push. Portable guard: nx release errors on an empty
-      # scope, so skip cleanly when there is nothing to release. When there
-      # are Python or C# packages and an Azure feed, twine/NuGet publish
-      # credentials are exported (raw PAT, decoded from the base64 secret).
-      #
-      # RELEASE_SPECIFIER (repository variable, Settings -> Secrets and
-      # variables -> Actions -> Variables) overrides the bump nx would compute
-      # from conventional commits for THIS run: 'major', 'minor', 'patch', or
-      # an exact version ('1.2.3'). In a workspace with more than one
-      # releasable package, a bare keyword is unreliable — nx versions
-      # interdependent packages in two passes (a dependency-bump pass, then
-      # the specifier pass), and the second pass computes from a version
-      # cached before the first pass ran, silently landing back on the same
-      # patch bump either way. An exact version does not have this problem,
-      # since both passes apply it verbatim — prefer it whenever more than one
-      # package is releasable. The guard below fails the run rather than
-      # under-bumping silently: unset or clear the variable once the override
-      # is no longer needed.${
-        githubReleases
-          ? `
-      # This provider also creates a per-project GitHub Release (changelog
-      # generated from conventional commits since that project's last tag),
-      # which is why 'nx release' pushes the tag itself here — see
-      # releaseConfig's remarks for why that is safe on this Nx version and
-      # why every other provider combination keeps the explicit push step below.`
-          : ''
-      }
       # Signs in to Microsoft Entra ID as the Marketplace publishing identity (an
       # app registration with a federated credential for this repository's main
       # branch), so the release step publishes VS Code extensions with
@@ -4345,7 +3397,23 @@ ${
           tenant-id: \${{ vars.AZURE_TENANT_ID }}
           allow-no-subscriptions: true
 
-      - run: ${releaseGuard(pythonPublishEnvFragment(pythonPublishUrl, registryKind), nugetPublishEnvFragment(nugetFeedUrl))}
+      # The release, in the order that keeps a failure safe: refuse a shallow
+      # clone, prove the npm token and name the PyPI projects it would create (all
+      # BEFORE anything is tagged), then version + tag + publish in one 'nx release'
+      # for npm, Python, C# and VS Code, then attach a releasable Go app's zips and
+      # push the tags. Which registry, and whether GitHub Releases are on, are read
+      # from the 'mnci' block of nx.json, not baked into this file. The secrets are
+      # mapped here, in the one place a command cannot reach.
+      #
+      # RELEASE_SPECIFIER (repository variable, Settings -> Secrets and
+      # variables -> Actions -> Variables) overrides the bump nx would compute
+      # from conventional commits for THIS run: 'major', 'minor', 'patch', or an
+      # exact version ('1.2.3'). With more than one releasable package a bare
+      # keyword is unreliable (nx versions interdependent packages in two passes,
+      # and the second computes from a version cached before the first), so the
+      # command fails the run rather than under-bumping silently: prefer an exact
+      # version, and clear the variable once the override is no longer needed.
+      - run: npx mnci ci release
         name: Release — version, tag${githubReleases ? ', publish and GitHub Release' : ' and publish'} (npm + Python + C# + VS Code)
         if: \${{ ${onMain} }}
         env:
@@ -4358,34 +3426,11 @@ ${
           VSCE_PAT: \${{ secrets.VSCE_PAT }}${
             githubReleases
               ? `
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}`
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}`
               : ''
           }
-${
-  githubReleases
-    ? `
-      # A releasable Go app (mnci add go-app --release) is versioned by its git
-      # tag, and its per-platform zips are attached to the GitHub Release the step
-      # above just created. Built here, after tagging, with VERSION set to the tag's
-      # version so the binary reports it. A run that released no Go app uploads
-      # nothing, and a workspace without one skips the step.
-      - run: node tools/go-app-release.cjs assets
-        name: Attach the per-platform zips to the GitHub Release (releasable Go apps)
-        if: \${{ ${onMain} && hashFiles('tools/go-app-release.cjs') != '' }}
-        env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-`
-    : `
-      # nx release's own git push (release.git.push) is deliberately left off: it
-      # only runs when a remote GitHub/GitLab Release is configured, which this
-      # workflow never does, so it would never push the tag the step above just
-      # created. Pushed explicitly, unconditionally (a no-op when nothing released)
-      # once tagging is guaranteed to have already happened.
-      - run: git push origin --tags
-        name: Push release tags (nx release's own push never runs without a remote Release configured)
-        if: \${{ ${onMain} }}
-`
-}${nativeApps ? githubNativeJob(npmAuthName, npmAuthValue, onMain) : ''}`
+${nativeApps ? githubNativeJob(npmAuthName, npmAuthValue) : ''}`
 }
 
 /** Where a `pip` project's manifest can live, relative to the workspace root. */

@@ -11,7 +11,7 @@
 ## The thesis
 
 Most of what a monorepo tool needs to hand-roll — a template engine, a shared
-config package, a custom CI engine, a dependency-injection step for published
+config package, a dependency-injection step for published
 packages, a doctor/drift-sync system to keep it all consistent — already has a
 first-party (or established community) Nx equivalent:
 

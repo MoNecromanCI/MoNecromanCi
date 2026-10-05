@@ -26,6 +26,12 @@ import { ACTION_VERSIONS, DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT
  * Regenerating wholesale would delete the nightly, which is the one thing that
  * stops the e2e rotting unnoticed.
  *
+ * **One deliberate rewrite.** A generated workspace depends on `@mnci/cli` and runs
+ * `npx mnci ci <phase>`. This repo IS `@mnci/cli`, whose binary is not linked until it has
+ * been built, so its workflow builds the CLI and calls `node packages/cli/dist/cli.js ci
+ * <phase>` instead. The generated commands are mapped onto that spelling before they are
+ * compared; nothing else is rewritten.
+ *
  * So the invariant is the useful half: **every command the generator emits for
  * the `ci` job must be present here.** Extra steps are fine. A *missing* guard is
  * not fine — that is CI here being weaker than the CI mnci hands to its users.
@@ -55,6 +61,9 @@ import { ACTION_VERSIONS, DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT
 
 const repoRoot = join(__dirname, '..', '..', '..')
 
+/** How this repo spells the `mnci` binary a generated workspace reaches through `npx`. */
+const CLI_BINARY = 'node packages/cli/dist/cli.js'
+
 interface Step {
   'name'?:              string
   'run'?:               string
@@ -79,6 +88,17 @@ function runCommands (workflow: Workflow, job: string): string[] {
   return (workflow.jobs[job]?.steps ?? [])
     .filter((step): step is Step & { run: string } => typeof step.run === 'string')
     .map(step => step.run)
+}
+
+/**
+ * The generated `run:` commands, spelled the way this repo calls its own CLI.
+ *
+ * @param workflow - A parsed generated workflow.
+ * @param job - The job id.
+ * @returns The job's commands with `npx mnci ` replaced by `CLI_BINARY`.
+ */
+function generatedCommands (workflow: Workflow, job: string): string[] {
+  return runCommands(workflow, job).map(command => command.startsWith('npx mnci ') ? `${CLI_BINARY} ${command.slice('npx mnci '.length)}` : command)
 }
 
 /**
@@ -136,8 +156,8 @@ describe("this repo's ci.yml against the pipeline overlay.ts generates", () => {
   it('parsed both workflows and found a non-trivial number of steps', () => {
     // Without this the assertions below would pass just as happily on an empty
     // parse — the shape of gate that this whole file exists to prevent.
-    expect(runCommands(generated, 'ci').length).toBeGreaterThan(10)
-    expect(runCommands(actual, 'ci').length).toBeGreaterThan(10)
+    expect(runCommands(generated, 'ci').length).toBeGreaterThan(5)
+    expect(runCommands(actual, 'ci').length).toBeGreaterThan(5)
   })
 
   it('runs every guard the generator emits, with none missing', () => {
@@ -147,9 +167,9 @@ describe("this repo's ci.yml against the pipeline overlay.ts generates", () => {
     // so any edit to a guard in overlay.ts shows up here as a mismatch until this
     // repo is re-synced.
     const here = new Set(runCommands(actual, 'ci'))
-    const missing = runCommands(generated, 'ci')
+    const missing = generatedCommands(generated, 'ci')
       .filter(command => !here.has(command))
-      .map(command => nameOf(generated, 'ci', command))
+      .map(command => nameOf(generated, 'ci', command.replace(CLI_BINARY, 'npx mnci')))
 
     expect(missing).toEqual([])
   })

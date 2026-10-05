@@ -75,6 +75,15 @@ describe('mnci ci native (#269)', () => {
     expect(setup.commands).toEqual([BUILD, ASSETS])
   })
 
+  it('attaches nothing on Azure, which has no GitHub Release: its leg publishes the zips as a pipeline artifact', () => {
+    seedReleaseScript()
+    const setup = harness()
+
+    native(setup, { TF_BUILD: 'True', BUILD_REASON: 'IndividualCI', BUILD_SOURCEBRANCHNAME: 'main' })
+
+    expect(setup.commands).toEqual([BUILD])
+  })
+
   it('attaches nothing in a pull request, even with the script present', () => {
     seedReleaseScript()
     const setup = harness()

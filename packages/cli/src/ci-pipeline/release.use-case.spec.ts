@@ -208,7 +208,7 @@ describe('mnci ci release: the release command (#269)', () => {
 })
 
 describe('mnci ci release: after the release (#269, #259)', () => {
-  it('pushes the release tags once nx release has succeeded', async () => {
+  it('pushes the release tags once nx release has succeeded, when no GitHub Release does it', async () => {
     seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
     const setup = harness()
 
@@ -217,14 +217,27 @@ describe('mnci ci release: after the release (#269, #259)', () => {
     expect(setup.commands.at(-1)).toBe('git push origin --tags')
   })
 
-  it('attaches the Go zips before the tags are pushed, when the workspace has a releasable Go app', async () => {
+  it('attaches no Go zips and pushes the tags, when nx release does not push its own', async () => {
     seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
     seed('tools/go-app-release.cjs', '')
+    seed('nx.json', JSON.stringify({ release: { git: { push: false } } }))
     const setup = harness()
 
     await release(setup, { NODE_AUTH_TOKEN: 'tok' })
 
-    expect(setup.commands.slice(-3)).toEqual(['npx nx release --yes', 'node tools/go-app-release.cjs assets', 'git push origin --tags'])
+    // No Release exists with Azure in the mix, so there is nothing to attach to: the tag push is all there is.
+    expect(setup.commands.slice(-2)).toEqual(['npx nx release --yes', 'git push origin --tags'])
+  })
+
+  it('attaches the Go zips to the GitHub Release nx release created, and leaves the tag push to nx release', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    seed('tools/go-app-release.cjs', '')
+    seed('nx.json', JSON.stringify({ release: { git: { push: true } } }))
+    const setup = harness()
+
+    await release(setup, { NODE_AUTH_TOKEN: 'tok' })
+
+    expect(setup.commands.slice(-2)).toEqual(['npx nx release --yes', 'node tools/go-app-release.cjs assets'])
   })
 
   it('skips the Go step in a workspace with no releasable Go app, and still pushes the tags', async () => {
@@ -246,14 +259,13 @@ describe('mnci ci release: after the release (#269, #259)', () => {
     expect(setup.commands).not.toContain('git push origin --tags')
   })
 
-  it('pushes no tags when attaching the Go zips failed, as the separate pipeline steps behaved', async () => {
+  it('fails the run when attaching the Go zips failed', async () => {
     seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
     seed('tools/go-app-release.cjs', '')
+    seed('nx.json', JSON.stringify({ release: { git: { push: true } } }))
     const setup = harness({ 'node tools/go-app-release.cjs assets': 3 })
 
     expect(await release(setup, { NODE_AUTH_TOKEN: 'tok' })).toBe(3)
-
-    expect(setup.commands).not.toContain('git push origin --tags')
   })
 })
 

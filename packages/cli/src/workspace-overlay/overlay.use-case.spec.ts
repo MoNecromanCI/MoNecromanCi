@@ -26,9 +26,7 @@ import {
   ESLINT_PEER_OVERRIDES,
   ESLINT_VERSION,
   ESLINT_USER_CONFIG,
-  FLUTTER_SDK_VERSION,
   FORMATTED_LANGUAGES,
-  GOLANGCI_LINT_VERSION,
   generatorDefaults,
   githubActionsYaml,
   hasNativeGoApp,
@@ -748,8 +746,8 @@ describe('azurePipelinesYaml', () => {
     const checkoutIndex = pipeline.indexOf('checkout: self')
     const attachIndex = pipeline.indexOf('git checkout -B $(Build.SourceBranchName)')
     const fetchIndex = pipeline.indexOf('git fetch --all --prune --tags')
-    const verifyIndex = pipeline.indexOf('npm run lint')
-    const releaseIndex = pipeline.indexOf('nx release --yes')
+    const verifyIndex = pipeline.indexOf('npx mnci ci verify')
+    const releaseIndex = pipeline.indexOf('npx mnci ci release')
 
     expect(checkoutIndex).toBeGreaterThan(-1)
     expect(attachIndex).toBeGreaterThan(checkoutIndex)
@@ -906,9 +904,10 @@ describe('azurePipelinesYaml', () => {
     expect(pipeline).toContain('batch: true')
   })
 
-  it('gates exactly the six release-only steps, the same set as GitHub', () => {
-    // Both providers share one condition across pack, publish, tag, the
-    // shallow-clone guard, release and tag-push. Asserting the COUNT is what
+  it('gates exactly the four release-only steps, the same set as GitHub plus the per-app build tag', () => {
+    // Both providers share one condition across pack, publish and release (the release
+    // command now does the shallow-clone guard, the preflights and the tag push inside it);
+    // Azure adds the per-app build tag. Asserting the COUNT is what
     // stops the narrowing from silently reaching a step it was never meant
     // to gate — or missing one it was. The .NET SDK install task also
     // carries a 'condition:' — a different gate (does the workspace have
@@ -923,7 +922,12 @@ describe('azurePipelinesYaml', () => {
       "eq(variables['Build.SourceBranchName'], 'main'))"
     const gated = document_.steps.filter(step => step.condition === releaseCondition)
 
-    expect(gated).toHaveLength(6)
+    expect(gated.map(step => step.displayName)).toEqual([
+      'Pack all apps (one zip per app -> dist/drop)',
+      'Publish the drop (one zip per app)',
+      'Tag the run per app (type-name)',
+      'Release — version, tag and publish (npm + Python + C# + VS Code)',
+    ])
   })
 
   it('gates the .NET SDK install task on the workspace having a C# project, not on main', () => {
@@ -985,7 +989,6 @@ describe('azurePipelinesYaml', () => {
       'Pack all apps',
       'Publish the drop',
       'Release — version, tag and publish',
-      'Push release tags',
     ]) {
       const at = pipeline.indexOf(releaseStep)
       expect(at).toBeGreaterThan(-1)
@@ -1014,72 +1017,6 @@ describe('azurePipelinesYaml', () => {
     expect(pipeline).not.toContain('if [')
     expect(pipeline).not.toContain('powershell')
     expect(pipeline).not.toContain('pwsh')
-  })
-
-  it('folds twine publish credentials (base64 PAT decoded) into the release step for an Azure feed', () => {
-    const url = 'https://pkgs.dev.azure.com/org/proj/_packaging/feed/pypi/upload/'
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build', url)
-
-    // One unified release step (npm + Python), not a separate publish step.
-    expect(pipeline).toContain('Release — version, tag and publish (npm + Python + C# + VS Code)')
-    expect(pipeline).not.toContain('nx run-many -t publish')
-    // The release step exports twine publish creds when there are Python packages.
-    expect(pipeline).toContain(`TWINE_REPOSITORY_URL='${url}'`)
-    // Reuses the base64 PAT from the group, decoded to the raw token twine needs.
-    expect(pipeline).toContain('Buffer.from(process.env.PAT,\'base64\')')
-    // Guarded on either publishable dir.
-    expect(pipeline).toContain('globSync(\'python-packages/*/pyproject.toml\')')
-    expect(pipeline).toContain('globSync(\'packages/*/package.json\')')
-    // A guarded step installs the fixed pip toolchain before any Python target runs.
-    expect(pipeline).toContain('-m pip install -r requirements-dev.txt')
-    // Resolves python vs python3 by platform, not hard-coded (Windows agents
-    // have no python3.exe).
-    expect(pipeline).toContain('process.platform===\'win32\'?\'python\':\'python3\'')
-    // A second guarded step editable-installs every Python project so
-    // cross-project imports (internal libs included) resolve at test time.
-    expect(pipeline).toContain('Install Python project dependencies (editable, workspace-wide)')
-  })
-
-  it('folds NuGet publish credentials (raw PAT, no base64) into the release step for an Azure feed', () => {
-    const nugetUrl = 'https://pkgs.dev.azure.com/org/proj/_packaging/feed/nuget/v3/index.json'
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'azure-artifacts', nugetUrl)
-
-    // Guarded on packages/*/*.csproj, the same detection PACK_APPS_GUARD uses.
-    expect(pipeline).toContain('csharpCount=fs.globSync(\'packages/*/*.csproj\').length')
-    // Exported only when hasCsharp — same shape as the Python fragment,
-    // including the PAT preflight that runs before the decode (an empty
-    // secret decodes to '', which the publish target treats as "not
-    // configured" and skips, silently, after versioning has already tagged).
-    expect(pipeline).toContain('env.NUGET_PAT=Buffer.from(process.env.PAT,\'base64\').toString()}')
-    expect(pipeline).toContain('if(hasCsharp){if(!process.env.PAT){console.error(')
-    // Unlike npm's base64 _password, NuGet's ClearTextPassword takes the RAW
-    // token, so no double-decode and no leftover base64 call for NuGet alone.
-  })
-
-  it("does not skip 'nx release' for a workspace with only C# packages", () => {
-    // Before hasCsharp existed, a workspace with a csharp-lib but no npm-lib
-    // and no python-lib would hit 'Nothing to release - skipping', silently
-    // dropping every C# release forever.
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    expect(pipeline).toContain('!hasNpm&&!hasPython&&!hasCsharp')
-  })
-
-  it('still versions/tags Python on public npm, but exports no twine publish creds', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-    // Python packages are always in the release scope (versioning + tags)…
-    expect(pipeline).toContain('globSync(\'python-packages/*/pyproject.toml\')')
-    // …but without an Azure feed the release step sets no TWINE_* env.
-    expect(pipeline).not.toContain('TWINE_REPOSITORY_URL')
-  })
-
-  it('verifies affected projects on a PR and every project otherwise, in one step', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    expect(pipeline).toContain('SYSTEM_PULLREQUEST_TARGETBRANCH')
-    expect(pipeline).toContain('npx nx affected -t ')
-    expect(pipeline).toContain('npx nx run-many -t ')
-    expect(pipeline).toContain('Verify (affected on a PR, every project on main)')
   })
 
   it('has no standalone lint step, a strict subset of the verify target list', () => {
@@ -1119,221 +1056,6 @@ describe('azurePipelinesYaml', () => {
     const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
 
     expect(pipeline.indexOf('task: Cache@2')).toBeLessThan(pipeline.indexOf('script: npm ci'))
-  })
-
-  it('typechecks in the verify step — build alone does not, since bundlers strip types', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    // The gate that would have caught the `mnci upgrade` workspaceName bug.
-    // esbuild/swc strip types without reading them, so `build` passing proves
-    // nothing about type correctness — a workspace can be green on
-    // lint+test+build and still carry real errors. Asserted on the shared target
-    // list, so it holds on both the affected and the run-many path.
-    expect(pipeline).toContain('const T=\'lint,typecheck,test,build\'')
-  })
-
-  it('has NO separate formatting step, because lint already reports formatting', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    // Inverted deliberately. The step this replaces existed because ESLint was
-    // configured for correctness ONLY — `eslint-config-prettier` switched every
-    // stylistic rule off — so without a second Prettier invocation the entire
-    // formatting opinion was advisory.
-    //
-    // ESLint now owns formatting, so the verify step's `lint` reports it as
-    // ordinary errors. A `format:check` step would run the same binary a second
-    // time over the same tree for no additional coverage.
-    expect(pipeline).not.toContain('format:check')
-    expect(pipeline).toContain('nx affected -t ')
-  })
-
-  it('checks the workspace is synced early, before verification (fails fast on a stale TS reference)', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    const installIndex = pipeline.indexOf('npm ci')
-    const syncCheckIndex = pipeline.indexOf('nx sync:check')
-    const verifyIndex = pipeline.indexOf('Verify (affected on a PR')
-
-    expect(syncCheckIndex).toBeGreaterThan(installIndex)
-    expect(verifyIndex).toBeGreaterThan(syncCheckIndex)
-  })
-
-  it('installs every Python project editably after the fixed toolchain, before sync:check', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    const toolchainIndex = pipeline.indexOf(
-      'Install Python dependencies (ruff, pytest, build, twine, pip-audit)',
-    )
-    const workspaceInstallIndex = pipeline.indexOf(
-      'Install Python project dependencies (editable, workspace-wide)',
-    )
-    const syncCheckIndex = pipeline.indexOf('nx sync:check')
-
-    expect(workspaceInstallIndex).toBeGreaterThan(toolchainIndex)
-    expect(syncCheckIndex).toBeGreaterThan(workspaceInstallIndex)
-    // One pip invocation covers every project kind: editable-installs apps,
-    // publishable libs and internal libs (all have a pyproject.toml), and
-    // installs function apps' requirements.txt (no pyproject.toml to editable-install).
-    expect(pipeline).toContain('globSync(\'apps/*/pyproject.toml\')')
-    expect(pipeline).toContain('globSync(\'python-packages/*/pyproject.toml\')')
-    expect(pipeline).toContain('globSync(\'libs/*/pyproject.toml\')')
-    expect(pipeline).toContain('globSync(\'apps/*/requirements.txt\')')
-    expect(pipeline).toContain('\'-m\',\'pip\',\'install\',\'--quiet\'')
-  })
-
-  it('runs npm audit right after npm ci, and pip-audit after the workspace-wide Python install', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    const npmInstallIndex = pipeline.indexOf('npm ci')
-    const npmAuditIndex = pipeline.indexOf('\'audit\',\'--json\'')
-    const pythonWorkspaceInstallIndex = pipeline.indexOf(
-      'Install Python project dependencies (editable, workspace-wide)',
-    )
-    const pipAuditIndex = pipeline.indexOf('\'-m\',\'pip_audit\'')
-    const syncCheckIndex = pipeline.indexOf('nx sync:check')
-
-    expect(npmAuditIndex).toBeGreaterThan(npmInstallIndex)
-    expect(pipAuditIndex).toBeGreaterThan(pythonWorkspaceInstallIndex)
-    expect(syncCheckIndex).toBeGreaterThan(pipAuditIndex)
-    // The two audits deliberately DIFFER now, and the asymmetry is the point:
-    // `npm audit --json` reports `fixAvailable` per advisory so the actionable
-    // ones can block, while pip-audit's output carries no equivalent field, so
-    // making it blocking would go red on findings nobody can act on.
-    expect(pipeline).toContain('displayName: npm audit (fails on an actionable advisory)')
-    expect(pipeline).toContain('displayName: pip-audit (non-blocking)')
-    // The warn-only form must not come back — it exited 0 on all nine of this
-    // repo's own fixable advisories, and its `--audit-level=high` also skipped
-    // the moderate one entirely.
-    expect(pipeline).not.toContain('npm audit --audit-level=high || echo')
-  })
-
-  it('seeds the Go toolchain before the build, and skips cleanly without a root go.mod', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    const goDownloadIndex = pipeline.indexOf('Download Go module dependencies')
-    const golangciIndex = pipeline.indexOf('Install golangci-lint')
-    const pathIndex = pipeline.indexOf('Add Go tool bin to PATH')
-    const syncCheckIndex = pipeline.indexOf('nx sync:check')
-
-    expect(goDownloadIndex).toBeGreaterThan(-1)
-    // PATH must be published after the install that populates GOPATH/bin,
-    // and all of it before anything that runs the lint target.
-    expect(pathIndex).toBeGreaterThan(golangciIndex)
-    expect(syncCheckIndex).toBeGreaterThan(pathIndex)
-
-    // Every Go step is gated on the root go.mod, so a JS-only workspace pays
-    // nothing — the same shape as the Python guards' requirements-dev.txt check.
-    expect(pipeline).toContain("existsSync('go.mod')")
-    expect(pipeline).toContain('No Go projects - skipping.')
-    // Azure's own mechanism for a step to extend PATH for later steps.
-    expect(pipeline).toContain('##vso[task.prependpath]')
-  })
-
-  it('pins golangci-lint as the Go linter rather than the plugin default of go fmt', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    expect(pipeline).toContain('golangci-lint')
-    // Skips the install when the agent already provides the binary.
-    expect(pipeline).toContain('golangci-lint already installed - skipping.')
-  })
-
-  it.each([
-    ['azure', azurePipelinesYaml('ubuntu-latest', 'Build')],
-    ['github', githubActionsYaml('ubuntu-latest')],
-  ])('%s: installs a PINNED golangci-lint from its checksum-verified prebuilt release, with go install as the fallback', (_provider, pipeline) => {
-    // `@latest` made CI non-reproducible (a golangci-lint release could turn every
-    // workspace red overnight), and compiling it cost 68 s of a ~2 min job, where
-    // the prebuilt archive takes ~1 s. MoNecromanCI/MoNecromanCi#239.
-    expect(pipeline).not.toContain('golangci-lint@latest')
-    expect(pipeline).toContain(`const v='${GOLANGCI_LINT_VERSION}'`)
-    expect(pipeline).toContain('https://github.com/golangci/golangci-lint/releases/download/v')
-    // Never executes an archive it could not verify.
-    expect(pipeline).toContain("-checksums.txt'")
-    expect(pipeline).toContain("crypto.createHash('sha256')")
-    // Windows ships a .zip, which a Git-for-Windows GNU tar cannot read, so the
-    // Windows path is the system bsdtar by absolute path (and never PowerShell).
-    expect(pipeline).toContain("path.join(process.env.SystemRoot||'','System32','tar.exe')")
-    // Any failure degrades to a compile of the SAME pinned version, never @latest.
-    expect(pipeline).toContain("'github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v'+v")
-  })
-
-  it('installs the Flutter SDK itself, unlike Python and Go which ship on the agent', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    const installIndex = pipeline.indexOf('Install the Flutter SDK')
-    const pathIndex = pipeline.indexOf('Add the Flutter SDK to PATH')
-    const pubGetIndex = pipeline.indexOf('Resolve Dart dependencies')
-    const syncCheckIndex = pipeline.indexOf('nx sync:check')
-
-    expect(installIndex).toBeGreaterThan(-1)
-    // PATH must be published after the clone, and pub get needs both — then
-    // everything must precede anything that runs a Flutter target.
-    expect(pathIndex).toBeGreaterThan(installIndex)
-    expect(pubGetIndex).toBeGreaterThan(pathIndex)
-    expect(syncCheckIndex).toBeGreaterThan(pubGetIndex)
-
-    // Every Flutter step is gated on the root pubspec.yaml that the plugin's
-    // generators write, so a JS-only workspace pays nothing.
-    expect(pipeline).toContain("existsSync('pubspec.yaml')")
-    expect(pipeline).toContain('No Flutter projects - skipping.')
-  })
-
-  it('pins the Flutter SDK version, because it determines the Dart version', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    // Pub workspaces need Dart 3.6+, so a floating `stable` could move the
-    // toolchain under a workspace. Cloned at an explicit tag instead.
-    expect(pipeline).toContain(FLUTTER_SDK_VERSION)
-    expect(pipeline).toContain(`'--branch','${FLUTTER_SDK_VERSION}'`)
-    expect(pipeline).toContain('https://github.com/flutter/flutter.git')
-    // Skips entirely when an SDK is already available.
-    expect(pipeline).toContain('Flutter SDK already on PATH - skipping.')
-  })
-
-  it('installs the Flutter SDK outside the workspace, so its own pubspecs cannot leak in', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    // The SDK ships dozens of its own pubspec.yaml files; cloning it inside the
-    // workspace would drop them into the pub workspace tree and give Nx
-    // thousands of extra files to glob. Version-keyed so a bump re-provisions.
-    expect(pipeline).toContain("require('node:os').homedir()")
-    expect(pipeline).toContain(`.mnci-flutter-${FLUTTER_SDK_VERSION}`)
-    expect(pipeline).not.toContain("'.flutter-sdk'")
-  })
-
-  it('resolves every Dart dependency with a single root pub get', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    // Dart has a real workspace protocol, so unlike Python there is no second
-    // per-project install step: one pub get covers internal AND external deps.
-    expect(pipeline).toContain("'pub','get'")
-    expect(pipeline).toContain('one pub get for the whole workspace')
-  })
-
-  it('packs all apps into one drop artifact, tags per app, then releases — in order', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    const packIndex = pipeline.indexOf('nx run-many -t package')
-    const publishDropIndex = pipeline.indexOf('ArtifactName: drop')
-    const tagIndex = pipeline.indexOf('##vso[build.addbuildtag]')
-    const releaseIndex = pipeline.indexOf('nx release --yes')
-
-    expect(packIndex).toBeGreaterThan(-1)
-    expect(publishDropIndex).toBeGreaterThan(packIndex)
-    expect(tagIndex).toBeGreaterThan(publishDropIndex)
-    expect(releaseIndex).toBeGreaterThan(tagIndex)
-    expect(pipeline).toContain('PathtoPublish: $(Build.SourcesDirectory)/dist/drop')
-    // The build tag is derived from the zip filenames, so it is exactly the
-    // zip's <type>-<name> basename.
-    expect(pipeline).toContain('path.basename(f,\'.zip\')')
-  })
-
-  it('guards pack and release with portable node one-liners while apps/packages are empty', () => {
-    const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
-
-    expect(pipeline).toContain('globSync(\'apps/*/project.json\')')
-    expect(pipeline).toContain('globSync(\'packages/*/package.json\')')
-    expect(pipeline).toContain('nx release --yes')
   })
 })
 
@@ -1427,21 +1149,6 @@ describe('githubActionsYaml', () => {
     expect(workflow).toContain('RELEASE_SPECIFIER: ${{ vars.RELEASE_SPECIFIER }}')
   })
 
-  it('validates RELEASE_SPECIFIER against keywords or an exact semver, and refuses a keyword once more than one package is releasable', () => {
-    // The regex and the two-pass-versioning guard both live inside the
-    // 'node -e' one-liner — see releaseSpecifierExecution.test.ts for the
-    // real bash+node execution test of this exact text (backslash escaping
-    // through YAML -> shell -> node, and the actual fail-fast behaviour).
-    // This only pins the source text against silent edits.
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    expect(workflow).toContain(
-      String.raw`/^(major|minor|patch|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/`,
-    )
-    expect(workflow).toContain('releaseProjectCount=npmCount+csharpCount+pythonCount')
-    expect(workflow).toContain('/^(major|minor|patch)$/.test(specifier)&&releaseProjectCount>1')
-  })
-
   it('does not reference any custom CI engine — the workflow is plain Nx', () => {
     const workflow = githubActionsYaml('ubuntu-latest')
 
@@ -1450,167 +1157,10 @@ describe('githubActionsYaml', () => {
     expect(workflow).not.toContain('.mjs')
   })
 
-  it('folds twine publish credentials (base64 PAT decoded) into the release step for an Azure feed', () => {
-    const url = 'https://pkgs.dev.azure.com/org/proj/_packaging/feed/pypi/upload/'
-    const workflow = githubActionsYaml('ubuntu-latest', url)
-
-    expect(workflow).toContain('Release — version, tag, publish and GitHub Release (npm + Python + C# + VS Code)')
-    expect(workflow).not.toContain('nx run-many -t publish')
-    expect(workflow).toContain(`TWINE_REPOSITORY_URL='${url}'`)
-    expect(workflow).toContain('Buffer.from(process.env.PAT,\'base64\')')
-    expect(workflow).toContain('globSync(\'python-packages/*/pyproject.toml\')')
-    expect(workflow).toContain('globSync(\'packages/*/package.json\')')
-    expect(workflow).toContain('-m pip install -r requirements-dev.txt')
-    expect(workflow).toContain('process.platform===\'win32\'?\'python\':\'python3\'')
-    expect(workflow).toContain('Install Python project dependencies (editable, workspace-wide)')
-  })
-
-  it('still versions/tags Python on public npm, but exports no twine publish creds', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-    expect(workflow).toContain('globSync(\'python-packages/*/pyproject.toml\')')
-    expect(workflow).not.toContain('TWINE_REPOSITORY_URL')
-  })
-
-  it('folds NuGet publish credentials (raw PAT, no base64) into the release step for an Azure feed', () => {
-    const nugetUrl = 'https://pkgs.dev.azure.com/org/proj/_packaging/feed/nuget/v3/index.json'
-    const workflow = githubActionsYaml('ubuntu-latest', undefined, 'azure-artifacts', 'github', nugetUrl)
-
-    expect(workflow).toContain('csharpCount=fs.globSync(\'packages/*/*.csproj\').length')
-    expect(workflow).toContain('env.NUGET_PAT=Buffer.from(process.env.PAT,\'base64\').toString()}')
-    // The same PAT preflight the Azure file carries — one fragment, both
-    // providers, which is what the anti-drift test below relies on.
-    expect(workflow).toContain('if(hasCsharp){if(!process.env.PAT){console.error(')
-  })
-
-  it('still versions/tags C# on public npm, but exports no NuGet publish creds', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    expect(workflow).toContain('globSync(\'packages/*/*.csproj\')')
-    expect(workflow).not.toContain('NUGET_PAT')
-  })
-
-  it("does not skip 'nx release' for a workspace with only C# packages", () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    expect(workflow).toContain('!hasNpm&&!hasPython&&!hasCsharp')
-  })
-
-  it('verifies affected projects on a PR and every project otherwise, in one step', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    expect(workflow).toContain('GITHUB_BASE_REF')
-    expect(workflow).toContain('npx nx affected -t ')
-    expect(workflow).toContain('npx nx run-many -t ')
-    expect(workflow).toContain('Verify (affected on a PR, every project on main)')
-  })
-
   it('has no standalone lint step, a strict subset of the verify target list', () => {
     const workflow = githubActionsYaml('ubuntu-latest')
 
     expect(workflow).not.toContain('run: npm run lint')
-  })
-
-  it('checks the workspace is synced early, before verification (fails fast on a stale TS reference)', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    const installIndex = workflow.indexOf('npm ci')
-    const syncCheckIndex = workflow.indexOf('nx sync:check')
-    const verifyIndex = workflow.indexOf('Verify (affected on a PR')
-
-    expect(syncCheckIndex).toBeGreaterThan(installIndex)
-    expect(verifyIndex).toBeGreaterThan(syncCheckIndex)
-  })
-
-  it('installs every Python project editably after the fixed toolchain, before sync:check', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    const toolchainIndex = workflow.indexOf(
-      'Install Python dependencies (ruff, pytest, build, twine, pip-audit)',
-    )
-    const workspaceInstallIndex = workflow.indexOf(
-      'Install Python project dependencies (editable, workspace-wide)',
-    )
-    const syncCheckIndex = workflow.indexOf('nx sync:check')
-
-    expect(workspaceInstallIndex).toBeGreaterThan(toolchainIndex)
-    expect(syncCheckIndex).toBeGreaterThan(workspaceInstallIndex)
-    expect(workflow).toContain('globSync(\'apps/*/pyproject.toml\')')
-    expect(workflow).toContain('globSync(\'python-packages/*/pyproject.toml\')')
-    expect(workflow).toContain('globSync(\'libs/*/pyproject.toml\')')
-    expect(workflow).toContain('globSync(\'apps/*/requirements.txt\')')
-    expect(workflow).toContain('\'-m\',\'pip\',\'install\',\'--quiet\'')
-  })
-
-  it('runs npm audit right after npm ci, and pip-audit after the workspace-wide Python install', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    const npmInstallIndex = workflow.indexOf('npm ci')
-    const npmAuditIndex = workflow.indexOf('\'audit\',\'--json\'')
-    const pythonWorkspaceInstallIndex = workflow.indexOf(
-      'Install Python project dependencies (editable, workspace-wide)',
-    )
-    const pipAuditIndex = workflow.indexOf('\'-m\',\'pip_audit\'')
-    const syncCheckIndex = workflow.indexOf('nx sync:check')
-
-    expect(npmAuditIndex).toBeGreaterThan(npmInstallIndex)
-    expect(pipAuditIndex).toBeGreaterThan(pythonWorkspaceInstallIndex)
-    expect(syncCheckIndex).toBeGreaterThan(pipAuditIndex)
-    expect(workflow).toContain('name: npm audit (fails on an actionable advisory)')
-    expect(workflow).toContain('name: pip-audit (non-blocking)')
-    expect(workflow).not.toContain('npm audit --audit-level=high || echo')
-  })
-
-  it('seeds the Go toolchain before the build, using GITHUB_PATH rather than the Azure logging command', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    const goDownloadIndex = workflow.indexOf('Download Go module dependencies')
-    const golangciIndex = workflow.indexOf('Install golangci-lint')
-    const pathIndex = workflow.indexOf('Add Go tool bin to PATH')
-    const syncCheckIndex = workflow.indexOf('nx sync:check')
-
-    expect(goDownloadIndex).toBeGreaterThan(-1)
-    expect(pathIndex).toBeGreaterThan(golangciIndex)
-    expect(syncCheckIndex).toBeGreaterThan(pathIndex)
-
-    expect(workflow).toContain("existsSync('go.mod')")
-    expect(workflow).toContain('No Go projects - skipping.')
-    // The two providers publish PATH differently; this one appends to a file.
-    expect(workflow).toContain('GITHUB_PATH')
-    expect(workflow).not.toContain('##vso[task.prependpath]')
-  })
-
-  it('installs the Flutter SDK and publishes it via GITHUB_PATH, not the Azure logging command', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    const installIndex = workflow.indexOf('Install the Flutter SDK')
-    const pathIndex = workflow.indexOf('Add the Flutter SDK to PATH')
-    const pubGetIndex = workflow.indexOf('Resolve Dart dependencies')
-
-    expect(installIndex).toBeGreaterThan(-1)
-    expect(pathIndex).toBeGreaterThan(installIndex)
-    expect(pubGetIndex).toBeGreaterThan(pathIndex)
-
-    expect(workflow).toContain("existsSync('pubspec.yaml')")
-    expect(workflow).toContain('No Flutter projects - skipping.')
-    expect(workflow).toContain(FLUTTER_SDK_VERSION)
-    // Same PATH-publishing split as the Go pair.
-    expect(workflow).toContain('GITHUB_PATH')
-    expect(workflow).not.toContain('##vso[task.prependpath]')
-  })
-
-  it('packs all apps into one drop artifact, then releases — in order, gated to main-only', () => {
-    const workflow = githubActionsYaml('ubuntu-latest')
-
-    const packIndex = workflow.indexOf('nx run-many -t package')
-    const uploadIndex = workflow.indexOf('actions/upload-artifact@v7')
-    const releaseIndex = workflow.indexOf('nx release --yes')
-
-    expect(packIndex).toBeGreaterThan(-1)
-    expect(uploadIndex).toBeGreaterThan(packIndex)
-    expect(releaseIndex).toBeGreaterThan(uploadIndex)
-    expect(workflow).toContain('path: dist/drop')
-    // No Azure classic-Release-pipeline build-tag mechanism — no equivalent on GitHub.
-    expect(workflow).not.toContain('addbuildtag')
   })
 
   it('creates GitHub Releases and lets nx push its own tag when github is the only provider', () => {
@@ -1629,74 +1179,12 @@ describe('githubActionsYaml', () => {
     expect(withDefault).toBe(withExplicit)
   })
 
-  it('keeps the explicit tag push and skips GitHub Release creation when both providers are configured', () => {
+  it('skips GitHub Release creation when both providers are configured, leaving the tag push to the release phase', () => {
     const workflow = githubActionsYaml('ubuntu-latest', undefined, 'azure-artifacts', 'both')
     expect(() => yaml.load(workflow)).not.toThrow()
 
     expect(workflow).not.toContain('GITHUB_TOKEN')
-    expect(workflow).toContain('git push origin --tags')
-    expect(workflow).toContain(
-      "Push release tags (nx release's own push never runs without a remote Release configured)",
-    )
-  })
-
-  it('runs the same guard scripts as azure-pipelines.yml (both providers can never drift)', () => {
-    const azure = azurePipelinesYaml(
-      'ubuntu-latest',
-      'Build',
-      'https://example.invalid/pypi/upload/',
-    )
-    const github = githubActionsYaml('ubuntu-latest', 'https://example.invalid/pypi/upload/')
-
-    expect(github).toContain('-m pip install -r requirements-dev.txt')
-    expect(azure).toContain('-m pip install -r requirements-dev.txt')
-    expect(github).toContain('process.platform===\'win32\'?\'python\':\'python3\'')
-    expect(azure).toContain('process.platform===\'win32\'?\'python\':\'python3\'')
-    expect(github).toContain('globSync(\'apps/*/pyproject.toml\')')
-    expect(azure).toContain('globSync(\'apps/*/pyproject.toml\')')
-    expect(github).toContain('globSync(\'apps/*/project.json\')')
-    expect(azure).toContain('globSync(\'apps/*/project.json\')')
-    expect(github).toContain('Buffer.from(process.env.PAT,\'base64\')')
-    expect(azure).toContain('Buffer.from(process.env.PAT,\'base64\')')
-
-    // The Flutter SDK install and the root pub get are byte-identical in both.
-    // Only the PATH step legitimately differs, because the two providers have
-    // genuinely different mechanisms for extending PATH — asserted separately
-    // in each provider's own test above.
-    const flutterInstall = `'--branch','${FLUTTER_SDK_VERSION}','https://github.com/flutter/flutter.git'`
-    expect(github).toContain(flutterInstall)
-    expect(azure).toContain(flutterInstall)
-    expect(github).toContain('\'pub\',\'get\'')
-    expect(azure).toContain('\'pub\',\'get\'')
-    expect(github).toContain('No Flutter projects - skipping.')
-    expect(azure).toContain('No Flutter projects - skipping.')
-
-    // NEITHER provider has a formatting step, and asserting the absence in both
-    // is the same anti-drift property as asserting the presence used to be: a
-    // step removed from one provider must not survive in the other. ESLint owns
-    // formatting now, so `lint` inside the verify target reports it.
-    expect(github).not.toContain('format:check')
-    expect(azure).not.toContain('format:check')
-
-    // Same for the typecheck target, for the same reason.
-    expect(github).toContain('const T=\'lint,typecheck,test,build\'')
-    expect(azure).toContain('const T=\'lint,typecheck,test,build\'')
-
-    // The verify guard, byte-for-byte. This one matters more than the others:
-    // the two providers detect a pull request through DIFFERENT environment
-    // variables, so the guard reads both and the shared body is what keeps
-    // "what CI verifies" from diverging between them. A provider-specific copy
-    // would change the gate itself, not just its spelling.
-    const guard = extractGuard(github, 'npx nx affected')
-    expect(guard).not.toBe('')
-    expect(azure).toContain(guard)
-
-    // Both cache npm downloads, though the mechanisms genuinely differ: GitHub's
-    // setup-node takes a `cache` input, Azure needs a separate Cache@2 task and a
-    // relocated cache directory. Asserted here so neither provider silently loses
-    // caching while the other keeps it.
-    expect(github).toContain('cache: npm')
-    expect(azure).toContain('task: Cache@2')
+    expect(workflow).toContain('npx mnci ci release')
   })
 })
 
@@ -1712,72 +1200,6 @@ describe('githubActionsYaml', () => {
 // only job here runs e2e rather than unit tests.
 const describeOnPosix = process.platform === 'win32' ? describe.skip : describe
 
-describe('a releasable Go app in the release step (#259)', () => {
-  const guard = extractGuard(githubActionsYaml('ubuntu-latest', undefined, 'npm'), 'Nothing to release - skipping.')
-  let workspace: string
-
-  /** Writes `apps/<name>/project.json` with the given tags. */
-  function goApp (name: string, tags: string[]): void {
-    mkdirSync(join(workspace, 'apps', name), { recursive: true })
-    writeFileSync(join(workspace, 'apps', name, 'project.json'), JSON.stringify({ name, tags }))
-  }
-
-  /**
-   * Runs the guard. Every case here ends before `nx release` would start (nothing to
-   * release, an invalid specifier, a keyword refused), so no `nx` is needed.
-   */
-  function run (specifier: string): { status: number | null; out: string } {
-    const result = spawnSync(guard, {
-      cwd:      workspace,
-      shell:    true,
-      encoding: 'utf8',
-      env:      { ...process.env, RELEASE_SPECIFIER: specifier },
-    })
-
-    return { status: result.status, out: `${result.stdout}${result.stderr}` }
-  }
-
-  beforeEach(() => {
-    workspace = mkdtempSync(join(tmpdir(), 'mnci-go-release-guard-'))
-  })
-
-  afterEach(() => rmSync(workspace, { force: true, recursive: true }))
-
-  it('finds the release guard in the generated workflow', () => {
-    expect(guard).not.toBe('')
-  })
-
-  it('has nothing to release for a Go app that did not opt in', () => {
-    goApp('tool', ['type:go-app'])
-    const result = run('')
-
-    expect(result.status).toBe(0)
-    expect(result.out).toContain('Nothing to release - skipping.')
-  })
-
-  it('does not skip a workspace whose only releasable project is a tagged Go app', () => {
-    // An invalid specifier is refused AFTER the nothing-to-release check, so reaching
-    // it proves the Go app was counted. Without the count this logged "Nothing to
-    // release" for ever, the failure a Flutter-only workspace once had.
-    goApp('tool', ['type:go-app', 'release:go'])
-    const result = run('not-a-version')
-
-    expect(result.status).toBe(1)
-    expect(result.out).not.toContain('Nothing to release')
-    expect(result.out).toContain("RELEASE_SPECIFIER value 'not-a-version' is invalid")
-  })
-
-  it('counts a Go app towards the keyword guard, since it is a releasable project', () => {
-    goApp('tool', ['type:go-app', 'release:go'])
-    mkdirSync(join(workspace, 'packages/lib'), { recursive: true })
-    writeFileSync(join(workspace, 'packages/lib/package.json'), JSON.stringify({ name: 'lib' }))
-    const result = run('minor')
-
-    expect(result.status).toBe(1)
-    expect(result.out).toContain('this workspace has 2 releasable packages')
-  })
-})
-
 describe('native (cgo) apps in the pipelines (#263)', () => {
   interface Step { name?: string; displayName?: string; run?: string; script?: string; if?: string; condition?: string; uses?: string }
   interface GithubJob { 'needs'?: string; 'runs-on': string; 'strategy'?: { 'fail-fast': boolean; 'matrix': { os: string[] } }; 'steps': Step[] }
@@ -1787,8 +1209,8 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
     yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github', undefined, native)) as { jobs: Record<string, GithubJob> }
   const azure = (native: boolean): { jobs?: AzureJob[]; steps?: Step[]; pool?: Record<string, string>; variables?: unknown[] } =>
     yaml.load(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'npm', undefined, 'pat', native)) as ReturnType<typeof azure>
-  const verifyOf = (steps: Step[]): Step | undefined => steps.find(step => (step.name ?? step.displayName ?? '').startsWith('Verify (affected'))
-  const without = (steps: Step[]): Step[] => steps.filter(step => !(step.name ?? step.displayName ?? '').startsWith('Verify (affected'))
+  const verifyOf = (steps: Step[]): Step | undefined => steps.find(step => (step.name ?? step.displayName ?? '').startsWith('Verify ('))
+  const without = (steps: Step[]): Step[] => steps.filter(step => !(step.name ?? step.displayName ?? '').startsWith('Verify ('))
 
   describe('hasNativeGoApp', () => {
     let workspace: string
@@ -1831,8 +1253,6 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
 
     it('has no native job and does not exclude anything from verify', () => {
       expect(Object.keys(github(false).jobs)).toEqual(['ci'])
-      expect(githubActionsYaml('ubuntu-latest')).not.toContain('--exclude=tag:build:cgo')
-      expect(azurePipelinesYaml('ubuntu-latest', 'Build')).not.toContain('--exclude=tag:build:cgo')
       expect(azure(false).jobs).toBeUndefined()
     })
   })
@@ -1848,24 +1268,20 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
       expect(native.strategy?.['fail-fast']).toBe(false)
     })
 
-    it('leaves the native apps out of the single-agent verify, and changes nothing else in the ci job', () => {
+    it('changes nothing in the ci job, whose verify command leaves the native apps out itself', () => {
       const plain = github(false).jobs.ci.steps
       const withNative = github(true).jobs.ci.steps
 
-      expect(verifyOf(withNative)?.run).toContain("+' --exclude=tag:build:cgo'")
-      expect(verifyOf(plain)?.run).not.toContain('--exclude')
+      expect(verifyOf(withNative)?.run).toBe('npx mnci ci verify')
       expect(without(withNative)).toEqual(without(plain))
     })
 
-    it('runs the native build on each leg and attaches a releasable app\'s zip only on main', () => {
+    it('runs the native phase on each leg, which attaches a releasable app\'s zip itself on main', () => {
       const { steps } = github(true).jobs.native
-      const build = steps.find(step => step.run?.startsWith('npx nx run-many -t lint,test,build-native,package-native'))
-      const attach = steps.find(step => step.run === 'node tools/go-app-release.cjs assets --native')
+      const build = steps.find(step => step.run === 'npx mnci ci native')
       const linux = steps.find(step => step.name === 'Install native prerequisites (Linux)')
 
-      expect(build?.run).toContain('--projects=tag:build:cgo')
-      expect(attach?.if).toContain("github.ref_name == 'main'")
-      expect(attach?.if).toContain("hashFiles('tools/go-app-release.cjs') != ''")
+      expect(build).toBeDefined()
       expect(linux?.if).toBe("${{ runner.os == 'Linux' }}")
       expect(linux?.run).toBe('sudo apt-get update && sudo apt-get install -y gcc pkg-config')
       expect(steps.some(step => step.uses?.startsWith('actions/upload-artifact@'))).toBe(true)
@@ -1883,7 +1299,7 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
       expect(document.jobs?.map(each => each.job)).toEqual(['ci', 'native'])
       expect(document.jobs?.[0].pool).toEqual(plain.pool)
       expect(without(document.jobs?.[0].steps ?? [])).toEqual(without(plain.steps ?? []))
-      expect(verifyOf(document.jobs?.[0].steps ?? [])?.script).toContain("+' --exclude=tag:build:cgo'")
+      expect(verifyOf(document.jobs?.[0].steps ?? [])?.script).toBe('npx mnci ci verify')
     })
 
     it('fans the native job out over a Windows, a macOS and a Linux image, after ci', () => {
@@ -1893,7 +1309,7 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
       expect(native?.pool).toEqual({ vmImage: '$(vmImage)' })
       expect(Object.values(native?.strategy?.matrix ?? {}).map(leg => leg.vmImage))
         .toEqual(['windows-latest', 'macos-latest', 'ubuntu-latest'])
-      expect(native?.steps.find(step => step.script?.startsWith('npx nx run-many -t lint,test,build-native,package-native'))).toBeDefined()
+      expect(native?.steps.find(step => step.script === 'npx mnci ci native')).toBeDefined()
       expect(native?.steps.find(step => step.displayName === 'Install native prerequisites (Linux)')?.condition)
         .toBe("eq(variables['Agent.OS'], 'Linux')")
     })
@@ -1942,245 +1358,6 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
       expect(readFileSync(join(workspace, '.github/workflows/ci.yml'), 'utf8')).toContain('native:')
       expect(readFileSync(join(workspace, 'azure-pipelines.yml'), 'utf8')).toContain('job: native')
     })
-  })
-})
-
-describe('the Go release assets step (#259)', () => {
-  it('attaches the platform zips after the release step, on main, for a GitHub-only workflow', () => {
-    const document_ = yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm')) as {
-      jobs: { ci: { steps: { name?: string; run?: string; if?: string; env?: Record<string, string> }[] } }
-    }
-    const { steps } = document_.jobs.ci
-    const release = steps.findIndex(step => step.name?.startsWith('Release — version, tag'))
-    const assets = steps.findIndex(step => step.run === 'node tools/go-app-release.cjs assets')
-
-    expect(release).toBeGreaterThan(-1)
-    expect(assets).toBe(release + 1)
-    expect(steps[assets].if).toContain("github.ref_name == 'main'")
-    // Skipped, not failed, in a workspace without a releasable Go app.
-    expect(steps[assets].if).toContain("hashFiles('tools/go-app-release.cjs') != ''")
-    expect(steps[assets].env?.GH_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}')
-  })
-
-  it('is not in an Azure Pipelines workflow, which has no GitHub Release to attach to', () => {
-    expect(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'azure-artifacts')).not.toContain('go-app-release.cjs')
-  })
-})
-
-describe('the PyPI release preflight, executed', () => {
-  // Executed, not string-matched, for the reason the note above gives: this is
-  // a `node -e` one-liner that reaches the shell through a YAML template
-  // literal, and every layer of that is a place a quote or an escape can be
-  // lost without any unit test noticing.
-  //
-  // `fetch` is stubbed through NODE_OPTIONS rather than left to hit pypi.org:
-  // the guard's whole job is to answer "does this project exist yet", and a
-  // test that asked the real registry would pass or fail on someone else's
-  // uptime.
-  const guard = extractGuard(
-    githubActionsYaml('ubuntu-latest', undefined, 'npm'),
-    'may CREATE ',
-  )
-
-  let workspace: string
-
-  /** Runs the preflight against the fixture workspace.
-   * @param token - The value of PYPI_TOKEN for this run.
-   * @param status - The HTTP status the stubbed PyPI answers with.
-   * @returns The exit status and the combined output. */
-  function run (token: string, status = 404): { status: number | null; out: string } {
-    const stub = join(workspace, 'fetch-stub.cjs')
-    writeFileSync(
-      stub,
-      `globalThis.fetch = async () => ({ status: ${status} })\n`,
-    )
-    const result = spawnSync(guard, {
-      cwd:      workspace,
-      shell:    true,
-      encoding: 'utf8',
-      env:      { ...process.env, PYPI_TOKEN: token, NODE_OPTIONS: `--require ${stub}` },
-    })
-
-    return { status: result.status, out: `${result.stdout}${result.stderr}` }
-  }
-
-  beforeEach(() => {
-    workspace = mkdtempSync(join(tmpdir(), 'mnci-pypi-preflight-'))
-    mkdirSync(join(workspace, 'python-packages/thing'), { recursive: true })
-    writeFileSync(
-      join(workspace, 'python-packages/thing/pyproject.toml'),
-      '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "thing_one"\nversion = "0.0.1"\n',
-    )
-  })
-
-  afterEach(() => rmSync(workspace, { force: true, recursive: true }))
-
-  it('is emitted into the workflow at all', () => {
-    expect(guard).not.toBe('')
-  })
-
-  it('stops before anything is versioned when PYPI_TOKEN is empty', () => {
-    const result = run('')
-
-    expect(result.status).toBe(1)
-    expect(result.out).toContain('PYPI_TOKEN is empty or unset')
-    expect(result.out).toContain('AFTER nx release has already tagged')
-  })
-
-  it('stops when the secret is not a PyPI token at all', () => {
-    // A pasted password or a truncated token is otherwise rejected only at
-    // upload time, which is after the tags are pushed.
-    const result = run('hunter2')
-
-    expect(result.status).toBe(1)
-    expect(result.out).toContain('begins with pypi-')
-  })
-
-  it('names the projects a release would have to create, and does not fail', () => {
-    // 404 from the stub: the project does not exist, so publishing it creates
-    // it, and creation is the rate-limited operation.
-    const result = run('pypi-anything', 404)
-
-    expect(result.status).toBe(0)
-    expect(result.out).toContain('may CREATE 1 new PyPI project(s) - thing_one')
-    expect(result.out).toContain('delete the tags for the versions that did not publish')
-  })
-
-  it('says so plainly when every project already exists', () => {
-    const result = run('pypi-anything', 200)
-
-    expect(result.status).toBe(0)
-    expect(result.out).toContain('this release creates none')
-    expect(result.out).not.toContain('may CREATE')
-  })
-
-  it('reads the distribution name from [project], not from another table', () => {
-    // `[build-system]` also has a `requires` line and a tool table can carry
-    // its own `name`; reading the first `name` in the file would report the
-    // wrong project, or none.
-    expect(run('pypi-anything', 404).out).toContain('thing_one')
-  })
-
-  it('skips cleanly in a workspace with no Python packages', () => {
-    rmSync(join(workspace, 'python-packages'), { recursive: true, force: true })
-    const result = run('')
-
-    expect(result.status).toBe(0)
-    expect(result.out).toContain('No Python packages to release - skipping.')
-  })
-
-  it('does not exist for an Azure Artifacts feed, which takes a PAT not a pypi- token', () => {
-    // The same reasoning that denies the Azure case an npm preflight: a guard
-    // that cannot test anything is worse than none.
-    const azure = azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'azure-artifacts')
-
-    expect(azure).not.toContain('may CREATE ')
-  })
-})
-
-describe('the Azure Artifacts PAT preflight, executed', () => {
-  // Executed rather than string-matched, because the bug being pinned was not
-  // a missing substring: `Buffer.from(process.env.PAT, 'base64')` SUCCEEDS on
-  // the empty string both providers substitute for an unconfigured secret, and
-  // produced `''`. The publish target then self-gated on that falsy value and
-  // exited 0, so `nx release` tagged a version it never published — and the
-  // next run resolved from that tag and bumped past it.
-  const guard = extractGuard(
-    azurePipelinesYaml(
-      'ubuntu-latest',
-      'Build',
-      'https://pkgs.dev.azure.com/org/proj/_packaging/feed/pypi/upload/',
-      'azure-artifacts',
-      'https://pkgs.dev.azure.com/org/proj/_packaging/feed/nuget/v3/index.json',
-    ),
-    'npx nx release',
-  )
-
-  let workspace: string
-  let log: string
-
-  /** Runs the release guard against the fixture workspace.
-   * @param pat - The value of the PAT variable for this run.
-   * @returns What the stubbed npx recorded, the exit status and the output. */
-  function run (pat: string): { released: string; status: number | null; out: string } {
-    const result = spawnSync(guard, {
-      cwd:      workspace,
-      shell:    true,
-      encoding: 'utf8',
-      env:      {
-        ...process.env,
-        PAT:               pat,
-        RELEASE_SPECIFIER: '',
-        PATH:              `${join(workspace, 'stub-bin')}${delimiter}${process.env.PATH ?? ''}`,
-      },
-    })
-
-    return {
-      released: existsSync(log) ? readFileSync(log, 'utf8').trim() : '',
-      status:   result.status,
-      out:      `${result.stdout}${result.stderr}`,
-    }
-  }
-
-  beforeEach(() => {
-    workspace = mkdtempSync(join(tmpdir(), 'mnci-pat-preflight-'))
-    log = join(workspace, 'released.log')
-
-    // One publishable package per PAT-authenticated ecosystem.
-    mkdirSync(join(workspace, 'python-packages/thing'), { recursive: true })
-    writeFileSync(join(workspace, 'python-packages/thing/pyproject.toml'), '[project]\n')
-    mkdirSync(join(workspace, 'packages/thing'), { recursive: true })
-    writeFileSync(join(workspace, 'packages/thing/thing.csproj'), '<Project />\n')
-
-    // Stubbed so a regression cannot reach a real `nx release`: without this,
-    // a guard that stopped failing would run the actual publish. Stubbed for
-    // BOTH shells — `shell: true` means cmd.exe on Windows, which cannot run
-    // the `#!/bin/sh` script, so a POSIX-only stub would leave the Windows run
-    // shelling out to the real npx: the one outcome this fixture exists to
-    // prevent.
-    mkdirSync(join(workspace, 'stub-bin'))
-    writeFileSync(
-      join(workspace, 'stub-bin/npx'),
-      `#!/bin/sh\necho "$@" > "${log}"\nexit 0\n`,
-      { mode: 0o755 },
-    )
-    writeFileSync(
-      join(workspace, 'stub-bin/npx.cmd'),
-      `@echo off\r\necho %*> "${log}"\r\nexit /b 0\r\n`,
-    )
-  })
-
-  afterEach(() => rmSync(workspace, { force: true, recursive: true }))
-
-  it('stops the release before anything is versioned when PAT is empty', () => {
-    const result = run('')
-
-    expect(result.status).toBe(1)
-    expect(result.released).toBe('')
-  })
-
-  it('names the variable and both remedies, so the message is actionable', () => {
-    const { out } = run('')
-
-    expect(out).toContain('PAT is empty')
-    expect(out).toContain('Add your base64-encoded Azure DevOps PAT')
-    expect(out).toContain('remove the')
-    expect(out).toContain('release.projects')
-  })
-
-  it('reports the ecosystem that is actually blocked, with its count', () => {
-    // Python is checked first, so it is the one reported. The count comes from
-    // the same glob `release.projects` uses, so the number is the real one.
-    expect(run('').out).toContain('has 1 Python package(s) to publish to Azure Artifacts')
-  })
-
-  it('releases normally once PAT is configured', () => {
-    // The other half of the guard: a preflight that over-fires would block
-    // every release on a correctly configured workspace.
-    const result = run(Buffer.from('a-real-pat').toString('base64'))
-
-    expect(result.status).toBe(0)
-    expect(result.released).toContain('nx release')
   })
 })
 
@@ -2579,24 +1756,17 @@ describe('devcontainerJson', () => {
     expect(DOTNET_SDK_VERSION).toBe(`${dotnetFeature.version}.x`)
   })
 
-  it("reuses the pipeline's own toolchain guards instead of a third copy", () => {
-    // Each guard is already idempotent and already no-ops when the workspace has
-    // no project of that kind, so a JS-only workspace pays almost nothing.
-    // Reimplementing them here would be a third place to keep in sync.
+  it("provisions the toolchains with the pipeline's own command instead of a third copy", () => {
+    // `npx mnci ci setup` is the command CI runs: idempotent, and a no-op for each language the
+    // workspace has no project in, so a JS-only workspace pays almost nothing. Reimplementing it
+    // here would be a third place to keep in sync.
     const command = parsed().postCreateCommand
 
-    // `npm ci` comes before every guard, because they all run through the
-    // workspace's own scripts and Nx, which do not exist until it completes.
-    // It is no longer *first* — the npm pin precedes it, since pinning npm
-    // after the install it was meant to govern would achieve nothing.
-    expect(command.indexOf('npm ci')).toBeLessThan(command.indexOf('npm run python:install'))
-    expect(command.indexOf('npm ci')).toBeLessThan(command.indexOf('golangci-lint'))
-    expect(command).toContain('npm run python:install')
-    expect(command).toContain('golangci-lint')
-    // Flutter has no maintained devcontainer feature — the same reason
-    // @mnci/nx-flutter exists — so the SDK arrives via the pinned clone CI uses.
-    expect(command).toContain(FLUTTER_SDK_VERSION)
-    expect(command).toContain('pubspec.yaml')
+    // `npm ci` comes before it, because the CLI is a devDependency and does not exist until the
+    // install completes. It is no longer *first*: the npm pin precedes it, since pinning npm after
+    // the install it was meant to govern would achieve nothing.
+    expect(command.indexOf('npm ci')).toBeLessThan(command.indexOf('npx mnci ci setup'))
+    expect(command.endsWith('npx mnci ci setup')).toBe(true)
   })
 
   it('recommends the same extensions as the .code-workspace file', () => {

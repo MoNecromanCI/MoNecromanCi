@@ -349,6 +349,24 @@ function runReleaseCommand (
 }
 
 /**
+ * Whether `nx.json` has `nx release` push its own tags (and so create a GitHub Release).
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns True only when `release.git.push` is `true`.
+ * @throws Never - an unreadable `nx.json` reads as not pushing, which keeps the explicit push.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function nxPushesTags (workspaceRoot: string): boolean {
+  try {
+    const nx = JSON.parse(readFileSync(join(workspaceRoot, 'nx.json'), 'utf8')) as { release?: { git?: { push?: unknown } } }
+
+    return nx.release?.git?.push === true
+  } catch {
+    return false
+  }
+}
+
+/**
  * What follows a successful `nx release`: the Go zips, then the tags.
  *
  * @remarks
@@ -356,26 +374,33 @@ function runReleaseCommand (
  * phase (#259 folds into `release`). A releasable Go app is versioned by its git tag, so its
  * per-platform zips are built and attached to the GitHub Release only now, after tagging,
  * by `tools/go-app-release.cjs` (a workspace without a releasable Go app has no such file and
- * skips it). Tags are pushed explicitly: `nx release`'s own push only runs when a remote
- * GitHub/GitLab Release is configured, which the pipelines never do, so it would never push
- * the tag just created. The push is unconditional (a no-op when nothing released) and comes
- * last, so a failed asset upload leaves the tags unpushed, as the separate steps did.
+ * skips it). Tags are pushed explicitly where there is no GitHub Release: `nx release`'s own push only
+ * runs when a remote Release is configured, so without one it would never push the tag just created.
+ * The push is a no-op when nothing released and comes last, so a failed asset upload leaves the tags
+ * unpushed, as the separate steps did.
+ *
+ * Which of the two applies depends on whether `nx release` pushes its own tags, which it does when
+ * `release.git.push` is true in `nx.json` (what the workspace gets with GitHub Releases on). With
+ * that on, `nx release` creates the Release and pushes its tag itself, so the zips have a Release to attach to
+ * and the explicit push is redundant; without them there is no Release to attach to, and the tag push is the
+ * only thing that ever publishes the tag.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param processes - The process runner.
+ * @param githubReleases - Whether `nx release` pushes the tags and creates a GitHub Release.
  * @returns 0 when both steps passed or were skipped, otherwise the failing step's status.
  * @throws Never - a failing command is a status.
  * @typeParam None - this function has no generic type parameters.
  */
-function afterRelease (workspaceRoot: string, processes: CiProcesses): number {
-  if (existsSync(join(workspaceRoot, 'tools', 'go-app-release.cjs'))) {
+function afterRelease (workspaceRoot: string, processes: CiProcesses, githubReleases: boolean): number {
+  if (githubReleases && existsSync(join(workspaceRoot, 'tools', 'go-app-release.cjs'))) {
     const assets = processes.run('node', ['tools/go-app-release.cjs', 'assets'])
     if (assets !== 0) {
       return assets
     }
   }
 
-  return processes.run('git', ['push', 'origin', '--tags'])
+  return githubReleases ? 0 : processes.run('git', ['push', 'origin', '--tags'])
 }
 
 /**
@@ -440,5 +465,5 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
     return close(released)
   }
 
-  return close(afterRelease(workspaceRoot, processes))
+  return close(afterRelease(workspaceRoot, processes, nxPushesTags(workspaceRoot)))
 }
