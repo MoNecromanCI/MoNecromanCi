@@ -3,6 +3,7 @@ import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
 import { runCapture } from '../nx-workspace'
+import { inspectPipeline } from '../pipeline-customization'
 import {
   ESLINT_MNCI_FILENAME,
   ESLINT_USER_FILENAME,
@@ -34,13 +35,15 @@ import { logger, printJson } from '../terminal'
  */
 export interface Finding {
   /** Short check name, shown as the line label. */
-  check:   string
+  check:    string
   /** Whether the invariant holds. */
-  ok:      boolean
+  ok:       boolean
   /** What is wrong, when it is not ok. */
-  detail?: string
+  detail?:  string
   /** The command or edit that fixes it. */
-  remedy?: string
+  remedy?:  string
+  /** A passing finding the user should still read: reported as a warning, never failing the run. */
+  warning?: boolean
 }
 
 /** The ESLint major this stack supports, derived from the version mnci pins. */
@@ -1140,6 +1143,45 @@ function checkDeclarationSpecifiers (workspaceRoot: string): Finding[] {
 }
 
 /**
+ * Checks that each pipeline still runs the enforced verify phase, and notes the phases switched off.
+ *
+ * @remarks
+ * `verify` is the QA gate and the one phase a team may not remove: a pipeline without an active
+ * `mnci ci verify` call builds and releases code nothing checked, while staying green. That fails,
+ * and `mnci upgrade` restores it. The choosable phases (`pack`, `release`) are a team's decision,
+ * so a switched-off one only warns, naming how to turn it back on.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns A verify finding per pipeline file, plus a warning per switched-off phase.
+ * @throws Never - a pipeline file is only read after `fileExists` found it.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkPipelinePhases (workspaceRoot: string): Finding[] {
+  const files = ['azure-pipelines.yml', '.github/workflows/ci.yml']
+
+  return files
+    .filter(file => fileExists(join(workspaceRoot, file)))
+    .flatMap(file => {
+      const { verifyActive, switchedOff } = inspectPipeline(readFileSync(join(workspaceRoot, file), 'utf8'))
+      const verify: Finding = {
+        check:  `${file} runs the enforced verify phase`,
+        ok:     verifyActive,
+        detail: `${file} has no active \`mnci ci verify\` call, so CI would build and release code nothing checked`,
+        remedy: 'run `mnci upgrade`, which restores it',
+      }
+      const warnings = switchedOff.map((phase): Finding => ({
+        check:   `${file}: the ${phase} phase is switched off`,
+        ok:      true,
+        warning: true,
+        detail:  `${file} does not run \`mnci ci ${phase}\``,
+        remedy:  `uncomment the ${phase} block in ${file} to run it again`,
+      }))
+
+      return [verify, ...warnings]
+    })
+}
+
+/**
  * Collects every doctor finding for a workspace.
  *
  * @remarks
@@ -1185,6 +1227,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     checkGoPluginRegistered(workspaceRoot),
     checkGoWorkInSync(workspaceRoot),
     ...checkNativeApps(workspaceRoot),
+    ...checkPipelinePhases(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 
@@ -1235,7 +1278,12 @@ export function runDoctor (workspaceRoot: string, options: DoctorOptions = {}): 
   }
 
   for (const finding of findings) {
-    if (finding.ok) {
+    if (finding.ok && finding.warning === true) {
+      logger.warn(`${finding.check} — ${finding.detail ?? ''}`)
+      if (finding.remedy) {
+        logger.info(`    to change it: ${finding.remedy}`)
+      }
+    } else if (finding.ok) {
       logger.success(finding.check)
     } else {
       logger.error(`${finding.check} — ${finding.detail ?? 'failed'}`)

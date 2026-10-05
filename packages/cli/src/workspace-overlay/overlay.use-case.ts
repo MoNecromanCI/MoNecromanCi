@@ -8,6 +8,7 @@ import {
   toJson,
   writeFileEnsured,
 } from '../file-system'
+import { mergePipeline, phaseEnd, phaseStart, slotMarkers } from '../pipeline-customization'
 
 /**
  * Where a generated monorepo publishes its npm packages.
@@ -1669,6 +1670,29 @@ export function isUnmodifiedMnciEslintConfig (content: string): boolean {
 }
 
 /**
+ * Writes a pipeline file, keeping what the team put in its slots and switched off.
+ *
+ * @remarks
+ * The file is regenerated, but the contents of its `# mnci:slot` blocks and the phase blocks the
+ * team commented out or deleted are carried over (see `mergePipeline`). A file from before the
+ * markers existed is replaced whole, and the user is told through `onProgress`.
+ *
+ * @param path - Absolute path of the pipeline file.
+ * @param onProgress - Receives a line for each thing the user should know.
+ * @param generated - The freshly generated text.
+ * @returns Nothing.
+ * @throws Error when the file cannot be written.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function writePipeline (path: string, onProgress: (line: string) => void, generated: string): void {
+  const { text, notes } = mergePipeline(existsSync(path) ? readFileSync(path, 'utf8') : undefined, generated)
+  for (const note of notes) {
+    onProgress(`  ${note}`)
+  }
+  writeFileEnsured(path, text)
+}
+
+/**
  * Writes `eslint.config.mjs` only when doing so cannot lose anything.
  *
  * @remarks
@@ -3046,6 +3070,8 @@ steps:
 ${npmAuthenticateStep}  - script: npm ci
     displayName: Install dependencies${npmCiEnv}
 
+${slotMarkers('after-install', '  ')}
+
   # Everything from here to the release is a command of the mnci CLI, a
   # devDependency of this workspace, so the version is the lockfile's and a
   # developer reproduces CI by running the same line. The guards that used to be
@@ -3089,6 +3115,7 @@ ${npmAuthenticateStep}  - script: npm ci
   - script: npx mnci ci verify
     displayName: Verify (sync check, then affected on a PR, every project on main)
 
+${phaseStart('pack', '  ')}
   # Pack every app into dist/drop/<type>-<name>.zip via each app's 'package'
   # target; skipped cleanly when the workspace has no apps yet.
   - script: npx mnci ci pack
@@ -3108,7 +3135,11 @@ ${npmAuthenticateStep}  - script: npm ci
   - script: node -e "const fs=require('node:fs');const path=require('node:path');for(const f of fs.globSync('dist/drop/*.zip')){console.log('##vso[build.addbuildtag]'+path.basename(f,'.zip'))}"
     displayName: Tag the run per app (type-name)
     condition: ${onMain}
+${phaseEnd('pack', '  ')}
 
+${slotMarkers('before-release', '  ')}
+
+${phaseStart('release', '  ')}
   # The release, in the order that keeps a failure safe: refuse a shallow
   # clone, prove the npm token and name the PyPI projects it would create (all
   # BEFORE anything is tagged), then version + tag + publish in one 'nx release'
@@ -3134,6 +3165,9 @@ ${npmAuthenticateStep}  - script: npm ci
       # A VS Code extension publishes with it; tools/vscode-extension.cjs skips the
       # Marketplace when it is unset, including when Azure leaves it as '$(VSCE_PAT)'.
       VSCE_PAT: $(VSCE_PAT)
+${phaseEnd('release', '  ')}
+
+${slotMarkers('after-release', '  ')}
 `
   if (!nativeApps) {
     return document
@@ -3330,6 +3364,8 @@ jobs:
         env:
           ${npmAuthName}: ${npmAuthValue}
 
+${slotMarkers('after-install', ' '.repeat(6))}
+
       # Everything from here to the release is a command of the mnci CLI, a
       # devDependency of this workspace, so the version is the lockfile's and a
       # developer reproduces CI by running the same line. The guards that used to be
@@ -3369,6 +3405,7 @@ jobs:
       - run: npx mnci ci verify
         name: Verify (sync check, then affected on a PR, every project on main)
 
+${phaseStart('pack', ' '.repeat(6))}
       # Pack every app into dist/drop/<type>-<name>.zip via each app's 'package'
       # target; skipped cleanly when the workspace has no apps yet.
       - run: npx mnci ci pack
@@ -3381,7 +3418,11 @@ jobs:
           name: drop
           path: dist/drop
           if-no-files-found: ignore
+${phaseEnd('pack', ' '.repeat(6))}
 
+${slotMarkers('before-release', ' '.repeat(6))}
+
+${phaseStart('release', ' '.repeat(6))}
       # Signs in to Microsoft Entra ID as the Marketplace publishing identity (an
       # app registration with a federated credential for this repository's main
       # branch), so the release step publishes VS Code extensions with
@@ -3430,6 +3471,9 @@ jobs:
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}`
               : ''
           }
+${phaseEnd('release', ' '.repeat(6))}
+
+${slotMarkers('after-release', ' '.repeat(6))}
 ${nativeApps ? githubNativeJob(npmAuthName, npmAuthValue) : ''}`
 }
 
@@ -4301,8 +4345,9 @@ export function applyOverlay (
   const nativeApps = hasNativeGoApp(workspaceRoot)
   if (options.ci === 'azure' || options.ci === 'both') {
     onProgress('azure-pipelines.yml — build, verify, pack and release')
-    writeFileEnsured(
+    writePipeline(
       join(workspaceRoot, 'azure-pipelines.yml'),
+      onProgress,
       azurePipelinesYaml(
         options.agent,
         options.variableGroup,
@@ -4316,8 +4361,9 @@ export function applyOverlay (
   }
   if (options.ci === 'github' || options.ci === 'both') {
     onProgress('.github/workflows/ci.yml and dependabot.yml')
-    writeFileEnsured(
+    writePipeline(
       join(workspaceRoot, '.github/workflows/ci.yml'),
+      onProgress,
       githubActionsYaml(options.agent, publishUrl, options.registry.kind, options.ci, nugetUrl, nativeApps),
     )
     writeFileEnsured(join(workspaceRoot, '.github/dependabot.yml'), dependabotConfig(workspaceRoot))

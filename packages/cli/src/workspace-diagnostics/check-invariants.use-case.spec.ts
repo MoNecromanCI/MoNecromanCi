@@ -1316,3 +1316,64 @@ describe('doctor: go.work is in sync (#289)', () => {
     expect(goWorkSync(collectFindings(workspaceRoot))?.ok).toBe(false)
   })
 })
+
+/** Writes the GitHub workflow of a healthy workspace. */
+function writeWorkflow (text: string): void {
+  writeWorkspace()
+  mkdirSync(join(workspaceRoot, '.github/workflows'), { recursive: true })
+  writeFileSync(join(workspaceRoot, '.github/workflows/ci.yml'), text)
+}
+
+describe('the pipeline phases', () => {
+  const live = [
+    '      - run: npx mnci ci verify',
+    '      # mnci:phase pack',
+    '      - run: npx mnci ci pack',
+    '      # mnci:phase-end pack',
+    '      # mnci:phase release',
+    '      - run: npx mnci ci release',
+    '      # mnci:phase-end release',
+    '',
+  ].join('\n')
+
+  it('passes a pipeline that runs verify, and warns about nothing', () => {
+    writeWorkflow(live)
+
+    const findings = collectFindings(workspaceRoot)
+
+    expect(findingFor(findings, 'runs the enforced verify phase')?.ok).toBe(true)
+    expect(findings.some(finding => finding.warning === true)).toBe(false)
+  })
+
+  it('fails when the verify call is gone or commented out, and names the remedy', () => {
+    writeWorkflow(live.replace('- run: npx mnci ci verify', '# - run: npx mnci ci verify'))
+
+    const finding = findingFor(collectFindings(workspaceRoot), 'runs the enforced verify phase')
+
+    expect(finding?.ok).toBe(false)
+    expect(finding?.remedy).toContain('mnci upgrade')
+  })
+
+  it('fails a pipeline from before the phases, which has no verify call at all', () => {
+    writeWorkflow('      - run: npx nx affected -t lint\n')
+
+    expect(findingFor(collectFindings(workspaceRoot), 'runs the enforced verify phase')?.ok).toBe(false)
+  })
+
+  it('only warns about a phase the team switched off, and does not fail the run', () => {
+    writeWorkflow(live.replace('      - run: npx mnci ci release', '      # - run: npx mnci ci release'))
+
+    const findings = collectFindings(workspaceRoot)
+    const warning = findings.find(finding => finding.warning === true)
+
+    expect(warning?.check).toContain('the release phase is switched off')
+    expect(warning?.ok).toBe(true)
+    expect(findings.filter(finding => !finding.ok)).toEqual([])
+  })
+
+  it('has nothing to say about a workspace without a pipeline file', () => {
+    writeWorkspace()
+
+    expect(findingFor(collectFindings(workspaceRoot), 'enforced verify phase')).toBeUndefined()
+  })
+})
