@@ -44,4 +44,6 @@ export interface CiDependencies {
    * rejects on a non-2xx status.
    */
   fetchBytes:  (url: string) => Promise<Buffer>
+  /** Milliseconds since some fixed point, for timing a phase. Injected so a test controls the elapsed time. */
+  clock:       () => number
 }

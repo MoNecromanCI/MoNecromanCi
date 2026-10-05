@@ -12,6 +12,7 @@
 import { runAudit } from './audit.use-case'
 import { runNative } from './native.use-case'
 import { runPack } from './pack.use-case'
+import { reportPhase } from './report-phase.use-case'
 import { runRelease } from './release.use-case'
 import { runSetup } from './setup.use-case'
 import { runVerify } from './verify.use-case'
@@ -43,16 +44,34 @@ export type CiPhase = typeof CI_PHASES[number]
  *
  * @remarks
  * The single entry point `mnci ci <phase>` calls, so the command line and the tests reach a
- * phase the same way.
+ * phase the same way. Every phase is timed here: it ends with a line saying how long it took, an
+ * annotation naming it when it failed, and a line on the GitHub run summary.
  *
  * @param phase - Which phase.
  * @param workspaceRoot - Absolute path to the workspace.
  * @param dependencies - Overrides for the environment, the process runner and the logger, for tests.
- * @returns The phase's exit status; a promise for `release`, which reads the network for one advisory check.
+ * @returns A promise for the phase's exit status.
  * @throws Never - a failing command is a status, not an exception.
  * @typeParam None - this function has no generic type parameters.
  */
-export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): number | Promise<number> {
+export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): Promise<number> {
+  return reportPhase(phase, () => runPhase(phase, workspaceRoot, dependencies), dependencies)
+}
+
+/**
+ * Starts one phase, without reporting on it.
+ *
+ * @remarks
+ * Split from {@link runCiPhase} so the timing wraps every phase the same way and no phase has to know about it.
+ *
+ * @param phase - Which phase.
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param dependencies - Overrides for the environment, the process runner and the logger, for tests.
+ * @returns The phase's exit status, or a promise for it.
+ * @throws Never - a failing command is a status, not an exception.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function runPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies>): number | Promise<number> {
   switch (phase) {
     case 'verify': {
       return runVerify(workspaceRoot, dependencies)
