@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describeCommands } from './command-catalog'
 import { buildProgram } from './main'
 import { PROJECT_KINDS, PROJECT_KIND_CATALOG } from './project-scaffolding'
@@ -89,6 +91,12 @@ describe('the CLI contract an editor builds its menu from', () => {
     for (const option of commandOptions) {
       expect({ flag: option.name, offered: offered.has(option.name) }).toEqual({ flag: option.name, offered: true })
     }
+  })
+
+  it('matches the snapshot the editor extension tests itself against (regenerate it with `mnci commands --json`)', () => {
+    const snapshot = readFileSync(join(__dirname, '../../../apps/mnci-vscode/test/fixtures/cli-commands.json'), 'utf8')
+
+    expect(JSON.parse(snapshot)).toEqual(described)
   })
 
   it('prints the commands as one JSON document through `mnci commands --json`', async () => {
