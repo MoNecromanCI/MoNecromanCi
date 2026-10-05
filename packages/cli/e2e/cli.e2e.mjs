@@ -3130,8 +3130,8 @@ section('csharp', ['alt stack'], () => {
     )
     replaceInFile(
       path.join(altWorkspace, 'apps/csapp/Program.cs'),
-      /Console\.WriteLine\([^)]*\);/,
-      'Console.WriteLine(new Csutil.Class1().ToString());',
+      /Console\.WriteLine\(.*\);/,
+      'Console.WriteLine(Csutil.GreetUseCase.Greet("csapp").Message);',
     )
 
     const csBuild = tryRunCapture(
