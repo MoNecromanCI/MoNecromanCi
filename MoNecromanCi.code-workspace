@@ -1306,6 +1306,26 @@
         "script": "az-durable:build",
         "problemMatcher": [],
         "group": "build"
+      },
+      {
+        "label": "mnci-vscode: qa",
+        "type": "npm",
+        "script": "mnci-vscode:qa",
+        "problemMatcher": [],
+        "group": "qa"
+      },
+      {
+        "label": "mnci-vscode: build",
+        "type": "npm",
+        "script": "mnci-vscode:build",
+        "problemMatcher": [],
+        "group": "build"
+      },
+      {
+        "label": "mnci-vscode: build (development)",
+        "type": "shell",
+        "command": "npx nx run mnci-vscode:build:development",
+        "problemMatcher": []
       }
     ]
   },
@@ -1409,6 +1429,18 @@
         "command": "npm run test:affected",
         "request": "launch",
         "type": "node-terminal"
+      },
+      {
+        "name": "mnci-vscode: debug",
+        "type": "extensionHost",
+        "request": "launch",
+        "args": [
+          "--extensionDevelopmentPath=${workspaceFolder:MoNecromanCi}/apps/mnci-vscode"
+        ],
+        "outFiles": [
+          "${workspaceFolder:MoNecromanCi}/apps/mnci-vscode/dist/**/*.js"
+        ],
+        "preLaunchTask": "mnci-vscode: build (development)"
       }
     ]
   }

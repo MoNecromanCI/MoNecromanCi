@@ -1,0 +1,12 @@
+src/**
+test/**
+out-tsc/**
+test-output/**
+**/*.map
+**/*.d.ts
+**/*.spec.*
+tsconfig*.json
+jest.config.*
+vitest.config.*
+.spec.swcrc
+node_modules/**
