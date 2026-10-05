@@ -470,7 +470,10 @@ generated projects). `node-app` gets a `hello` slice (use case + contract + spec
 handler for Express and Koa) from `nodeAppExampleFiles`; Fastify and Nest keep the
 layout their framework mandates (autoload `routes/`, `*.controller.ts`), which the
 rules exempt as tool-mandated names. `react-app` swaps Nx's welcome page for a `greeting` feature (contract,
-use case, component, specs, barrel) composed by `App` (`reactAppExampleFiles`). Not enforced anywhere yet, so
+use case, component, specs, barrel) composed by `App` (`reactAppExampleFiles`). The four C# kinds get a `Greeting` record and a `GreetUseCase` in the
+project's root namespace (`csharpExampleFiles`; .NET names a file after its one type, so the
+role is in the type name, not a dotted suffix); the console app calls it and the function
+app's handler does. C# scaffolds have no test project yet. Not enforced anywhere yet, so
 not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
 #290: the worked example for the other families, and `--empty` for the kinds other
 than the four TypeScript libraries.
