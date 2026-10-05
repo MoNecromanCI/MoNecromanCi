@@ -473,7 +473,10 @@ rules exempt as tool-mandated names. `react-app` swaps Nx's welcome page for a `
 use case, component, specs, barrel) composed by `App` (`reactAppExampleFiles`). The four C# kinds get a `Greeting` record and a `GreetUseCase` in the
 project's root namespace (`csharpExampleFiles`; .NET names a file after its one type, so the
 role is in the type name, not a dotted suffix); the console app calls it and the function
-app's handler does. C# scaffolds have no test project yet. The two Flutter library kinds (the plugin's `dartLibraryExampleFiles`) get a
+app's handler does. Each C# project also gets an xunit project at `tests/<name>/<Identity>.Tests.csproj`
+(outside the project, whose SDK would compile a nested one; outside `packages/`, which
+`release.projects` globs; and named `<name>-tests` in its `project.json`, since the csproj name
+would match `nx <target> <name>` together with the project). `@nx/dotnet` infers its `test` target. The two Flutter library kinds (the plugin's `dartLibraryExampleFiles`) get a
 `lib/src/<pkg>/` slice with `greeting_contract.dart`, `greet_use_case.dart` and a slice
 barrel, re-exported by `lib/<pkg>.dart`, with its test mirrored under `test/src/<pkg>/`; the
 Flutter app keeps `flutter create`'s own counter sample. The Go kinds (`go-example.algorithm.ts`) get a `Greeting` struct and `Greet` in a
@@ -481,7 +484,7 @@ library's starter slice (the use case keeps its `<stem>_use_case.go` name, which
 `affected` checks use) and, for apps, a `hello` package behind a `main.go` that only wires
 (skipped under `--web`, which replaces `main.go`). No slice lint covers C#, Flutter or Go (#232), so their layout is
 not enforced anywhere. Still open on
-#290 (see #327, #330): a C# test project, `--empty` for the kinds other than the
+#290 (see #330): `--empty` for the kinds other than the
 TypeScript libraries and `node-function-app`, and e2e assertions for the skeletons.
 
 The default `npm-lib`/`internal-lib` scaffold is a **worked example of two roles**

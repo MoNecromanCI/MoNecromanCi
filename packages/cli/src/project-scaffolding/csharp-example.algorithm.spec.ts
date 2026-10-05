@@ -1,4 +1,4 @@
-import { csharpConsoleProgram, csharpExampleFiles } from './csharp-example.algorithm'
+import { csharpConsoleProgram, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
 
 describe('csharpExampleFiles', () => {
   const files = csharpExampleFiles('Demo.Sdk')
@@ -21,5 +21,14 @@ describe('csharpConsoleProgram', () => {
     const program = csharpConsoleProgram('Demo')
     expect(program).toContain('using Demo;')
     expect(program).toContain('GreetUseCase.Greet("world").Message')
+  })
+})
+
+describe('csharpExampleTest', () => {
+  it('tests the use case through the project root namespace, with xunit', () => {
+    const test = csharpExampleTest('Demo.Sdk')
+    expect(test).toContain('using Demo.Sdk;')
+    expect(test).toContain('[Fact]')
+    expect(test).toContain('Hello, world!')
   })
 })
