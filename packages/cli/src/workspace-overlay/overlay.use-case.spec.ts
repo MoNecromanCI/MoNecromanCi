@@ -3380,3 +3380,121 @@ describe('removeLocalRegistryScaffolding', () => {
     expect(before).toContain('23.0.0')
   })
 })
+
+describe('what `mnci upgrade` keeps in a pipeline', () => {
+  let workspace: string
+
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), 'mnci-pipeline-keep-'))
+    writeFileSync(join(workspace, 'nx.json'), JSON.stringify({ $schema: 's', namedInputs: {} }))
+    writeFileSync(join(workspace, 'package.json'), JSON.stringify({ name: '@org/source', private: true, devDependencies: { nx: '23.0.0' } }))
+  })
+
+  afterEach(() => rmSync(workspace, { force: true, recursive: true }))
+
+  /** Applies the overlay for both providers, as `mnci upgrade` would. */
+  function apply (): void {
+    applyOverlay(workspace, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'both',
+      stack:         DEFAULT_STACK,
+    })
+  }
+
+  const read = (file: string): string => readFileSync(join(workspace, file), 'utf8')
+  const write = (file: string, text: string): void => writeFileSync(join(workspace, file), text)
+
+  it('writes the three slots and both choosable phase blocks into each provider', () => {
+    apply()
+
+    for (const file of ['.github/workflows/ci.yml', 'azure-pipelines.yml']) {
+      const text = read(file)
+
+      for (const slot of ['after-install', 'before-release', 'after-release']) {
+        expect(text).toContain(`# mnci:slot ${slot} `)
+        expect(text).toContain(`# mnci:slot-end ${slot}`)
+      }
+      for (const phase of ['pack', 'release']) {
+        expect(text).toContain(`# mnci:phase ${phase} `)
+        expect(text).toContain(`# mnci:phase-end ${phase}`)
+      }
+    }
+  })
+
+  it('is stable: a second upgrade changes nothing', () => {
+    apply()
+    const first = [read('.github/workflows/ci.yml'), read('azure-pipelines.yml')]
+
+    apply()
+
+    expect([read('.github/workflows/ci.yml'), read('azure-pipelines.yml')]).toEqual(first)
+  })
+
+  it("keeps a team's own step across an upgrade, in both providers", () => {
+    apply()
+    write('.github/workflows/ci.yml', read('.github/workflows/ci.yml').replace(
+      '# mnci:slot-end after-install',
+      '- run: ./scripts/warm-cache.sh\n      # mnci:slot-end after-install',
+    ))
+    write('azure-pipelines.yml', read('azure-pipelines.yml').replace(
+      '# mnci:slot-end after-install',
+      '- script: ./scripts/warm-cache.sh\n  # mnci:slot-end after-install',
+    ))
+
+    apply()
+
+    expect(read('.github/workflows/ci.yml')).toContain('      - run: ./scripts/warm-cache.sh')
+    expect(read('azure-pipelines.yml')).toContain('  - script: ./scripts/warm-cache.sh')
+  })
+
+  it('keeps the slot content when the Azure steps move under jobs: for a native app', () => {
+    apply()
+    write('azure-pipelines.yml', read('azure-pipelines.yml').replace(
+      '# mnci:slot-end after-install',
+      '- script: ./scripts/warm-cache.sh\n  # mnci:slot-end after-install',
+    ))
+    mkdirSync(join(workspace, 'apps/tray'), { recursive: true })
+    writeFileSync(join(workspace, 'apps/tray/project.json'), JSON.stringify({ tags: ['build:cgo'] }))
+
+    apply()
+
+    expect(read('azure-pipelines.yml')).toContain('\n      - script: ./scripts/warm-cache.sh\n')
+    expect(() => yaml.load(read('azure-pipelines.yml'))).not.toThrow()
+  })
+
+  it('keeps the release phase off once the team removed it, and stays valid YAML', () => {
+    apply()
+    write('.github/workflows/ci.yml', read('.github/workflows/ci.yml').replace(/ {6}# mnci:phase release[\s\S]*?# mnci:phase-end release\n/, ''))
+
+    apply()
+    const workflow = read('.github/workflows/ci.yml')
+
+    expect(workflow).toContain('# - run: npx mnci ci release')
+    expect(workflow).not.toMatch(/^\s*- run: npx mnci ci release/m)
+    expect(workflow).toMatch(/^\s*- run: npx mnci ci pack/m)
+    expect(() => yaml.load(workflow)).not.toThrow()
+  })
+
+  it('regenerates a pipeline from before the markers whole, and says so', () => {
+    mkdirSync(join(workspace, '.github/workflows'), { recursive: true })
+    write('.github/workflows/ci.yml', 'name: old\n')
+    const lines: string[] = []
+
+    applyOverlay(workspace, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'github',
+      stack:         DEFAULT_STACK,
+    }, line => { lines.push(line) })
+
+    expect(read('.github/workflows/ci.yml')).toContain('# mnci:slot after-install')
+    expect(lines.some(line => line.includes('written before mnci kept user slots'))).toBe(true)
+  })
+})
