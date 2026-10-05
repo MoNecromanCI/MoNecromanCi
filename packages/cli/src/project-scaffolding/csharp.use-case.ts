@@ -1,9 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { DOTNET_SDK_VERSION, NUGET_AZURE_SOURCE, nugetConfigContent, readMnciConfig } from '../workspace-overlay'
 import { promptText } from '../terminal'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
+import { csharpConsoleProgram, csharpExampleFiles } from './csharp-example.algorithm'
 import { logger } from '../terminal'
 import {
   addProjectJsonTargets,
@@ -141,6 +142,38 @@ function scaffoldDotnetProject (
 }
 
 /**
+ * Replaces the `dotnet new` placeholder with the worked example (a contract and a use case).
+ *
+ * @remarks
+ * A class library's `Class1.cs` goes; a console app's `Program.cs` becomes a call to the
+ * use case. Other app templates (`webapi`, `worker`) keep their own entry point and just
+ * gain the two example types.
+ *
+ * @param absoluteRoot - Absolute path to the scaffolded project.
+ * @param identity - The project's PascalCase identity, which is its root namespace.
+ * @param kind - Whether the project is a class library or an app built from the given template.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error writing or removing the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function writeCsharpExample (
+  absoluteRoot: string,
+  identity: string,
+  kind: 'classlib' | DotnetTemplate,
+): void {
+  if (kind === 'classlib') {
+    rmSync(join(absoluteRoot, 'Class1.cs'), { force: true })
+  }
+  const files = csharpExampleFiles(identity)
+  for (const [file, contents] of Object.entries(files)) {
+    writeFileEnsured(join(absoluteRoot, file), contents)
+  }
+  if (kind === 'console') {
+    writeFileEnsured(join(absoluteRoot, 'Program.cs'), csharpConsoleProgram(identity))
+  }
+}
+
+/**
  * The `package` target for a C# app: publish, then zip, into the drop.
  *
  * @remarks
@@ -237,6 +270,7 @@ export function addCsharpApp (
 
   const projectRoot = `apps/${name}`
   scaffoldDotnetProject(workspaceRoot, projectRoot, pascalCase(name), template)
+  writeCsharpExample(join(workspaceRoot, projectRoot), pascalCase(name), template)
   addProjectJsonTargets(join(workspaceRoot, projectRoot, 'project.json'), {
     package: csharpAppPackageTarget('csharp-app', projectRoot, name),
     start:   csharpAppStartTarget(projectRoot),
@@ -605,6 +639,7 @@ export async function addCsharpLib (
   const projectRoot = `packages/${name}`
   const identity = `${pascalScope(scope)}.${pascalCase(name)}`
   scaffoldDotnetProject(workspaceRoot, projectRoot, identity, 'classlib')
+  writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib')
   addInitialVersion(join(workspaceRoot, projectRoot, `${identity}.csproj`))
   writeCsharpVersionActions(workspaceRoot)
   addProjectJsonReleaseVersionActions(join(workspaceRoot, projectRoot, 'project.json'))
@@ -654,6 +689,7 @@ export function addCsharpInternalLib (workspaceRoot: string, name: string): void
   const projectRoot = `libs/${name}`
   const identity = pascalCase(name)
   scaffoldDotnetProject(workspaceRoot, projectRoot, identity, 'classlib')
+  writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib')
   registerProjectCommands(workspaceRoot, name, { build: false })
   logger.step(
     `Reference it from a consumer with: dotnet add <consumer>.csproj reference ${projectRoot}/${identity}.csproj`,
@@ -791,7 +827,7 @@ public class Hello
     [Function("Hello")]
     public IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req)
     {
-        return new OkObjectResult("Hello from mnci.");
+        return new OkObjectResult(GreetUseCase.Greet("mnci").Message);
     }
 }
 `
@@ -864,6 +900,11 @@ export function addCsharpFunctionApp (workspaceRoot: string, name: string): void
   writeFileEnsured(join(absoluteRoot, `${identity}.csproj`), csharpFunctionAppCsproj())
   writeFileEnsured(join(absoluteRoot, 'Program.cs'), CSHARP_FUNCTION_APP_PROGRAM)
   writeFileEnsured(join(absoluteRoot, 'Hello.cs'), csharpFunctionAppHello(identity))
+  // The handler adapts the transport; the use case and its contract are the example.
+  const example = csharpExampleFiles(identity)
+  for (const [file, contents] of Object.entries(example)) {
+    writeFileEnsured(join(absoluteRoot, file), contents)
+  }
   writeFileEnsured(join(absoluteRoot, 'host.json'), CSHARP_FUNCTION_APP_HOST_JSON)
 
   if (runShell('dotnet', ['restore', projectRoot], workspaceRoot) !== 0) {
