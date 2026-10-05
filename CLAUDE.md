@@ -473,7 +473,10 @@ rules exempt as tool-mandated names. `react-app` swaps Nx's welcome page for a `
 use case, component, specs, barrel) composed by `App` (`reactAppExampleFiles`). The four C# kinds get a `Greeting` record and a `GreetUseCase` in the
 project's root namespace (`csharpExampleFiles`; .NET names a file after its one type, so the
 role is in the type name, not a dotted suffix); the console app calls it and the function
-app's handler does. C# scaffolds have no test project yet. Not enforced anywhere yet, so
+app's handler does. C# scaffolds have no test project yet. The two Flutter library kinds (the plugin's `dartLibraryExampleFiles`) get a
+`lib/src/<pkg>/` slice with `greeting_contract.dart`, `greet_use_case.dart` and a slice
+barrel, re-exported by `lib/<pkg>.dart`, with its test mirrored under `test/src/<pkg>/`; the
+Flutter app keeps `flutter create`'s own counter sample. Not enforced anywhere yet, so
 not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
 #290: the worked example for the other families, and `--empty` for the kinds other
 than the four TypeScript libraries.

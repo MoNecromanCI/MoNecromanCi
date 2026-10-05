@@ -1,11 +1,12 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import {
   addProjectConfiguration,
   type GeneratorCallback,
   type ProjectConfiguration,
   type Tree,
 } from '@nx/devkit'
+import { dartLibraryExampleFiles, dartLibraryPlaceholderFiles } from './dart-library-example.algorithm'
 import { dartPackageName } from './dart-package-name.algorithm'
 import { runFlutter } from './flutter.client'
 import { withWorkspaceResolution } from './pubspec.algorithm'
@@ -198,6 +199,20 @@ function flutterCreateTask (
       join(workspaceRoot, options.directory, 'analysis_options.yaml'),
       memberAnalysisOptions(depth),
     )
+
+    // `flutter create --template package` leaves a `Calculator`. A library gets a contract
+    // and a use case instead; an app keeps Flutter's own counter sample.
+    if (!options.buildable) {
+      const projectRoot = join(workspaceRoot, options.directory)
+      for (const placeholder of dartLibraryPlaceholderFiles(packageName)) {
+        rmSync(join(projectRoot, placeholder), { force: true })
+      }
+      const example = dartLibraryExampleFiles(packageName)
+      for (const [relative, contents] of Object.entries(example)) {
+        mkdirSync(dirname(join(projectRoot, relative)), { recursive: true })
+        writeFileSync(join(projectRoot, relative), contents)
+      }
+    }
 
     // `flutter create` writes `<html>` with no `lang`, which @html-eslint's
     // `require-lang` reports as an error — so a freshly generated Flutter app

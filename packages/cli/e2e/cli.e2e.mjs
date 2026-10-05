@@ -3285,11 +3285,11 @@ section('flutter', [], () => {
     )
     writeFileSync(
       path.join(altWorkspace, 'packages/dartshared/lib/dartshared.dart'),
-      "import 'package:dartcore/dartcore.dart';\n\n/// Uses the internal lib across a workspace boundary.\nclass Greeter {\n  /// Bumps a number using dartcore.\n  int bump(int value) => Calculator().addOne(value);\n}\n",
+      "import 'package:dartcore/dartcore.dart';\n\n// The scaffold's own slice stays exported: its generated test reaches it through here.\nexport 'src/dartshared/dartshared.dart';\n\n/// Uses the internal lib across a workspace boundary.\nclass Greeter {\n  /// Greets using dartcore.\n  String bump(String name) => greet(name).message;\n}\n",
     )
     writeFileSync(
       path.join(altWorkspace, 'packages/dartshared/test/dartshared_test.dart'),
-      "import 'package:flutter_test/flutter_test.dart';\nimport 'package:dartshared/dartshared.dart';\n\nvoid main() {\n  test('bumps via the internal lib', () {\n    expect(Greeter().bump(2), 3);\n  });\n}\n",
+      "import 'package:flutter_test/flutter_test.dart';\nimport 'package:dartshared/dartshared.dart';\n\nvoid main() {\n  test('greets via the internal lib', () {\n    expect(Greeter().bump('world'), 'Hello, world!');\n  });\n}\n",
     )
 
     // THE dependency-injection step: one command for internal + external deps.
