@@ -1251,11 +1251,10 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
     it('runs the native phase on each leg, which attaches a releasable app\'s zip itself on main', () => {
       const { steps } = github(true).jobs.native
       const build = steps.find(step => step.run === 'npx mnci ci native')
-      const linux = steps.find(step => step.name === 'Install native prerequisites (Linux)')
 
       expect(build).toBeDefined()
-      expect(linux?.if).toBe("${{ runner.os == 'Linux' }}")
-      expect(linux?.run).toBe('sudo apt-get update && sudo apt-get install -y gcc pkg-config')
+      // The Linux packages are installed by the phase, from nx.json, not by a YAML step.
+      expect(steps.some(step => step.name?.includes('native prerequisites'))).toBe(false)
       expect(steps.some(step => step.uses?.startsWith('actions/upload-artifact@'))).toBe(true)
     })
   })
@@ -1282,8 +1281,7 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
       expect(Object.values(native?.strategy?.matrix ?? {}).map(leg => leg.vmImage))
         .toEqual(['windows-latest', 'macos-latest', 'ubuntu-latest'])
       expect(native?.steps.find(step => step.script === 'npx mnci ci native')).toBeDefined()
-      expect(native?.steps.find(step => step.displayName === 'Install native prerequisites (Linux)')?.condition)
-        .toBe("eq(variables['Agent.OS'], 'Linux')")
+      expect(native?.steps.some(step => step.displayName?.includes('native prerequisites'))).toBe(false)
     })
 
     it('stays valid in the build-identity mode, whose steps start with a task', () => {
@@ -1291,6 +1289,18 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
 
       expect(document.jobs.map(each => each.job)).toEqual(['ci', 'native'])
       expect(document.jobs[1].steps.some(step => (step as { task?: string }).task === 'npmAuthenticate@0')).toBe(true)
+    })
+  })
+
+  describe('the runners of mnci.native', () => {
+    it('takes the legs of both providers from the list it is given', () => {
+      const runners = ['ubuntu-24.04', 'macos-14']
+
+      const githubDocument = yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github', undefined, true, runners)) as { jobs: Record<string, GithubJob> }
+      const azureDocument = yaml.load(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'npm', undefined, 'pat', true, runners)) as { jobs: AzureJob[] }
+
+      expect(githubDocument.jobs.native.strategy?.matrix.os).toEqual(runners)
+      expect(Object.values(azureDocument.jobs[1].strategy?.matrix ?? {}).map(leg => leg.vmImage)).toEqual(runners)
     })
   })
 
@@ -1317,6 +1327,17 @@ describe('native (cgo) apps in the pipelines (#263)', () => {
         stack:         DEFAULT_STACK,
       })
     }
+
+    it('reads the legs from mnci.native.runners in nx.json', () => {
+      writeFileSync(join(workspace, 'nx.json'), JSON.stringify({ $schema: 's', namedInputs: {}, mnci: { native: { runners: ['ubuntu-24.04'] } } }))
+      mkdirSync(join(workspace, 'apps/tray'), { recursive: true })
+      writeFileSync(join(workspace, 'apps/tray/project.json'), JSON.stringify({ tags: ['build:cgo'] }))
+
+      apply()
+
+      expect(readFileSync(join(workspace, '.github/workflows/ci.yml'), 'utf8')).toContain('os: [ubuntu-24.04]')
+      expect(readFileSync(join(workspace, 'azure-pipelines.yml'), 'utf8')).toContain('vmImage: ubuntu-24.04')
+    })
 
     it('writes the native job into both pipelines once an app is tagged build:cgo, and not before', () => {
       apply()

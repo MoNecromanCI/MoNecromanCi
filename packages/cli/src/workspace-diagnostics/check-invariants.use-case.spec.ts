@@ -1377,3 +1377,30 @@ describe('the pipeline phases', () => {
     expect(findingFor(collectFindings(workspaceRoot), 'enforced verify phase')).toBeUndefined()
   })
 })
+
+/** Seeds a healthy workspace whose nx.json carries the given native entry. */
+function writeNative (native: unknown): void {
+  writeWorkspace()
+  writeFileSync(join(workspaceRoot, 'nx.json'), JSON.stringify({
+    plugins: [{ plugin: '@nx/eslint/plugin', options: { targetName: 'lint' } }],
+    mnci:    { registry: { kind: 'npm' }, scope: '@demo', native },
+  }))
+}
+
+describe('the mnci.native entry', () => {
+  it('says nothing about a valid entry, or none', () => {
+    writeNative({ linuxPackages: ['libgtk-3-dev'] })
+
+    expect(findingFor(collectFindings(workspaceRoot), 'mnci.native')).toBeUndefined()
+  })
+
+  it('fails an entry with an invalid package name, and names it', () => {
+    writeNative({ linuxPackages: ['-o Foo=bar'] })
+
+    const finding = findingFor(collectFindings(workspaceRoot), 'mnci.native')
+
+    expect(finding?.ok).toBe(false)
+    expect(finding?.detail).toContain('-o Foo=bar')
+    expect(finding?.remedy).toContain('nx.json')
+  })
+})
