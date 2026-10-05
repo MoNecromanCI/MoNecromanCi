@@ -468,7 +468,8 @@ behind an `__init__.py` barrel with `__all__`, and the function app's helper is
 generated projects). `node-app` gets a `hello` slice (use case + contract + spec, and a
 handler for Express and Koa) from `nodeAppExampleFiles`; Fastify and Nest keep the
 layout their framework mandates (autoload `routes/`, `*.controller.ts`), which the
-rules exempt as tool-mandated names. Not enforced anywhere yet, so
+rules exempt as tool-mandated names. `react-app` swaps Nx's welcome page for a `greeting` feature (contract,
+use case, component, specs, barrel) composed by `App` (`reactAppExampleFiles`). Not enforced anywhere yet, so
 not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
 #290: the worked example for the other families, and `--empty` for the kinds other
 than the four TypeScript libraries.

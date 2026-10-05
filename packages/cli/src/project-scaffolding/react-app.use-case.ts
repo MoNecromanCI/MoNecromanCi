@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
+import { reactAppExampleFiles } from './react-app-example.algorithm'
 import {
   addNxTargets,
   ensureAdmZip,
@@ -165,6 +166,13 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
   addNxTargets(join(reactAppRoot, 'package.json'), reactAppTargets(name))
   // src/app/*.tsx get the .component role and a barrel, so the slice rules accept them.
   reshapeReactAppScaffold(reactAppRoot)
+  // Nx's 850-line welcome page is a demo, not a template. A greeting feature (contract,
+  // use case, component, specs) composed by App replaces it.
+  rmSync(join(reactAppRoot, 'src/app/nx-welcome.component.tsx'), { force: true })
+  const example = reactAppExampleFiles(name)
+  for (const [relative, contents] of Object.entries(example)) {
+    writeFileEnsured(join(reactAppRoot, 'src', relative), contents)
+  }
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
   // Vite's inferred 'serve' target (the dev server) is what @nx/react:app
   // already wires — no per-env variant needed for local dev, unlike build.
