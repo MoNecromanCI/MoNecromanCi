@@ -2,6 +2,7 @@ import {
   pythonModuleDirectory,
   pythonPyprojectToml,
   pythonReadme,
+  PYTHON_SAMPLE_CONTRACT,
   pythonSampleBarrel,
   pythonSampleModule,
   pythonSampleTest,
@@ -164,7 +165,7 @@ describe('pythonReadme', () => {
     // wrong import, and this is the first place they look.
     const readme = pythonReadme('my-svc', 'my_svc')
 
-    expect(readme).toContain('from my_svc import hello')
+    expect(readme).toContain('from my_svc import greet')
   })
 
   it('documents every target the project actually has', () => {
@@ -183,14 +184,17 @@ describe('pythonSampleModule + pythonSampleTest', () => {
   it('generates a module and a test that actually pass together', () => {
     const module_ = pythonSampleModule('pycore')
     const test = pythonSampleTest('pycore')
-    expect(module_).toContain('return "hello from pycore"')
-    expect(test).toContain('from pycore import hello')
-    expect(test).toContain('hello() == "hello from pycore"')
+    expect(module_).toContain('from .pycore_contract import Greeting')
+    expect(module_).toContain('def greet(name: str) -> Greeting')
+    expect(test).toContain('from pycore import greet')
+    expect(test).toContain('greet("world").message == "Hello, world!"')
+    expect(PYTHON_SAMPLE_CONTRACT).toContain('@dataclass(frozen=True)')
   })
 
   it('re-exports the public name from the role-named module through the barrel', () => {
     const barrel = pythonSampleBarrel('pycore')
-    expect(barrel).toContain('from .pycore_use_case import hello')
-    expect(barrel).toContain('__all__ = ["hello"]')
+    expect(barrel).toContain('from .pycore_use_case import greet')
+    expect(barrel).toContain('from .pycore_contract import Greeting')
+    expect(barrel).toContain('__all__ = ["Greeting", "greet"]')
   })
 })

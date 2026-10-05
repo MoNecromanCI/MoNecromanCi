@@ -4,6 +4,7 @@ import {
   pythonPyprojectToml,
   pythonReadme,
   pythonSampleBarrel,
+  PYTHON_SAMPLE_CONTRACT,
   pythonSampleModule,
   pythonSampleTest,
   pythonTypedMarkerPath,
@@ -45,6 +46,7 @@ export default async function internalLibraryGenerator (
 
   tree.write(`${root}/pyproject.toml`, pythonPyprojectToml(options.name, moduleDirectory))
   tree.write(`${root}/README.md`, pythonReadme(options.name, moduleDirectory))
+  tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_contract.py`, PYTHON_SAMPLE_CONTRACT)
   tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_use_case.py`, pythonSampleModule(moduleDirectory))
   tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleBarrel(moduleDirectory))
   tree.write(`${root}/tests/test_${moduleDirectory}_use_case.py`, pythonSampleTest(moduleDirectory))

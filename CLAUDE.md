@@ -462,9 +462,10 @@ a fresh project lints clean with `verticalSlices` on and no override. Done so fa
 re-applied on add): JS libraries (`renameScaffoldPlaceholder`), both React library
 kinds (`reshapeReactScaffold`), React apps (`reshapeReactAppScaffold`), Go libraries, and
 `node-function-app` (a `src/hello/` slice written directly). The Python plugin's
-templates follow the language mapping: the sample lives in `<module>_use_case.py`
-behind an `__init__.py` barrel with `__all__`, and the function app's helper is
-`greeting_algorithm.py`. `vscode-extension`, `npm-lib` and `internal-lib` already lint clean (measured on
+templates follow the language mapping: a project has a `<module>_contract.py` (a frozen
+`Greeting` dataclass) and a `<module>_use_case.py` (`greet`) behind an `__init__.py` barrel
+with `__all__`, and the function app has `greeting_contract.py` and `greet_use_case.py`
+behind Azure's mandated `function_app.py` handler. `vscode-extension`, `npm-lib` and `internal-lib` already lint clean (measured on
 generated projects). `node-app` gets a `hello` slice (use case + contract + spec, and a
 handler for Express and Koa) from `nodeAppExampleFiles`; Fastify and Nest keep the
 layout their framework mandates (autoload `routes/`, `*.controller.ts`), which the

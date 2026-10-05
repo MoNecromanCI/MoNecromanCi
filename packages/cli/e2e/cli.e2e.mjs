@@ -2050,11 +2050,11 @@ section('python', ['alt stack'], () => {
   // import genuinely resolves before any wheel is ever built.
   writeFileSync(
     path.join(altWorkspace, 'python-packages/pyshared/pyshared/greeting.py'),
-    'from pycore import hello as core_hello\n\n\ndef build_greeting() -> str:\n    return "Hello pyshared uses " + core_hello()\n',
+    'from pycore import greet as core_greet\n\n\ndef build_greeting() -> str:\n    return "Hello pyshared uses " + core_greet("pycore").message\n',
   )
   writeFileSync(
     path.join(altWorkspace, 'python-packages/pyshared/tests/test_greeting.py'),
-    'from pyshared.greeting import build_greeting\n\n\ndef test_build_greeting() -> None:\n    assert build_greeting() == "Hello pyshared uses hello from pycore"\n',
+    'from pyshared.greeting import build_greeting\n\n\ndef test_build_greeting() -> None:\n    assert build_greeting() == "Hello pyshared uses Hello, pycore!"\n',
   )
 
   console.log('\n▸ wiring pysvc (packed) -> a real external PyPI dependency (tomli)')
@@ -2271,7 +2271,7 @@ section('python', ['alt stack'], () => {
   )
   enforce(
     'python: publishable lib installs into a clean venv and runs correctly (private lib resolves with no extra install)',
-    pysharedVenvRun.ok && pysharedVenvRun.output.includes('Hello pyshared uses hello from pycore'),
+    pysharedVenvRun.ok && pysharedVenvRun.output.includes('Hello pyshared uses Hello, pycore!'),
     pysharedVenvRun.output,
   )
 
