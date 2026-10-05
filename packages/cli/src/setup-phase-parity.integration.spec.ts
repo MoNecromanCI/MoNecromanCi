@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import spawn from 'cross-spawn'
 import { runCiPhase } from './ci-pipeline'
 import { githubActionsYaml } from './workspace-overlay'
 
@@ -95,15 +96,20 @@ describeWhereTheGuardCanBeStubbed('the setup phase against the inline guard it r
     const fromGuard = recorded()
 
     const fresh = workspace(files)
-    const original = process.env[pathKey]
-    process.env[pathKey] = environment[pathKey]
-    try {
-      // Only the Python install is under test: a workspace holding just Python projects runs exactly that step.
-      expect(await runCiPhase('setup', fresh, { environment: {}, log: () => {} })).toBe(0)
-    } finally {
-      process.env[pathKey] = original
-    }
+    // Only the Python install is under test: a workspace holding just Python projects runs exactly that step.
+    // The environment is handed to the child explicitly, as it is to the guard: jest gives a test its own
+    // copy of process.env, so changing PATH there would never reach a real child process.
+    const status = await runCiPhase('setup', fresh, {
+      environment: {},
+      log:         () => {},
+      processes:   {
+        run:     (command, arguments_) => spawn.sync(command, arguments_, { cwd: fresh, stdio: 'inherit', env: environment }).status ?? 1,
+        capture: () => ({ status: 1, stdout: '' }),
+      },
+    })
     const fromPhase = recorded()
+
+    expect(status).toBe(0)
 
     expect(fromPhase).toEqual(fromGuard)
   })
