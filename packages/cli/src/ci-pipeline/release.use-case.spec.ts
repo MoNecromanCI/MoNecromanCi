@@ -207,6 +207,56 @@ describe('mnci ci release: the release command (#269)', () => {
   })
 })
 
+describe('mnci ci release: after the release (#269, #259)', () => {
+  it('pushes the release tags once nx release has succeeded', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness()
+
+    expect(await release(setup, { NODE_AUTH_TOKEN: 'tok' })).toBe(0)
+
+    expect(setup.commands.at(-1)).toBe('git push origin --tags')
+  })
+
+  it('attaches the Go zips before the tags are pushed, when the workspace has a releasable Go app', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    seed('tools/go-app-release.cjs', '')
+    const setup = harness()
+
+    await release(setup, { NODE_AUTH_TOKEN: 'tok' })
+
+    expect(setup.commands.slice(-3)).toEqual(['npx nx release --yes', 'node tools/go-app-release.cjs assets', 'git push origin --tags'])
+  })
+
+  it('skips the Go step in a workspace with no releasable Go app, and still pushes the tags', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness()
+
+    await release(setup, { NODE_AUTH_TOKEN: 'tok' })
+
+    expect(setup.commands.some(command => command.includes('go-app-release'))).toBe(false)
+    expect(setup.commands).toContain('git push origin --tags')
+  })
+
+  it('pushes nothing when nx release failed: the tags it made are not published', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness({ 'npx nx release --yes': 2 })
+
+    expect(await release(setup, { NODE_AUTH_TOKEN: 'tok' })).toBe(2)
+
+    expect(setup.commands).not.toContain('git push origin --tags')
+  })
+
+  it('pushes no tags when attaching the Go zips failed, as the separate pipeline steps behaved', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    seed('tools/go-app-release.cjs', '')
+    const setup = harness({ 'node tools/go-app-release.cjs assets': 3 })
+
+    expect(await release(setup, { NODE_AUTH_TOKEN: 'tok' })).toBe(3)
+
+    expect(setup.commands).not.toContain('git push origin --tags')
+  })
+})
+
 describe('mnci ci release: publish credentials (#269)', () => {
   it('wires the public PyPI token into TWINE_* for a Python release', async () => {
     seed('python-packages/core/pyproject.toml', '[project]\nname = "core"\n')

@@ -1,4 +1,4 @@
-import { globSync, readFileSync } from 'node:fs'
+import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runCapture, runShell } from '../nx-workspace'
 import {
@@ -349,7 +349,37 @@ function runReleaseCommand (
 }
 
 /**
- * Runs the release phase: preflights, then `nx release` (version + tag + publish).
+ * What follows a successful `nx release`: the Go zips, then the tags.
+ *
+ * @remarks
+ * Both are steps the generated pipelines run after the release step, now part of the
+ * phase (#259 folds into `release`). A releasable Go app is versioned by its git tag, so its
+ * per-platform zips are built and attached to the GitHub Release only now, after tagging,
+ * by `tools/go-app-release.cjs` (a workspace without a releasable Go app has no such file and
+ * skips it). Tags are pushed explicitly: `nx release`'s own push only runs when a remote
+ * GitHub/GitLab Release is configured, which the pipelines never do, so it would never push
+ * the tag just created. The push is unconditional (a no-op when nothing released) and comes
+ * last, so a failed asset upload leaves the tags unpushed, as the separate steps did.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param processes - The process runner.
+ * @returns 0 when both steps passed or were skipped, otherwise the failing step's status.
+ * @throws Never - a failing command is a status.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function afterRelease (workspaceRoot: string, processes: CiProcesses): number {
+  if (existsSync(join(workspaceRoot, 'tools', 'go-app-release.cjs'))) {
+    const assets = processes.run('node', ['tools/go-app-release.cjs', 'assets'])
+    if (assets !== 0) {
+      return assets
+    }
+  }
+
+  return processes.run('git', ['push', 'origin', '--tags'])
+}
+
+/**
+ * Runs the release phase: preflights, then `nx release` (version + tag + publish), then the Go zips and the tag push.
  *
  * @remarks
  * A port of the inline release guards the generated pipelines carry, run in the
@@ -405,5 +435,10 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
     return close(pypi)
   }
 
-  return close(runReleaseCommand(workspaceRoot, registry, releasableCounts(workspaceRoot), environment, processes, log))
+  const released = runReleaseCommand(workspaceRoot, registry, releasableCounts(workspaceRoot), environment, processes, log)
+  if (released !== 0) {
+    return close(released)
+  }
+
+  return close(afterRelease(workspaceRoot, processes))
 }
