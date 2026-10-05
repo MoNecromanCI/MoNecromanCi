@@ -187,6 +187,24 @@ describe('runAdd node-app', () => {
 })
 
 describe('runAdd node-function-app', () => {
+  it('--empty keeps the entry point and host.json but writes no function, and lets the test target pass with none', async () => {
+    mkdirSync(join(workspaceRoot, 'apps/api'), { recursive: true })
+    writeFileSync(
+      join(workspaceRoot, 'apps/api/package.json'),
+      JSON.stringify({ name: '@demo/api', version: '0.0.1', private: true, nx: { targets: { build: {} } }, dependencies: {} }),
+    )
+
+    await runAdd('node-function-app', 'api', { empty: true })
+
+    expect(existsSync(join(workspaceRoot, 'apps/api/src/hello'))).toBe(false)
+    expect(readFileSync(join(workspaceRoot, 'apps/api/src/main.ts'), 'utf8')).not.toContain("import './hello'")
+    expect(existsSync(join(workspaceRoot, 'apps/api/host.json'))).toBe(true)
+    const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/package.json'), 'utf8')) as {
+      nx: { targets: { test: { options: { passWithNoTests: boolean } } } }
+    }
+    expect(manifest.nx.targets.test.options.passWithNoTests).toBe(true)
+  })
+
   it('generates via the plain application generator, then overlays the Azure Functions v4 shape', async () => {
     mkdirSync(join(workspaceRoot, 'apps/api'), { recursive: true })
     writeFileSync(
@@ -233,12 +251,11 @@ describe('runAdd node-function-app', () => {
     const hello = readFileSync(join(workspaceRoot, 'apps/api/src/hello/hello.handler.ts'), 'utf8')
     expect(hello).toContain('from \'@azure/functions\'')
     expect(hello).toContain('app.http(\'hello\'')
-    expect(
-      readFileSync(join(workspaceRoot, 'apps/api/src/hello/greeting.algorithm.ts'), 'utf8'),
-    ).toContain('export function buildGreeting')
-    expect(
-      readFileSync(join(workspaceRoot, 'apps/api/src/hello/greeting.algorithm.spec.ts'), 'utf8'),
-    ).toContain('buildGreeting')
+    // handler -> use case -> contract: the handler adapts, the use case decides, the contract is the data.
+    expect(hello).toContain("from './greet.use-case'")
+    expect(readFileSync(join(workspaceRoot, 'apps/api/src/hello/greet.use-case.ts'), 'utf8')).toContain('export function greet')
+    expect(readFileSync(join(workspaceRoot, 'apps/api/src/hello/greet.use-case.spec.ts'), 'utf8')).toContain('greet')
+    expect(readFileSync(join(workspaceRoot, 'apps/api/src/hello/greeting.contract.ts'), 'utf8')).toContain('export interface Greeting')
     expect(readFileSync(join(workspaceRoot, 'apps/api/host.json'), 'utf8')).toContain(
       'extensionBundle',
     )

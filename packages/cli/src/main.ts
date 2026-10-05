@@ -170,7 +170,7 @@ export function buildProgram (cliVersion: string): Command {
     )
     .option(
       '--empty',
-      'npm-lib, internal-lib, react-lib, react-internal-lib: scaffold the slice skeleton only, with no sample code or spec',
+      'npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec',
     )
     .option(
       '--lib <name>',

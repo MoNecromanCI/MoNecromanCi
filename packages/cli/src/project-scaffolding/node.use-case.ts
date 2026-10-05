@@ -282,6 +282,17 @@ import './hello'
 `
 
 /**
+ * The bundle entry point of a function app scaffolded with `--empty`: no function yet.
+ *
+ * @remarks
+ * Same convention as {@link NODE_FUNCTION_APP_MAIN}, with nothing to import.
+ */
+export const NODE_FUNCTION_APP_MAIN_EMPTY = `// esbuild only includes what is reachable from here, so import each function slice
+// you create under src/ (through its index).
+export {}
+`
+
+/**
  * The `host.json` written into a generated Node function app.
  *
  * @remarks
@@ -305,18 +316,18 @@ export const NODE_FUNCTION_APP_HOST_JSON = `{
  *
  * @remarks
  * The Node v4 programming model: `app.http(...)` registers a route at import
- * time. The handler is thin — the testable logic lives in
- * {@link NODE_FUNCTION_APP_GREETING} (imported here) — so the sample spec
- * needs no `@azure/functions` mocking. Anonymous auth keeps the sample
+ * time. The handler only adapts the transport — it decodes the query, calls the
+ * use case ({@link NODE_FUNCTION_APP_GREET_USE_CASE}) and shapes the response — so
+ * the use case's spec needs no `@azure/functions` mocking. Anonymous auth keeps the sample
  * runnable locally with `func start`.
  */
 export const NODE_FUNCTION_APP_HELLO = `import { app } from '@azure/functions'
 import type { HttpRequest, HttpResponseInit } from '@azure/functions'
-import { buildGreeting } from './greeting.algorithm'
+import { greet } from './greet.use-case'
 
 async function hello(request: HttpRequest): Promise<HttpResponseInit> {
   const name = request.query.get('name') ?? 'world'
-  return { body: buildGreeting(name) }
+  return { body: greet(name).message }
 }
 
 app.http('hello', {
@@ -337,15 +348,30 @@ export const NODE_FUNCTION_APP_HELLO_BARREL = `export * from './hello.handler'
 `
 
 /**
- * A sample pure helper written into every generated Node function app.
+ * The sample contract written into every generated Node function app.
  *
  * @remarks
- * Gives the app a genuinely testable unit (the HTTP handler would need
- * `@azure/functions` mocking), so the generator's own jest/vitest wiring has
- * a real passing test out of the box. Delete it once you have your own.
+ * The data the use case returns and the handler shapes into a response: a worked
+ * example of a `.contract.ts`.
  */
-export const NODE_FUNCTION_APP_GREETING = `export function buildGreeting (name: string): string {
-  return 'Hello, ' + name + '!'
+export const NODE_FUNCTION_APP_GREETING_CONTRACT = `/** What greeting someone returns. */
+export interface Greeting {
+  readonly message: string
+}
+`
+
+/**
+ * The sample use case written into every generated Node function app.
+ *
+ * @remarks
+ * One outcome, free of the transport: it needs no `@azure/functions`, so the
+ * generator's own jest/vitest wiring has a real passing test out of the box.
+ * Delete it once you have your own.
+ */
+export const NODE_FUNCTION_APP_GREET_USE_CASE = `import type { Greeting } from './greeting.contract'
+
+export function greet (name: string): Greeting {
+  return { message: 'Hello, ' + name + '!' }
 }
 `
 
@@ -358,11 +384,11 @@ export const NODE_FUNCTION_APP_GREETING = `export function buildGreeting (name: 
  * chosen runner natively (unlike the removed hand-rolled function app, which
  * carried no test setup of its own).
  */
-export const NODE_FUNCTION_APP_GREETING_SPEC = `import { buildGreeting } from './greeting.algorithm'
+export const NODE_FUNCTION_APP_GREET_SPEC = `import { greet } from './greet.use-case'
 
-describe('buildGreeting', () => {
+describe('greet', () => {
   it('greets a name', () => {
-    expect(buildGreeting('world')).toBe('Hello, world!')
+    expect(greet('world')).toEqual({ message: 'Hello, world!' })
   })
 })
 `
@@ -543,6 +569,7 @@ function nodeFunctionAppStartTarget (name: string): Record<string, unknown> {
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
  * @param stack - The workspace's chosen linter/test runner.
+ * @param empty - Scaffold the app with no function: just the entry point and `host.json` (`--empty`).
  * @returns Nothing.
  * @throws Error when the generator or a required install fails.
  * @typeParam None - this function has no generic type parameters.
@@ -551,17 +578,23 @@ export function addNodeFunctionApp (
   workspaceRoot: string,
   name: string,
   stack: WorkspaceStack,
+  empty = false,
 ): void {
   runNodeApp(workspaceRoot, name, stack, 'none')
   ensureAzureFunctionsPackage(workspaceRoot)
   const nodeFunctionAppRoot = join(workspaceRoot, 'apps', name)
-  writeFileEnsured(join(nodeFunctionAppRoot, 'src/main.ts'), NODE_FUNCTION_APP_MAIN)
-  // One slice per function: the handler adapts the transport, the greeting is a pure
-  // computation, and the barrel is the slice's door (main.ts reaches it through that).
-  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/hello.handler.ts'), NODE_FUNCTION_APP_HELLO)
-  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/greeting.algorithm.ts'), NODE_FUNCTION_APP_GREETING)
-  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/greeting.algorithm.spec.ts'), NODE_FUNCTION_APP_GREETING_SPEC)
-  writeFileEnsured(join(nodeFunctionAppRoot, 'src/hello/index.ts'), NODE_FUNCTION_APP_HELLO_BARREL)
+  writeFileEnsured(join(nodeFunctionAppRoot, 'src/main.ts'), empty ? NODE_FUNCTION_APP_MAIN_EMPTY : NODE_FUNCTION_APP_MAIN)
+  if (!empty) {
+    // One slice per function: the handler adapts the transport, the use case is the
+    // outcome, the contract is what it returns, and the barrel is the slice's door
+    // (main.ts reaches the slice through that).
+    const slice = join(nodeFunctionAppRoot, 'src/hello')
+    writeFileEnsured(join(slice, 'hello.handler.ts'), NODE_FUNCTION_APP_HELLO)
+    writeFileEnsured(join(slice, 'greet.use-case.ts'), NODE_FUNCTION_APP_GREET_USE_CASE)
+    writeFileEnsured(join(slice, 'greet.use-case.spec.ts'), NODE_FUNCTION_APP_GREET_SPEC)
+    writeFileEnsured(join(slice, 'greeting.contract.ts'), NODE_FUNCTION_APP_GREETING_CONTRACT)
+    writeFileEnsured(join(slice, 'index.ts'), NODE_FUNCTION_APP_HELLO_BARREL)
+  }
   writeFileEnsured(join(nodeFunctionAppRoot, 'host.json'), NODE_FUNCTION_APP_HOST_JSON)
   repairNodeFunctionAppManifest(nodeFunctionAppRoot, workspaceRoot)
   ensureAdmZip(workspaceRoot)
@@ -569,6 +602,8 @@ export function addNodeFunctionApp (
     package: nodeFunctionAppPackageTarget(name),
     prune:   nodeFunctionAppPruneTarget(name),
     start:   nodeFunctionAppStartTarget(name),
+    // With no spec the runner exits non-zero; an empty scaffold must still pass `nx test`.
+    ...(empty && { test: { options: { passWithNoTests: true } } }),
   })
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
   registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
