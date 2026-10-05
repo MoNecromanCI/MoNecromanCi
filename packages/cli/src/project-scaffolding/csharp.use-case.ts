@@ -1,10 +1,10 @@
 import { readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { DOTNET_SDK_VERSION, NUGET_AZURE_SOURCE, nugetConfigContent, readMnciConfig } from '../workspace-overlay'
 import { promptText } from '../terminal'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
-import { csharpConsoleProgram, csharpExampleFiles } from './csharp-example.algorithm'
+import { csharpConsoleProgram, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
 import { logger } from '../terminal'
 import {
   addProjectJsonTargets,
@@ -174,6 +174,42 @@ function writeCsharpExample (
 }
 
 /**
+ * Adds the xunit project that tests the worked example, as a sibling of the project.
+ *
+ * @remarks
+ * `tests/<name>/<identity>.Tests.csproj`: outside the project's own folder, because the SDK
+ * globs every `.cs` below it and would compile a nested test project into the project it
+ * tests, and outside `packages/`, because every directory there is a release candidate (a
+ * test project would be asked for a version). Its `project.json` names it `<name>-tests`:
+ * left to the csproj it would be `<Identity>.Tests`, which `nx <target> <name>` matches
+ * together with the project itself ("Multiple projects matched"). `@nx/dotnet` infers a `test` target for it (verified:
+ * it depends on `build` and runs `dotnet test`), so `nx run-many -t test` picks it up with
+ * no target written here.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectRoot - Workspace-relative directory of the project under test.
+ * @param identity - The project under test's PascalCase identity.
+ * @returns Nothing.
+ * @throws Error when `dotnet new xunit` or `dotnet add reference` fails.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function addCsharpTestProject (workspaceRoot: string, projectRoot: string, identity: string): void {
+  const name = basename(projectRoot)
+  const testRoot = `tests/${name}`
+  scaffoldDotnetProject(workspaceRoot, testRoot, `${identity}.Tests`, 'xunit')
+  rmSync(join(workspaceRoot, testRoot, 'UnitTest1.cs'), { force: true })
+  writeFileEnsured(join(workspaceRoot, testRoot, 'GreetUseCaseTests.cs'), csharpExampleTest(identity))
+  writeFileEnsured(
+    join(workspaceRoot, testRoot, 'project.json'),
+    toJson({ name: `${name}-tests`, tags: ['type:csharp-test'] }),
+  )
+  const reference = join(workspaceRoot, projectRoot, `${identity}.csproj`)
+  if (runShell('dotnet', ['add', join(workspaceRoot, testRoot), 'reference', reference], workspaceRoot) !== 0) {
+    throw new Error(`dotnet add reference failed for ${testRoot}`)
+  }
+}
+
+/**
  * The `package` target for a C# app: publish, then zip, into the drop.
  *
  * @remarks
@@ -271,6 +307,7 @@ export function addCsharpApp (
   const projectRoot = `apps/${name}`
   scaffoldDotnetProject(workspaceRoot, projectRoot, pascalCase(name), template)
   writeCsharpExample(join(workspaceRoot, projectRoot), pascalCase(name), template)
+  addCsharpTestProject(workspaceRoot, projectRoot, pascalCase(name))
   addProjectJsonTargets(join(workspaceRoot, projectRoot, 'project.json'), {
     package: csharpAppPackageTarget('csharp-app', projectRoot, name),
     start:   csharpAppStartTarget(projectRoot),
@@ -640,6 +677,7 @@ export async function addCsharpLib (
   const identity = `${pascalScope(scope)}.${pascalCase(name)}`
   scaffoldDotnetProject(workspaceRoot, projectRoot, identity, 'classlib')
   writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib')
+  addCsharpTestProject(workspaceRoot, projectRoot, identity)
   addInitialVersion(join(workspaceRoot, projectRoot, `${identity}.csproj`))
   writeCsharpVersionActions(workspaceRoot)
   addProjectJsonReleaseVersionActions(join(workspaceRoot, projectRoot, 'project.json'))
@@ -690,6 +728,7 @@ export function addCsharpInternalLib (workspaceRoot: string, name: string): void
   const identity = pascalCase(name)
   scaffoldDotnetProject(workspaceRoot, projectRoot, identity, 'classlib')
   writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib')
+  addCsharpTestProject(workspaceRoot, projectRoot, identity)
   registerProjectCommands(workspaceRoot, name, { build: false })
   logger.step(
     `Reference it from a consumer with: dotnet add <consumer>.csproj reference ${projectRoot}/${identity}.csproj`,
@@ -910,6 +949,7 @@ export function addCsharpFunctionApp (workspaceRoot: string, name: string): void
   if (runShell('dotnet', ['restore', projectRoot], workspaceRoot) !== 0) {
     throw new Error(`dotnet restore failed for ${projectRoot}`)
   }
+  addCsharpTestProject(workspaceRoot, projectRoot, identity)
 
   addProjectJsonTargets(join(absoluteRoot, 'project.json'), {
     package: csharpAppPackageTarget('csharp-function-app', projectRoot, name),
