@@ -4,7 +4,7 @@ jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), se
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { classifyNpmAudit, runAudit } from './audit.use-case'
+import { classifyNpmAudit, planIsEmpty, runAudit } from './audit.use-case'
 import type { CiProcesses } from './phase.contract'
 
 type Advisory = Parameters<typeof classifyNpmAudit>[0] extends { vulnerabilities?: Record<string, infer A> } ? A : never
@@ -131,5 +131,84 @@ describe('mnci ci audit (#269)', () => {
     expect(audit(setup)).toBe(1)
 
     expect(setup.commands.some(command => command.includes('pip_audit'))).toBe(false)
+  })
+})
+
+describe('planIsEmpty', () => {
+  it('is true for a readable plan with nothing to add, change or remove', () => {
+    expect(planIsEmpty(JSON.stringify({ add: [], change: [], remove: [], audit: {} }))).toBe(true)
+  })
+
+  it.each([
+    ['a plan that adds something', { add: [{ name: 'x' }], change: [], remove: [] }],
+    ['a plan that changes something', { add: [], change: [{ name: 'x' }], remove: [] }],
+    ['a plan that removes something', { add: [], change: [], remove: [{ name: 'x' }] }],
+    ['output without the plan lists', { vulnerabilities: {} }],
+    ['a plan whose lists are not lists', { add: 0, change: 0, remove: 0 }],
+  ])('is false for %s', (_label, plan) => {
+    expect(planIsEmpty(JSON.stringify(plan))).toBe(false)
+  })
+
+  it('reads the JSON document after the text lines npm 11 prints ahead of it', () => {
+    const document = JSON.stringify({ add: [], change: [], remove: [] }, undefined, 2)
+
+    const changed = JSON.stringify({ add: [], change: [{ name: 'x' }], remove: [] }, undefined, 2)
+
+    expect(planIsEmpty(`npm warn something\n${document}`)).toBe(true)
+    expect(planIsEmpty(`change x 1.0.0 => 1.0.1\n${changed}`)).toBe(false)
+  })
+
+  it('is false for output that is not JSON, so an unreadable plan keeps blocking', () => {
+    expect(planIsEmpty('npm error network')).toBe(false)
+    expect(planIsEmpty('')).toBe(false)
+  })
+})
+
+/** A runner whose audit and dry-run print different things, as npm does. */
+function twoStageHarness (auditOutput: string, dryRunOutput: string): ReturnType<typeof harness> {
+  const setup = harness(auditOutput)
+  setup.processes.capture = (command, arguments_) => {
+    const line = [command, ...arguments_].join(' ')
+    setup.commands.push(line)
+
+    return { status: 0, stdout: line.includes('audit fix') ? dryRunOutput : auditOutput }
+  }
+
+  return setup
+}
+
+describe('mnci ci audit when npm reports a fix it cannot apply (#344)', () => {
+  const braces = JSON.stringify({ vulnerabilities: { braces: advisory('braces', 'high', true), micromatch: advisory('micromatch', 'high', true) } })
+
+  it('passes, saying why, when npm audit fix plans no change', () => {
+    const setup = twoStageHarness(braces, JSON.stringify({ add: [], change: [], remove: [] }))
+
+    expect(audit(setup)).toBe(0)
+
+    expect(setup.logged).toContain('  note [high] braces - npm reports a fix, but npm audit fix has nothing to apply')
+    expect(setup.logged.some(line => line.includes('2 reported as fixable, but no patched release is reachable'))).toBe(true)
+    expect(setup.logged.some(line => line.includes('BLOCKING'))).toBe(false)
+  })
+
+  it('still blocks when npm audit fix does plan a change', () => {
+    const setup = twoStageHarness(braces, JSON.stringify({ add: [], change: [{ name: 'braces' }], remove: [] }))
+
+    expect(audit(setup)).toBe(1)
+
+    expect(setup.logged).toContain('  BLOCKING [high] braces - fix available')
+  })
+
+  it('still blocks when the dry run could not be read', () => {
+    const setup = twoStageHarness(braces, 'npm error EAI_AGAIN')
+
+    expect(audit(setup)).toBe(1)
+  })
+
+  it('does not run the dry run when nothing would block', () => {
+    const setup = twoStageHarness(JSON.stringify({ vulnerabilities: { x: advisory('x', 'high', false) } }), '')
+
+    audit(setup)
+
+    expect(setup.commands.some(command => command.includes('audit fix'))).toBe(false)
   })
 })
