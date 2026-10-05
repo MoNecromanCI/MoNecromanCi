@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
-import { runShell } from '../nx-workspace'
+import { runCapture } from '../nx-workspace'
 import {
   ESLINT_MNCI_FILENAME,
   ESLINT_USER_FILENAME,
@@ -19,7 +19,7 @@ import {
   resolveRollupConfigText,
 } from '../rollup-library'
 import { fileExists, readJson } from '../file-system'
-import { logger } from '../terminal'
+import { logger, printJson } from '../terminal'
 
 /**
  * One check's outcome.
@@ -800,10 +800,16 @@ function checkOneTargetsFiles (
  * @typeParam None - this function has no generic type parameters.
  */
 function checkSync (workspaceRoot: string): Finding {
+  // Captured, not inherited: `doctor --json` must put one document on stdout and nothing else.
+  const result = runCapture('npx', ['nx', 'sync:check'], workspaceRoot)
+
   return {
     check:  'TypeScript project references synced',
-    ok:     runShell('npx', ['nx', 'sync:check'], workspaceRoot) === 0,
-    detail: 'nx sync:check failed — a stale project reference was never committed',
+    ok:     result.status === 0,
+    detail: `nx sync:check failed — a stale project reference was never committed${result.stdout.trim()
+? `
+${result.stdout.trim()}`
+: ''}`,
     remedy: 'run `npx nx sync` and commit the result',
   }
 }
@@ -1183,6 +1189,18 @@ export function collectFindings (workspaceRoot: string): Finding[] {
 }
 
 /**
+ * Flags of `mnci doctor`.
+ *
+ * @remarks
+ * `mnci doctor` has only the one flag.
+ * @typeParam None - this interface has no generic type parameters.
+ */
+export interface DoctorOptions {
+  /** Print the findings as one JSON document, for an editor or a script. */
+  json?: boolean
+}
+
+/**
  * Reports on the mnci invariants a workspace is supposed to uphold.
  *
  * @remarks
@@ -1194,14 +1212,27 @@ export function collectFindings (workspaceRoot: string): Finding[] {
  * local command. Sets `process.exitCode` rather than calling `process.exit`, so
  * output is never truncated.
  *
+ * With `json`, stdout is one document (`{ findings, passed, failed }`, each finding carrying
+ * its `remedy`) and nothing else; the exit code is the same.
+ *
  * @param workspaceRoot - Absolute path to the workspace.
+ * @param options - The command's flags.
  * @returns Nothing.
  * @throws Error when `workspaceRoot` is not an Nx workspace.
  * @typeParam None - this function has no generic type parameters.
  */
-export function runDoctor (workspaceRoot: string): void {
+export function runDoctor (workspaceRoot: string, options: DoctorOptions = {}): void {
   const findings = collectFindings(workspaceRoot)
   const failed = findings.filter(finding => !finding.ok)
+
+  if (options.json === true) {
+    printJson({ findings, passed: findings.length - failed.length, failed: failed.length })
+    if (failed.length > 0) {
+      process.exitCode = 1
+    }
+
+    return
+  }
 
   for (const finding of findings) {
     if (finding.ok) {

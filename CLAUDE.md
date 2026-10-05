@@ -676,6 +676,21 @@ to one is mirrored in the other by construction:
   "what's latest" question (`npm view`, `pip index versions`, `go list -m -u -json
   all`, `flutter pub outdated --json`, `dotnet package search`) rather than a
   hand-rolled registry call, so private feeds and their auth just work.
+- **The JSON contract for editors (#280).** `mnci commands --json` (every command, argument and
+  option with its description, **read from the commander program itself**, grouped by
+  `command-catalog/command-groups.config.ts`), `mnci kinds --json` (`PROJECT_KIND_CATALOG`: language,
+  description and applicable flags per kind), `mnci projects --json` (directory, ecosystem, `type:*`
+  kind and explicit targets, without starting Nx), `mnci info --json` (installed vs newest
+  published version, the recorded `mnci` settings) and `mnci doctor --json` (findings with remedies).
+  An option that may be given several times (`install -w`) is flagged `repeatable` (a list as its commander default,
+  appended to by its collector), so `mnci i -w web zod` and `mnci i zod -w web -w api` both work; `-w` was variadic
+  and swallowed the package in the form the help documents. A kind that cannot be added without a flag lists it in
+  `requiredFlags`.
+  Each prints exactly one document to stdout (`printJson`), so a command that shells out for a
+  check must capture, not inherit, stdio (`checkSync` did, and put Nx's line in front of the JSON).
+  `cli-contract.integration.spec.ts` fails when a command has no group, a kind has no catalog entry,
+  or a catalog flag is not one `add` declares. The editor extension reads these and keeps no list of
+  its own. Jest cannot load commander 15 (ESM only), so `jest.config.mjs` compiles it.
 - `mnci doctor` is a read-only invariant checker: exits non-zero on any finding,
   and every finding names its remedy (retired formatter files, undeclared root
   dependency hoisted into a rollup-bundled project via `@nx/dependency-checks`,
