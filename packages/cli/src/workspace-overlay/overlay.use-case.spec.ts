@@ -527,6 +527,25 @@ describe('withReleaseConfig', () => {
     })
   })
 
+  it('turns off preserveMatchingDependencyRanges, which refuses the first bump of an internal dependency (#345)', () => {
+    // Packages start at 0.0.1 and npm writes ^0.0.1 for an internal dependency, which on 0.0.x matches
+    // that version alone. git.commit is false, so the range on disk never moves, and with the setting on
+    // nx refuses the first release in its version phase, before anything is tagged.
+    for (const ci of ['github', 'azure', 'both'] as const) {
+      const version = (withReleaseConfig({ $schema: 'x' }, ci).release as { version: Record<string, unknown> }).version
+
+      expect(version.preserveMatchingDependencyRanges).toBe(false)
+    }
+  })
+
+  it('turns it off in a workspace generated before the fix, which has a release block without it (#345)', () => {
+    const existing = { $schema: 'x', release: { projectsRelationship: 'independent', version: { conventionalCommits: true } } }
+
+    const version = (withReleaseConfig(existing, 'github').release as { version: Record<string, unknown> }).version
+
+    expect(version.preserveMatchingDependencyRanges).toBe(false)
+  })
+
   it('skips the lock file resync, which cannot succeed on the release that needs it', () => {
     // Reported as a `preVersionCommand` problem; it is not. mnci overrides
     // `preVersionCommand` with a build, and the resync comes from `@nx/js`'s

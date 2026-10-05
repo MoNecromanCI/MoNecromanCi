@@ -81,6 +81,7 @@
       "preVersionCommand": "npx nx run-many -t build --projects=packages/*,python-packages/*,tag:type:vscode-extension",
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",
+      "preserveMatchingDependencyRanges": false,
       "versionActionsOptions": {
         "skipLockFileUpdate": true
       }

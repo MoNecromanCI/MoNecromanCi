@@ -1404,3 +1404,42 @@ describe('the mnci.native entry', () => {
     expect(finding?.remedy).toContain('nx.json')
   })
 })
+
+/** Seeds a healthy workspace whose nx.json has a release block with the given version settings. */
+function writeRelease (version: Record<string, unknown>): void {
+  writeWorkspace()
+  writeFileSync(join(workspaceRoot, 'nx.json'), JSON.stringify({
+    plugins: [{ plugin: '@nx/eslint/plugin', options: { targetName: 'lint' } }],
+    mnci:    { registry: { kind: 'npm' }, scope: '@demo' },
+    release: { version },
+  }))
+}
+
+describe('the release dependency-range setting', () => {
+  it('passes when nx release does not preserve matching ranges', () => {
+    writeRelease({ preserveMatchingDependencyRanges: false })
+
+    expect(findingFor(collectFindings(workspaceRoot), 'dependency ranges')?.ok).toBe(true)
+  })
+
+  it('fails when the setting is absent, naming the remedy (#345)', () => {
+    writeRelease({ conventionalCommits: true })
+
+    const finding = findingFor(collectFindings(workspaceRoot), 'dependency ranges')
+
+    expect(finding?.ok).toBe(false)
+    expect(finding?.remedy).toContain('mnci upgrade')
+  })
+
+  it('fails when the setting is on', () => {
+    writeRelease({ preserveMatchingDependencyRanges: true })
+
+    expect(findingFor(collectFindings(workspaceRoot), 'dependency ranges')?.ok).toBe(false)
+  })
+
+  it('says nothing about a workspace with no release block', () => {
+    writeWorkspace()
+
+    expect(findingFor(collectFindings(workspaceRoot), 'dependency ranges')).toBeUndefined()
+  })
+})
