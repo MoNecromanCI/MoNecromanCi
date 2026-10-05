@@ -6,5 +6,6 @@
  * through this barrel, never by a path into the files below.
  */
 
+export * from './json-output.client'
 export * from './logger.client'
 export * from './prompts.client'

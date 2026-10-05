@@ -1,7 +1,9 @@
 import { Argument, Command, Option } from 'commander'
 import { CI_PHASES, runCiPhase, type CiPhase } from './ci-pipeline'
-import { PROJECT_KINDS, runAdd, type AddOptions, type ProjectKind } from './project-scaffolding'
-import { runDoctor } from './workspace-diagnostics'
+import { PROJECT_KINDS, runAdd, runKinds, type AddOptions, type KindsOptions, type ProjectKind } from './project-scaffolding'
+import { runDoctor, type DoctorOptions } from './workspace-diagnostics'
+import { runCommands, type CommandsOptions } from './command-catalog'
+import { runInfo, runProjects, type InfoOptions, type ProjectsOptions } from './workspace-info'
 import { runInteractive } from './workspace-creation'
 import { runNew, type NewOptions } from './workspace-creation'
 import { runInstall, type InstallOptions } from './dependency-management'
@@ -15,7 +17,7 @@ import { checkForUpdate, readCliVersion } from './cli-version'
  * Builds the commander program for the CLI.
  *
  * @remarks
- * Seven commands: `new`, `add`, `upgrade` (re-applies the overlay to an existing
+ * Eleven commands: `new`, `add`, `upgrade` (re-applies the overlay to an existing
  * workspace), `doctor` (read-only invariant check), `sync` (converge dependency
  * ranges and TypeScript project references), `up` (report and apply
  * available upgrades) and `ci` (runs a phase of the CI pipeline here, as CI runs
@@ -104,8 +106,9 @@ export function buildProgram (cliVersion: string): Command {
     .description(
       'Check this workspace against the invariants mnci maintains (one ESLint config, no stray .prettierrc, the eslint plugin registered, the resolved eslint major, .npmrc vs the recorded registry, versionActions overrides, nx sync) — read-only; exits non-zero if anything failed',
     )
-    .action(() => {
-      runDoctor(process.cwd())
+    .option('--json', 'print the findings as one JSON document, each with its remedy')
+    .action((options: DoctorOptions) => {
+      runDoctor(process.cwd(), options)
     })
 
   program
@@ -201,6 +204,38 @@ export function buildProgram (cliVersion: string): Command {
         await runAdd(kind, name, options)
       },
     )
+
+  program
+    .command('commands')
+    .description('List every command with what it does and how to call it (--json is what an editor builds its menu from)')
+    .option('--json', 'print the catalog as one JSON document')
+    .action((options: CommandsOptions) => {
+      runCommands(program, options)
+    })
+
+  program
+    .command('kinds')
+    .description('List every project kind that `add` accepts, with its language, a description and the flags that apply')
+    .option('--json', 'print the kinds as one JSON document')
+    .action((options: KindsOptions) => {
+      runKinds(options)
+    })
+
+  program
+    .command('projects')
+    .description("List this workspace's projects: directory, ecosystem, the kind mnci recorded and its explicit targets")
+    .option('--json', 'print the projects as one JSON document')
+    .action((options: ProjectsOptions) => {
+      runProjects(process.cwd(), options)
+    })
+
+  program
+    .command('info')
+    .description("Show the installed mnci version, the newest published one, and this workspace's recorded settings")
+    .option('--json', 'print the report as one JSON document')
+    .action((options: InfoOptions) => {
+      runInfo(process.cwd(), cliVersion, options)
+    })
 
   // Bare `mnci` (no subcommand) launches the guided wizard; commander runs
   // this default action only when no subcommand is given (-v/--help still win).
