@@ -20,6 +20,8 @@ function describeOption (option: Option): OptionDescription {
     description:  option.description,
     takesValue:   option.required ? 'required' : (option.optional ? 'optional' : 'none'),
     variadic:     option.variadic,
+    // A repeatable flag is declared with a list as its default, which its collector appends to.
+    repeatable:   Array.isArray(option.defaultValue),
     negated:      option.negate,
     choices:      option.argChoices,
     defaultValue: isScalar ? (option.defaultValue as string | number | boolean) : undefined,

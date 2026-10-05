@@ -152,7 +152,12 @@ export function buildProgram (cliVersion: string): Command {
     .description(
       "Add a dependency to a specific project using its own toolchain (npm/pip/pub/nuget/go), or — with no package — install everything. Each project owns its dependencies, so a package needs a target: 'mnci i -w <project> <package>'",
     )
-    .option('-w, --workspace <project...>', 'target project, by directory (apps/foo) or basename (foo); repeatable')
+    .option(
+      '-w, --workspace <project>',
+      'target project, by directory (apps/foo) or basename (foo); give the flag again for each project',
+      (project: string, projects: string[]) => [...projects, project],
+      [] as string[],
+    )
     .option('-D, --save-dev', 'add as a development dependency, where the ecosystem distinguishes one')
     .action((packages: string[], options: InstallOptions) => {
       runInstall(process.cwd(), packages, options)
@@ -167,9 +172,9 @@ export function buildProgram (cliVersion: string): Command {
     .argument('[name]', 'project name')
     .description('Add a project by delegating to the matching Nx plugin generator')
     .option('--scope <scope>', 'npm scope for a publishable lib (defaults to @<workspace name>)')
-    .option(
-      '--framework <framework>',
-      'node-app only: express | fastify | koa | nest | none (default: none)',
+    .addOption(
+      new Option('--framework <framework>', 'node-app only: the web framework (default: none)')
+        .choices(['express', 'fastify', 'koa', 'nest', 'none']),
     )
     .option(
       '--empty',

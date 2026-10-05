@@ -58,6 +58,30 @@ describe('the CLI contract an editor builds its menu from', () => {
     }
   })
 
+  it('requires, of each kind, only flags that it also offers', () => {
+    for (const entry of PROJECT_KIND_CATALOG) {
+      for (const flag of entry.requiredFlags) {
+        expect({ kind: entry.kind, flag, offered: entry.flags.includes(flag) }).toEqual({ kind: entry.kind, flag, offered: true })
+      }
+    }
+  })
+
+  it('takes a project with -w in front of the package, as the CLI documents it, and with the flag repeated', () => {
+    const install = buildProgram('9.9.9').commands.find(command => command.name() === 'install')
+    const front = install?.parseOptions(['-w', 'web', 'zod'])
+    const repeated = buildProgram('9.9.9').commands.find(command => command.name() === 'install')?.parseOptions(['zod', '-w', 'web', '-w', 'api'])
+
+    expect(front?.operands).toEqual(['zod'])
+    expect(install?.opts().workspace).toEqual(['web'])
+    expect(repeated?.operands).toEqual(['zod'])
+  })
+
+  it('rejects a framework the CLI does not know, before anything is generated', () => {
+    const add = buildProgram('9.9.9').commands.find(command => command.name() === 'add')
+
+    expect(() => add?.exitOverride().configureOutput({ writeErr: () => {} }).parse(['node', 'add', 'node-app', 'x', '--framework', 'rails'])).toThrow(/rails|framework/i)
+  })
+
   it('offers each add-only flag to at least one kind, so none is unreachable from a picker', () => {
     const add = described.find(command => command.name === 'add')
     const offered = new Set(PROJECT_KIND_CATALOG.flatMap(entry => entry.flags))

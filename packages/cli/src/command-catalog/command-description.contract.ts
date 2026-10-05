@@ -40,6 +40,8 @@ export interface OptionDescription {
   /** Whether the flag takes a value: `none` is a switch. */
   readonly takesValue:    'none' | 'required' | 'optional'
   readonly variadic:      boolean
+  /** The flag may be given several times (`--workspace a --workspace b`); each use adds one value. */
+  readonly repeatable:    boolean
   /** True for a `--no-<name>` switch. */
   readonly negated:       boolean
   readonly choices?:      readonly string[]

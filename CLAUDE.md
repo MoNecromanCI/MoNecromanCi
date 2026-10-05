@@ -682,6 +682,10 @@ to one is mirrored in the other by construction:
   description and applicable flags per kind), `mnci projects --json` (directory, ecosystem, `type:*`
   kind and explicit targets, without starting Nx), `mnci info --json` (installed vs newest
   published version, the recorded `mnci` settings) and `mnci doctor --json` (findings with remedies).
+  An option that may be given several times (`install -w`) is flagged `repeatable` (a list as its commander default,
+  appended to by its collector), so `mnci i -w web zod` and `mnci i zod -w web -w api` both work; `-w` was variadic
+  and swallowed the package in the form the help documents. A kind that cannot be added without a flag lists it in
+  `requiredFlags`.
   Each prints exactly one document to stdout (`printJson`), so a command that shells out for a
   check must capture, not inherit, stdio (`checkSync` did, and put Nx's line in front of the JSON).
   `cli-contract.integration.spec.ts` fails when a command has no group, a kind has no catalog entry,

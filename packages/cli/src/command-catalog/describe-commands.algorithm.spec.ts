@@ -13,6 +13,7 @@ function sampleProgram (): Command {
     .option('-s, --scope <scope>', 'the scope')
     .option('--empty', 'no sample')
     .option('--no-install', 'skip the install')
+    .option('-w, --workspace <project>', 'a project', (project: string, projects: string[]) => [...projects, project], [] as string[])
     .addOption(new Option('--mode <mode>', 'a mode').choices(['fast', 'slow']).default('fast'))
 
   return program
@@ -42,6 +43,15 @@ describe('describeCommands', () => {
     expect(byName.empty).toMatchObject({ takesValue: 'none', negated: false })
     expect(byName['no-install']).toMatchObject({ takesValue: 'none', negated: true })
     expect(byName.mode).toMatchObject({ choices: ['fast', 'slow'], defaultValue: 'fast' })
+  })
+
+  it('marks a flag repeatable when it collects values into a list, and no other', () => {
+    const [add] = describeCommands(sampleProgram())
+    const byName = Object.fromEntries(add.options.map(option => [option.name, option]))
+
+    expect(byName.workspace).toMatchObject({ repeatable: true, takesValue: 'required' })
+    expect(byName.scope.repeatable).toBe(false)
+    expect(byName.empty.repeatable).toBe(false)
   })
 
   it('leaves the help command out', () => {
