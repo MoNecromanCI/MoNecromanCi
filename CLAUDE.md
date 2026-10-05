@@ -524,7 +524,7 @@ command the extension does not offer (it compares with `test/fixtures/cli-comman
 `mnci commands --json`; regenerate it when the CLI changes). Two repo-specific traps: this repo's
 `jest.preset.mjs` is a `createConfig` factory, not a Jest preset, so the project uses a `jest.config.mjs` and not the
 generated `.cts`; and the shared setup installs fake timers, so a spec that runs a real process calls
-`jest.useRealTimers()`. Design assets and the publisher/credentials the user must provide are in `plugin-needs.md`.
+`jest.useRealTimers()`. It is released by the `tag:type:vscode-extension` entries in `release.projects` and `preVersionCommand`, and published to the Marketplace as `monecromanci.mnci` with `vsce publish --azure-credential`: `ci.yml` signs in with `azure/login` (OIDC, no stored secret) using the `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` repository variables, and the Entra app's federated credential is pinned to `main` (the repository emits the immutable subject, `repo:<org>@<id>/<repo>@<id>`, so the subject includes the numeric ids and the exact case of the names). The release identity is a Contributor on the publisher; its Marketplace user id comes from the profile API called as that identity. **`mnci upgrade` is not run on this repo**: it also enables `push`, GitHub Releases and `linter: none` and rewrites `ci.yml` and `.npmrc`, so the extension's release parts were applied by hand. Design assets and what the owner provides are in `plugin-needs.md`.
 
 ### Linting and formatting: ESLint only
 

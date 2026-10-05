@@ -4,6 +4,12 @@ What the MoNecromanCI editor extension needs from you (design assets and account
 
 Issue: [#280](https://github.com/MoNecromanCI/MoNecromanCi/issues/280). First target: VS Code (and, through Open VSX, Cursor, Windsurf and the other forks).
 
+## Status
+
+Done: the publisher (`monecromanci`), the Entra identity with its federated credential, its membership of the publisher (Contributor), the repository variables, and the extension icon (`images/icon.png`, from `assets/mnci-sm.png`, 128 × 128).
+
+Still open: the real side bar icon (the current one is a placeholder), screenshots for the listing, and the first upload of the extension (below).
+
 ## Brand reference
 
 From `assets/logo.svg` (a dark disc with eight radiating arms):

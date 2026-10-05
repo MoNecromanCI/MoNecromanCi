@@ -33,6 +33,11 @@ concurrency:
 permissions:
   # Lets the release step push the version tag nx release creates back to main.
   contents: write
+  # Lets azure/login exchange this job's OIDC token for a Microsoft Entra ID one,
+  # which is how the VS Code extension reaches the Marketplace with no stored secret.
+  # A token minted on a pull request cannot use it: the federated credential is
+  # pinned to refs/heads/main.
+  id-token: write
 
 jobs:
   ci:
@@ -219,6 +224,19 @@ jobs:
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
+      # Signs in to Microsoft Entra ID as the Marketplace publishing identity (an app
+      # registration with a federated credential for this repository's main branch), so
+      # the release publishes apps/mnci with 'vsce publish --azure-credential' and no
+      # token. Runs only when the AZURE_CLIENT_ID and AZURE_TENANT_ID repository
+      # variables exist. No Azure subscription is needed.
+      - uses: azure/login@v3
+        name: Sign in to Microsoft Entra ID (VS Code Marketplace)
+        if: ${{ github.event_name == 'push' && github.ref_name == 'main' && vars.AZURE_CLIENT_ID != '' && hashFiles('apps/*/.vscodeignore') != '' }}
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
       # Version + tag + publish, in one release, for npm (packages/*), Python
       # (python-packages/*) AND C# (packages/*/*.csproj) — conventional
       # commits, tag-only push. Portable guard: nx release errors on an empty
@@ -245,6 +263,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           RELEASE_SPECIFIER: ${{ vars.RELEASE_SPECIFIER }}
+          # The extension publishes with Entra ID when the sign-in step above ran
+          # (VSCE_AUTH=entra), else with the VSCE_PAT token; tools/vscode-extension.cjs
+          # skips the Marketplace with neither.
+          VSCE_AUTH: ${{ vars.AZURE_CLIENT_ID != '' && 'entra' || '' }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       # A releasable Go app (mnci add go-app --release) is versioned by its git
       # tag, and its per-platform zips are attached to the GitHub Release the step

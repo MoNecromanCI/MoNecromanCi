@@ -17,6 +17,7 @@ interface Manifest {
     viewsContainers: { activitybar: Array<{ icon: string }> }
   }
   activationEvents: string[]
+  icon:             string
 }
 
 const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Manifest
@@ -72,6 +73,16 @@ describe('the extension manifest', () => {
     for (const container of manifest.contributes.viewsContainers.activitybar) {
       expect(existsSync(join(ROOT, container.icon))).toBe(true)
     }
+  })
+
+  it('has a Marketplace icon that is a PNG of at least 128 x 128 pixels', () => {
+    const png = readFileSync(join(ROOT, manifest.icon))
+    const isPng = png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+
+    expect(isPng).toBe(true)
+    // The width and height are the first two numbers of the IHDR chunk.
+    expect(png.readUInt32BE(16)).toBeGreaterThanOrEqual(128)
+    expect(png.readUInt32BE(20)).toBeGreaterThanOrEqual(128)
   })
 
   it('declares the one setting the extension reads, and activates for a workspace', () => {

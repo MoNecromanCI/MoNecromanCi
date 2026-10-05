@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "displayName": "MNCI",
+  "icon": "images/icon.png",
   "publisher": "monecromanci",
   "engines": {
     "vscode": "^1.96.0"

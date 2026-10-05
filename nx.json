@@ -66,7 +66,8 @@
     "projectsRelationship": "independent",
     "projects": [
       "packages/*",
-      "python-packages/*"
+      "python-packages/*",
+      "tag:type:vscode-extension"
     ],
     "releaseTag": {
       "pattern": "{projectName}@{version}"
@@ -77,7 +78,7 @@
       "push": false
     },
     "version": {
-      "preVersionCommand": "npx nx run-many -t build --projects=packages/*,python-packages/*",
+      "preVersionCommand": "npx nx run-many -t build --projects=packages/*,python-packages/*,tag:type:vscode-extension",
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",
       "versionActionsOptions": {
