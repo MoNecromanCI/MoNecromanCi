@@ -21,6 +21,7 @@ import {
   ensurePythonArtefactsIgnored,
   ESLINT_BLOCK_INVENTORY,
   DOTNET_SDK_VERSION,
+  CLI_VERSION,
   ESLINT_CONFIG_VERSION,
   ESLINT_PEER_OVERRIDES,
   ESLINT_VERSION,
@@ -3474,6 +3475,49 @@ describe('applyOverlay', () => {
     }
     expect(manifest.devDependencies['@mnci/eslint-config']).toBe(ESLINT_CONFIG_VERSION)
     expect(manifest.devDependencies['@mnci/eslint-config']).not.toBe('^0.1.0')
+  })
+
+  it('declares @mnci/cli, which the pipeline calls with npx mnci ci, across the major it was written for', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- no @types/semver; see the eslint-config test above
+    const semver = require('semver') as { satisfies: (version: string, range: string) => boolean }
+
+    expect(semver.satisfies('4.0.0', CLI_VERSION)).toBe(true)
+    expect(semver.satisfies('4.99.0', CLI_VERSION)).toBe(true)
+    // A new major is a deliberate edit of the constant, never something npm update does by itself.
+    expect(semver.satisfies('5.0.0', CLI_VERSION)).toBe(false)
+    expect(semver.satisfies('3.9.0', CLI_VERSION)).toBe(false)
+
+    overlayWith(DEFAULT_STACK)
+    const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+    expect(manifest.devDependencies['@mnci/cli']).toBe(CLI_VERSION)
+  })
+
+  it('points @mnci/cli at a local build when MNCI_CLI_SPEC says so, as the e2e needs', () => {
+    process.env.MNCI_CLI_SPEC = '/tmp/mnci-cli.tgz'
+    try {
+      overlayWith(DEFAULT_STACK)
+    } finally {
+      delete process.env.MNCI_CLI_SPEC
+    }
+    const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+
+    expect(manifest.devDependencies['@mnci/cli']).toBe('/tmp/mnci-cli.tgz')
+  })
+
+  it('mnci upgrade puts @mnci/cli into a workspace created before the pipeline called it', () => {
+    writeFileSync(join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'x', devDependencies: { nx: '23.0.0' } }))
+
+    overlayWith(DEFAULT_STACK)
+
+    const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>
+    }
+    expect(manifest.devDependencies['@mnci/cli']).toBe(CLI_VERSION)
+    expect(manifest.devDependencies.nx).toBe('23.0.0')
   })
 
   it("merges overrides rather than replacing a workspace's own", () => {

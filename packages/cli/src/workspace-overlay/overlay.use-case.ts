@@ -963,6 +963,35 @@ export function eslintConfigSpec (): string {
 }
 
 /**
+ * The `@mnci/cli` range generated workspaces depend on, so a pipeline can call `npx mnci ci <phase>`.
+ *
+ * @remarks
+ * A dependency, not an `npx @mnci/cli` fetched on every run: the version is then pinned by the
+ * lockfile, Dependabot bumps it like any other dependency, and the pipeline runs the same commands a
+ * developer runs locally. A range across the major, like {@link ESLINT_CONFIG_VERSION}, so
+ * `npm update` carries improvements in without an `mnci upgrade`; crossing into the next major is a
+ * deliberate edit of this constant, made together with whatever that major changes in the pipeline.
+ */
+export const CLI_VERSION = '>=4.0.0 <5.0.0'
+
+/**
+ * The `@mnci/cli` spec to write into a generated workspace's manifest.
+ *
+ * @remarks
+ * Reads `MNCI_CLI_SPEC` so the e2e suite can point this at a local tarball (`npm pack`'d from
+ * `packages/cli`) instead of the published package, the same escape hatch as
+ * {@link eslintConfigSpec}. {@link CLI_VERSION} is the only value a real `mnci new` ever writes.
+ *
+ * @param None - this function takes no parameters.
+ * @returns The dependency spec (a semver range, or a path/URL when overridden).
+ * @throws Never - reads an environment variable.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function cliSpec (): string {
+  return process.env.MNCI_CLI_SPEC ?? CLI_VERSION
+}
+
+/**
  * The `eslint` version generated workspaces depend on.
  *
  * @remarks
@@ -1323,6 +1352,21 @@ export function eslintToolchainDependencies (nxVersion: string): Record<string, 
     '@nx/eslint-plugin':   nxVersion,
     '@mnci/eslint-config': eslintConfigSpec(),
   }
+}
+
+/**
+ * Everything the overlay adds to a generated workspace's devDependencies that is mnci's own.
+ *
+ * @remarks
+ * The ESLint toolchain, and the CLI the pipeline calls (see {@link CLI_VERSION}).
+ *
+ * @param nxVersion - The `nx` version already in the workspace manifest.
+ * @returns The devDependency entries to merge in.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function mnciToolchainDependencies (nxVersion: string): Record<string, string> {
+  return { ...eslintToolchainDependencies(nxVersion), '@mnci/cli': cliSpec() }
 }
 
 /**
@@ -5075,7 +5119,7 @@ export function applyOverlay (
       ...existingDevDeps,
       ...TS_COMPILER_DEPENDENCIES,
       // The preset pins `nx` itself; the ESLint plugins must match it exactly.
-      ...eslintToolchainDependencies(existingDevDeps?.nx ?? 'latest'),
+      ...mnciToolchainDependencies(existingDevDeps?.nx ?? 'latest'),
     }),
     LOCAL_REGISTRY_SCAFFOLDING.devDependency,
   )
