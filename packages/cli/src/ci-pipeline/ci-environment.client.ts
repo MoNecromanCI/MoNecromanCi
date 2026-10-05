@@ -1,3 +1,5 @@
+import { appendFileSync } from 'node:fs'
+
 /**
  * Where a pipeline phase is running.
  *
@@ -77,6 +79,38 @@ export function isMainPush (environment: NodeJS.ProcessEnv): boolean {
     ['IndividualCI', 'BatchedCI'].includes(environment.BUILD_REASON ?? '') &&
     environment.BUILD_SOURCEBRANCHNAME === 'main'
   )
+}
+
+/**
+ * Puts a directory on `PATH` for the steps that follow this one.
+ *
+ * @remarks
+ * A process cannot change its parent's environment, so each provider has its own channel: GitHub
+ * Actions reads the directories a step appends to the file named by `GITHUB_PATH`; Azure Pipelines
+ * reads the `task.prependpath` logging command from stdout. Run anywhere else (a laptop), there is no
+ * later step to tell, so nothing is done and `log` says so.
+ *
+ * @param host - Where the phase is running.
+ * @param environment - The process environment.
+ * @param directory - The directory to add.
+ * @param log - The logger, which receives the Azure command or the reason nothing was done.
+ * @returns Nothing.
+ * @throws Error when `GITHUB_PATH` names a file that cannot be appended to.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addToPath (host: CiHost, environment: NodeJS.ProcessEnv, directory: string, log: (message: string) => void): void {
+  if (host === 'azure') {
+    log(`##vso[task.prependpath]${directory}`)
+
+    return
+  }
+  if (host === 'github' && environment.GITHUB_PATH) {
+    appendFileSync(environment.GITHUB_PATH, `${directory}
+`)
+
+    return
+  }
+  log('Not running in a CI that reads a PATH file - skipping.')
 }
 
 /**
