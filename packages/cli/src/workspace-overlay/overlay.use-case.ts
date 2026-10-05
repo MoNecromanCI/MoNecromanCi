@@ -546,15 +546,15 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
     releaseTag:           { pattern: '{projectName}@{version}' },
     git:                  { commit: false, tag: true, push: githubReleases },
     version:              {
-      conventionalCommits:            true,
-      fallbackCurrentVersionResolver: 'disk',
+      conventionalCommits:              true,
+      fallbackCurrentVersionResolver:   'disk',
       // Build only what is being released. Without this, @nx/js:lib's generator
       // defaults the pre-version command to building EVERY project, so a broken
       // (or merely slow) app build would block releasing unrelated packages.
       // Set here at `new` time it wins: the generator only fills this in when
       // absent (it spreads the existing release.version over its default). Both
       // globs are listed; `nx run-many` no-ops cleanly when one matches nothing.
-      preVersionCommand:              `npx nx run-many -t build --projects=packages/*,python-packages/*,tag:${VSCODE_EXTENSION_TAG}`,
+      preVersionCommand:                `npx nx run-many -t build --projects=packages/*,python-packages/*,tag:${VSCODE_EXTENSION_TAG}`,
       // The lock file resync is OFF, and the reason is that it cannot succeed
       // on the one release where it would matter.
       //
@@ -577,7 +577,19 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
       //
       // A workspace that DOES want the lock file refreshed should commit the
       // bump too (`git.commit: true`), at which point this can be dropped.
-      versionActionsOptions:          { skipLockFileUpdate: true },
+      versionActionsOptions:            { skipLockFileUpdate: true },
+      // OFF, because under this tag-only model it can only ever refuse a release.
+      //
+      // With it on, nx will not release a package whose internal dependency range
+      // cannot absorb the bump, and `git.commit: false` means the manifests on disk
+      // stay at the scaffold version for ever, so the range is always the one that
+      // was written then. Packages start at 0.0.1 and `npm install <pkg> -w <other>`
+      // writes `^0.0.1`, which on a 0.0.x version matches that version alone: the
+      // first bump to 0.0.2 is outside it, and the release dies in the version phase,
+      // before anything is tagged, with lint, typecheck, test and build all green
+      // (the release runs on the default branch only, so nothing else ever tries it).
+      // Measured on a fresh workspace of two interdependent packages (#345).
+      preserveMatchingDependencyRanges: false,
     },
     changelog: githubReleases
       ? {

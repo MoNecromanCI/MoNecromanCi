@@ -1210,6 +1210,34 @@ function checkNativeBuildConfig (workspaceRoot: string): Finding[] {
 }
 
 /**
+ * Checks that `nx release` is not told to preserve matching dependency ranges.
+ *
+ * @remarks
+ * Under mnci's tag-only releases the manifests on disk stay at the scaffold version, so an internal
+ * dependency range written then (`^0.0.1`) cannot absorb the first bump, and with
+ * `version.preserveMatchingDependencyRanges` on, nx refuses the release in its version phase,
+ * before anything is tagged. Every other check stays green, since the release runs on main alone.
+ * Only a workspace with a `release` block is asked.
+ *
+ * @param nxJson - The parsed `nx.json`.
+ * @returns A failing finding when the setting is on or absent, a passing one when it is off, none without a release block.
+ * @throws Never - pure inspection.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkDependencyRangesNotPreserved (nxJson: { release?: { version?: { preserveMatchingDependencyRanges?: unknown } } }): Finding | undefined {
+  if (nxJson.release === undefined) {
+    return undefined
+  }
+
+  return {
+    check:  'nx release does not preserve matching dependency ranges',
+    ok:     nxJson.release.version?.preserveMatchingDependencyRanges === false,
+    detail: 'release.version.preserveMatchingDependencyRanges is not false, so the first release of interdependent packages fails in the version phase, before anything is tagged',
+    remedy: 'run `mnci upgrade`, or set release.version.preserveMatchingDependencyRanges to false in nx.json',
+  }
+}
+
+/**
  * Collects every doctor finding for a workspace.
  *
  * @remarks
@@ -1236,6 +1264,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
   const nxJson = readJson<{
     plugins?: unknown[]
     mnci?:    { registry?: RegistryConfig; scope?: string }
+    release?: { version?: { preserveMatchingDependencyRanges?: unknown } }
   }>(nxJsonPath)
 
   return [
@@ -1257,6 +1286,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkNativeApps(workspaceRoot),
     ...checkPipelinePhases(workspaceRoot),
     ...checkNativeBuildConfig(workspaceRoot),
+    checkDependencyRangesNotPreserved(nxJson),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 
