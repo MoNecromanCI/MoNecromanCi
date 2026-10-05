@@ -1336,7 +1336,7 @@ already use:
 - **`node-function-app` overlay**: `@azure/functions` is installed for real
   (a plain `@nx/node:application` app has no Azure dependency by default,
   unlike a plugin-generated one), an HTTP-triggered `app.http(...)` sample
-  (v4 programming model) is written as a `src/hello/` slice (`hello.handler.ts` plus a pure `greeting.algorithm.ts` and its spec, behind an `index.ts`), `host.json` is
+  (v4 programming model) is written as a `src/hello/` slice (`hello.handler.ts` adapting the transport, `greet.use-case.ts` and its spec, `greeting.contract.ts`, behind an `index.ts`; `--empty` skips the slice), `host.json` is
   added, and the manifest is repaired — `main: 'main.js'` (the dist shim) and
   `@azure/functions` added to `dependencies` for Azure's deploy-time install
   to find.

@@ -178,7 +178,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app'])
 
 /**
  * Adds a project to the workspace by delegating to the matching Nx generator.
@@ -273,7 +273,7 @@ export async function runAdd (
       break
     }
     case 'node-function-app': {
-      addNodeFunctionApp(workspaceRoot, resolvedName, stack)
+      addNodeFunctionApp(workspaceRoot, resolvedName, stack, options.empty === true)
       break
     }
     case 'npm-lib': {
