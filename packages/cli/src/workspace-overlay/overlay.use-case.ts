@@ -8,6 +8,7 @@ import {
   toJson,
   writeFileEnsured,
 } from '../file-system'
+import { DEFAULT_NATIVE_RUNNERS, readNativeBuildConfig } from '../native-build-config'
 import { mergePipeline, phaseEnd, phaseStart, slotMarkers } from '../pipeline-customization'
 
 /**
@@ -2567,18 +2568,6 @@ export const VERIFY_TARGETS = 'lint,typecheck,test,build'
 export const NATIVE_TARGETS = 'lint,test,build-native,package-native'
 
 /**
- * The Linux prerequisites of a native build, as the one line both providers run.
- *
- * @remarks
- * Only what every cgo build needs: a C compiler and `pkg-config`. mnci cannot know
- * which libraries an app links (a tray icon wants GTK and appindicator, a database
- * driver wants something else), so the `-dev` packages are the workspace's to add,
- * at the marked place in the job. macOS needs nothing here (Xcode's tools ship on the
- * hosted runner) and Windows relies on the runner's bundled MinGW.
- */
-const NATIVE_LINUX_PREREQUISITES = 'sudo apt-get update && sudo apt-get install -y gcc pkg-config'
-
-/**
  * The GitHub Actions `native` job: one leg per OS, for apps that need a C toolchain.
  *
  * @remarks
@@ -2589,11 +2578,12 @@ const NATIVE_LINUX_PREREQUISITES = 'sudo apt-get update && sudo apt-get install 
  *
  * @param npmAuthName - The environment variable `npm ci` reads its registry token from.
  * @param npmAuthValue - The GitHub Actions expression that supplies it.
+ * @param runners - The runner label of each leg.
  * @returns The job, as YAML starting with a newline, to append under `jobs:`.
  * @throws Never - pure string building.
  * @typeParam None - this function has no generic type parameters.
  */
-function githubNativeJob (npmAuthName: string, npmAuthValue: string): string {
+function githubNativeJob (npmAuthName: string, npmAuthValue: string, runners: readonly string[]): string {
   return `
   # Apps that need a C toolchain (mnci add go-app --cgo) cannot be cross-compiled
   # from the job above, so each is linted, tested, built and packaged here, on a
@@ -2605,7 +2595,7 @@ function githubNativeJob (npmAuthName: string, npmAuthValue: string): string {
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [${runners.join(', ')}]
     steps:
       - uses: actions/checkout@${ACTION_VERSIONS['actions/checkout']}
         with:
@@ -2633,15 +2623,9 @@ function githubNativeJob (npmAuthName: string, npmAuthValue: string): string {
       - run: npx mnci ci setup
         name: Set up the Go toolchain
 
-      # A C compiler and pkg-config, which is all mnci can know a cgo app needs.
-      # Add the -dev packages your app links to this line, for example
-      # libgtk-3-dev and libayatana-appindicator3-dev for a system-tray icon.
-      # macOS and Windows runners ship their toolchains.
-      - run: ${NATIVE_LINUX_PREREQUISITES}
-        name: Install native prerequisites (Linux)
-        if: \${{ runner.os == 'Linux' }}
-
-      # Lints, tests, builds and packages the native apps on this OS. On a push to
+      # Lints, tests, builds and packages the native apps on this OS. On a Linux leg it
+      # first installs a C compiler, pkg-config and the packages of mnci.native.linuxPackages
+      # in nx.json (for a tray icon: libgtk-3-dev, libayatana-appindicator3-dev). On a push to
       # main, a releasable native app (--cgo with --release) also gets this OS's zip
       # attached to the GitHub Release the ci job just created, stamped with the
       # tag's version.
@@ -2685,11 +2669,12 @@ function indentYaml (text: string, spaces: number): string {
  *
  * @param document - The single-job pipeline from {@link azurePipelinesYaml}.
  * @param nativeSteps - The native job's steps, written at the top-level steps indentation.
+ * @param runners - The VM image of each leg.
  * @returns The two-job pipeline.
  * @throws Error when the pipeline no longer has its `pool:`, `variables:` and `steps:` blocks in that order.
  * @typeParam None - this function has no generic type parameters.
  */
-function withAzureNativeJob (document: string, nativeSteps: string): string {
+function withAzureNativeJob (document: string, nativeSteps: string, runners: readonly string[]): string {
   const poolAt = document.indexOf('\npool:\n')
   const variablesAt = document.indexOf('\nvariables:\n')
   const stepsAt = document.indexOf('\nsteps:\n')
@@ -2700,8 +2685,9 @@ function withAzureNativeJob (document: string, nativeSteps: string): string {
   const pool = document.slice(poolAt + '\npool:\n'.length, variablesAt).replace(/\n+$/, '')
   const variables = document.slice(variablesAt + 1, stepsAt).replace(/\n+$/, '')
   const steps = document.slice(stepsAt + '\nsteps:\n'.length).replace(/\n+$/, '')
-  const matrix = Object.entries({ windows: 'windows-latest', macos: 'macos-latest', linux: 'ubuntu-latest' })
-    .map(([leg, image]) => `        ${leg}:\n          legName: ${leg}\n          vmImage: ${image}`)
+  const matrix = runners
+    .map(image => ({ leg: image.replaceAll(/\W/g, '_'), image }))
+    .map(({ leg, image }) => `        ${leg}:\n          legName: ${leg}\n          vmImage: ${image}`)
     .join('\n')
 
   return `${head}${variables}
@@ -2904,6 +2890,7 @@ export function azurePipelinesYaml (
   nugetFeedUrl?: string,
   npmAuth: NpmAuthMode = 'pat',
   nativeApps = false,
+  nativeRunners: readonly string[] = DEFAULT_NATIVE_RUNNERS,
 ): string {
   // ENUMERATED CI reasons, never "not a pull request" — the Azure half of the
   // fix #22 made for GitHub, and the more exposed of the two.
@@ -3198,14 +3185,9 @@ ${npmAuthenticateStep}  - script: npm ci
   - script: npx mnci ci setup
     displayName: Set up the Go toolchain
 
-  # A C compiler and pkg-config, which is all mnci can know a cgo app needs. Add the
-  # -dev packages your app links to this line, for example libgtk-3-dev and
-  # libayatana-appindicator3-dev for a system-tray icon. macOS and Windows agents
-  # ship their toolchains.
-  - script: ${NATIVE_LINUX_PREREQUISITES}
-    displayName: Install native prerequisites (Linux)
-    condition: eq(variables['Agent.OS'], 'Linux')
-
+  # On a Linux leg this first installs a C compiler, pkg-config and the packages of
+  # mnci.native.linuxPackages in nx.json (for a tray icon: libgtk-3-dev,
+  # libayatana-appindicator3-dev). macOS and Windows agents ship their toolchains.
   - script: npx mnci ci native
     displayName: Lint, test, build and package the native apps
 
@@ -3216,7 +3198,7 @@ ${npmAuthenticateStep}  - script: npm ci
       ArtifactName: native-$(legName)
 `
 
-  return withAzureNativeJob(document, nativeSteps)
+  return withAzureNativeJob(document, nativeSteps, nativeRunners)
 }
 
 /**
@@ -3269,6 +3251,7 @@ export function githubActionsYaml (
   ci: CiProvider = 'github',
   nugetFeedUrl?: string,
   nativeApps = false,
+  nativeRunners: readonly string[] = DEFAULT_NATIVE_RUNNERS,
 ): string {
   // `== 'push'`, not `!= 'pull_request'`. Identical today — the generated workflow
   // has exactly two triggers, `push` and `pull_request` — but the negative form
@@ -3474,7 +3457,7 @@ ${phaseStart('release', ' '.repeat(6))}
 ${phaseEnd('release', ' '.repeat(6))}
 
 ${slotMarkers('after-release', ' '.repeat(6))}
-${nativeApps ? githubNativeJob(npmAuthName, npmAuthValue) : ''}`
+${nativeApps ? githubNativeJob(npmAuthName, npmAuthValue, nativeRunners) : ''}`
 }
 
 /** Where a `pip` project's manifest can live, relative to the workspace root. */
@@ -4343,6 +4326,7 @@ export function applyOverlay (
   // Decided here, when the file is written: neither provider can skip a whole job
   // on a file's existence, and a workspace with no native app keeps its pipeline as is.
   const nativeApps = hasNativeGoApp(workspaceRoot)
+  const nativeRunners = readNativeBuildConfig(workspaceRoot).config.runners
   if (options.ci === 'azure' || options.ci === 'both') {
     onProgress('azure-pipelines.yml — build, verify, pack and release')
     writePipeline(
@@ -4356,6 +4340,7 @@ export function applyOverlay (
         nugetUrl,
         options.npmAuth,
         nativeApps,
+        nativeRunners,
       ),
     )
   }
@@ -4364,7 +4349,7 @@ export function applyOverlay (
     writePipeline(
       join(workspaceRoot, '.github/workflows/ci.yml'),
       onProgress,
-      githubActionsYaml(options.agent, publishUrl, options.registry.kind, options.ci, nugetUrl, nativeApps),
+      githubActionsYaml(options.agent, publishUrl, options.registry.kind, options.ci, nugetUrl, nativeApps, nativeRunners),
     )
     writeFileEnsured(join(workspaceRoot, '.github/dependabot.yml'), dependabotConfig(workspaceRoot))
   }

@@ -48,6 +48,62 @@ function seedReleaseScript (): void {
   writeFileSync(join(workspaceRoot, 'tools', 'go-app-release.cjs'), '')
 }
 
+const LINUX_LEG: NodeJS.ProcessEnv = { GITHUB_ACTIONS: 'true', RUNNER_OS: 'Linux' }
+
+describe('mnci ci native on a Linux agent (#269)', () => {
+  it('installs the compiler and pkg-config before it builds', () => {
+    const setup = harness()
+
+    expect(native(setup, LINUX_LEG)).toBe(0)
+
+    expect(setup.commands).toEqual(['sudo apt-get update', 'sudo apt-get install -y gcc pkg-config', BUILD])
+  })
+
+  it('adds the packages the workspace lists in nx.json, one argument each', () => {
+    writeFileSync(join(workspaceRoot, 'nx.json'), JSON.stringify({ mnci: { native: { linuxPackages: ['libgtk-3-dev', 'libayatana-appindicator3-dev'] } } }))
+    const setup = harness()
+
+    native(setup, LINUX_LEG)
+
+    expect(setup.commands[1]).toBe('sudo apt-get install -y gcc pkg-config libgtk-3-dev libayatana-appindicator3-dev')
+  })
+
+  it('never passes on a package name that could be read as an option', () => {
+    writeFileSync(join(workspaceRoot, 'nx.json'), JSON.stringify({ mnci: { native: { linuxPackages: ['-o APT::Update::Pre-Invoke::=x', 'libgtk-3-dev'] } } }))
+    const setup = harness()
+
+    native(setup, LINUX_LEG)
+
+    expect(setup.commands[1]).toBe('sudo apt-get install -y gcc pkg-config libgtk-3-dev')
+  })
+
+  it('recognises an Azure Linux agent too', () => {
+    const setup = harness()
+
+    native(setup, { TF_BUILD: 'True', AGENT_OS: 'Linux' })
+
+    expect(setup.commands[0]).toBe('sudo apt-get update')
+  })
+
+  it('does not build when the install failed', () => {
+    const setup = harness({ 'sudo apt-get update': 100 })
+
+    expect(native(setup, LINUX_LEG)).toBe(100)
+
+    expect(setup.commands).toEqual(['sudo apt-get update'])
+  })
+
+  it('leaves the package manager alone off CI, and on macOS and Windows legs', () => {
+    for (const environment of [{}, { RUNNER_OS: 'macOS' }, { RUNNER_OS: 'Windows' }, { AGENT_OS: 'Darwin' }]) {
+      const setup = harness()
+
+      native(setup, environment)
+
+      expect(setup.commands).toEqual([BUILD])
+    }
+  })
+})
+
 describe('mnci ci native (#269)', () => {
   it('lints, tests, builds and packages the native apps, and nothing else, off main', () => {
     const setup = harness()

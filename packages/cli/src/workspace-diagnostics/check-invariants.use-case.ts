@@ -3,6 +3,7 @@ import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
 import { runCapture } from '../nx-workspace'
+import { readNativeBuildConfig } from '../native-build-config'
 import { inspectPipeline } from '../pipeline-customization'
 import {
   ESLINT_MNCI_FILENAME,
@@ -1182,6 +1183,33 @@ function checkPipelinePhases (workspaceRoot: string): Finding[] {
 }
 
 /**
+ * Checks that the `mnci.native` entry of `nx.json`, when there is one, says something usable.
+ *
+ * @remarks
+ * Its values become arguments of `apt-get` and runner labels in a pipeline, so an entry that is
+ * not a valid name is dropped when the pipeline is written and the native job runs without it.
+ * That is silent unless something reports it.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One failing finding when the entry has problems, none otherwise.
+ * @throws Never - an unreadable `nx.json` has no entry to check.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkNativeBuildConfig (workspaceRoot: string): Finding[] {
+  const { problems } = readNativeBuildConfig(workspaceRoot)
+  if (problems.length === 0) {
+    return []
+  }
+
+  return [{
+    check:  'mnci.native in nx.json is valid',
+    ok:     false,
+    detail: problems.join('; '),
+    remedy: 'fix the entry in the mnci block of nx.json, then run `mnci upgrade`',
+  }]
+}
+
+/**
  * Collects every doctor finding for a workspace.
  *
  * @remarks
@@ -1228,6 +1256,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     checkGoWorkInSync(workspaceRoot),
     ...checkNativeApps(workspaceRoot),
     ...checkPipelinePhases(workspaceRoot),
+    ...checkNativeBuildConfig(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 
