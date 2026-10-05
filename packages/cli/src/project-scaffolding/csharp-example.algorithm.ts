@@ -50,3 +50,29 @@ export function csharpConsoleProgram (identity: string): string {
 Console.WriteLine(GreetUseCase.Greet("world").Message);
 `
 }
+
+/**
+ * The example use case's xunit test, for the sibling `<identity>.Tests` project.
+ *
+ * @remarks
+ * `Xunit` is a global using in the `dotnet new xunit` project file, so the file needs
+ * only the namespace of the project under test.
+ *
+ * @param identity - The tested project's PascalCase identity, which is its root namespace.
+ * @returns The C# source.
+ * @throws Never - pure string building.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function csharpExampleTest (identity: string): string {
+  return `using ${identity};
+
+public class GreetUseCaseTests
+{
+    [Fact]
+    public void GreetsAName()
+    {
+        Assert.Equal("Hello, world!", GreetUseCase.Greet("world").Message);
+    }
+}
+`
+}
