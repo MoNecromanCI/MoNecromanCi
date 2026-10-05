@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
+import { goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 import { goModulePrefix, registerNxGoPlugin } from '../go-workspace'
@@ -193,6 +194,33 @@ function setGoModulePath (workspaceRoot: string, projectDir: string): void {
   }
   const rewritten = readFileSync(goModPath, 'utf8').replace(/^module\s+\S+/m, () => `module ${prefix}/${projectDir}`)
   writeFileEnsured(goModPath, rewritten)
+}
+
+/**
+ * Replaces the generator's root `Hello` with the worked example (a contract and a use case).
+ *
+ * @remarks
+ * `@nx-go/nx-go:application` writes a `main.go` holding a `Hello` function and a `main_test.go`
+ * testing it, all in the root `main` package. The example moves the behaviour into a `hello`
+ * package behind `main.go`, which only wires. A no-op when the module path cannot be read.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectDir - The app's directory relative to the workspace (`apps/<name>`).
+ * @returns Nothing.
+ * @throws Propagates any `fs` error writing or removing the files.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function writeGoAppExample (workspaceRoot: string, projectDir: string): void {
+  const goModPath = join(workspaceRoot, projectDir, 'go.mod')
+  const modulePath = fileExists(goModPath) ? /^module\s+(\S+)/m.exec(readFileSync(goModPath, 'utf8'))?.[1] : undefined
+  if (modulePath === undefined) {
+    return
+  }
+  rmSync(join(workspaceRoot, projectDir, 'main_test.go'), { force: true })
+  const example = goAppExampleFiles(modulePath)
+  for (const [relative, contents] of Object.entries(example)) {
+    writeFileEnsured(join(workspaceRoot, projectDir, relative), contents)
+  }
 }
 
 /**
@@ -581,7 +609,7 @@ export function goLibraryIdentifiers (projectName: string): {
  * @typeParam None - this function has no generic type parameters.
  */
 export function reshapeGoLibraryScaffold (projectRoot: string, projectName: string): string {
-  const { packageName, functionName, fileStem } = goLibraryIdentifiers(projectName)
+  const { packageName, fileStem } = goLibraryIdentifiers(projectName)
 
   rmSync(join(projectRoot, `${projectName}.go`), { force: true })
   rmSync(join(projectRoot, `${projectName}_test.go`), { force: true })
@@ -599,24 +627,10 @@ export function reshapeGoLibraryScaffold (projectRoot: string, projectName: stri
         '// the outcome it delivers, and add one package per further outcome.\n' +
         `package ${packageName}\n`,
     ],
-    [
-      join(packageName, `${fileStem}_use_case.go`),
-      `package ${packageName}\n\n` +
-        `// ${functionName} is the generator's sample behaviour, kept so the slice builds and tests.\n` +
-        `func ${functionName}(name string) string {\n` +
-        `\treturn "${functionName} " + name\n` +
-        '}\n',
-    ],
-    [
-      join(packageName, `${fileStem}_use_case_test.go`),
-      `package ${packageName}\n\n` +
-        'import "testing"\n\n' +
-        `func Test${functionName}(t *testing.T) {\n` +
-        `\tif got := ${functionName}("works"); got != "${functionName} works" {\n` +
-        '\t\tt.Fatalf("got %q", got)\n' +
-        '\t}\n' +
-        '}\n',
-    ],
+    // The starter slice: a contract, a use case and its test (see goLibraryExampleFiles).
+    ...Object.entries(goLibraryExampleFiles(packageName, fileStem)).map(
+      ([name, content]): readonly [string, string] => [join(packageName, name), content],
+    ),
   ]
   for (const [relativePath, content] of files) {
     const path = join(projectRoot, relativePath)
@@ -696,6 +710,10 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     workspaceRoot,
   )
   setGoModulePath(workspaceRoot, `apps/${name}`)
+  // `--web` replaces main.go with its own server, so the example would be an orphan there.
+  if (options.web === undefined) {
+    writeGoAppExample(workspaceRoot, `apps/${name}`)
+  }
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     build: goBuildTarget(name),
     test:  goTestTarget(),
@@ -763,6 +781,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
     workspaceRoot,
   )
   setGoModulePath(workspaceRoot, `apps/${name}`)
+  writeGoAppExample(workspaceRoot, `apps/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
     'test':        goTestTarget(),

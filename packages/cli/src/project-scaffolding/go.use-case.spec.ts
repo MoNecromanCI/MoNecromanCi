@@ -98,6 +98,24 @@ describe('runAdd go', () => {
     await expect(runAdd('go-app', 'api', {})).rejects.toThrow(/Go not found.*go\.dev/s)
   })
 
+  it('replaces the generator\'s root Hello with a hello package behind main.go, importing it through the app module path', async () => {
+    seedProjectJson('apps/api', 'api')
+    // What the (mocked) generator writes: a module, and a Hello with its test in package main.
+    writeFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'module api\n\ngo 1.24\n')
+    writeFileSync(join(workspaceRoot, 'apps/api/main.go'), 'package main\n\nfunc Hello() string { return "x" }\n')
+    writeFileSync(join(workspaceRoot, 'apps/api/main_test.go'), 'package main\n')
+
+    await runAdd('go-app', 'api', {})
+
+    const root = join(workspaceRoot, 'apps/api')
+    expect(existsSync(join(root, 'main_test.go'))).toBe(false)
+    expect(existsSync(join(root, 'hello/greet_use_case.go'))).toBe(true)
+    expect(existsSync(join(root, 'hello/greeting_contract.go'))).toBe(true)
+    expect(existsSync(join(root, 'hello/greet_use_case_test.go'))).toBe(true)
+    const modulePath = /^module\s+(\S+)/m.exec(readFileSync(join(root, 'go.mod'), 'utf8'))?.[1] ?? ''
+    expect(readFileSync(join(root, 'main.go'), 'utf8')).toContain(`"${modulePath}/hello"`)
+  })
+
   it('bootstraps a go.work workspace via init, without convert-to-one-mod, on the first add', async () => {
     seedProjectJson('apps/api', 'api')
 
@@ -670,14 +688,16 @@ describe('runAdd go', () => {
     expect(readFileSync(join(root, 'doc.go'), 'utf8')).toMatch(/^package markdownworkspace$/m)
     expect(readdirSync(join(root, 'markdownworkspace')).toSorted((a, b) => a.localeCompare(b))).toEqual([
       'doc.go',
+      'greeting_contract.go',
       'markdown_workspace_use_case_test.go',
       'markdown_workspace_use_case.go',
     ])
     const useCase = readFileSync(join(root, 'markdownworkspace/markdown_workspace_use_case.go'), 'utf8')
     expect(useCase).toMatch(/^package markdownworkspace$/m)
-    expect(useCase).toContain('func MarkdownWorkspace(name string) string {')
+    expect(useCase).toContain('func Greet(name string) Greeting {')
+    expect(readFileSync(join(root, 'markdownworkspace/greeting_contract.go'), 'utf8')).toContain('type Greeting struct {')
     expect(readFileSync(join(root, 'markdownworkspace/markdown_workspace_use_case_test.go'), 'utf8')).toContain(
-      'func TestMarkdownWorkspace(t *testing.T) {',
+      'func TestGreet(t *testing.T) {',
     )
   })
 
