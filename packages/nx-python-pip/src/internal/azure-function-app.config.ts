@@ -4,7 +4,7 @@
  * @remarks
  * The Python v2 programming model: a module-level `func.FunctionApp()` with
  * decorated routes. The handler is thin — the testable logic lives in the
- * module's `greeting_algorithm.py` (imported here), so pytest needs no `azure-functions`
+ * module's `greet_use_case.py` (imported here), so pytest needs no `azure-functions`
  * install. Anonymous auth keeps the sample runnable locally with `func start`.
  *
  * @param moduleDirectory - The app's Python module directory (import root).
@@ -15,7 +15,7 @@
 export function pythonFunctionAppMain (moduleDirectory: string): string {
   return `import azure.functions as func
 
-from ${moduleDirectory}.greeting_algorithm import build_greeting
+from ${moduleDirectory}.greet_use_case import greet
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -23,7 +23,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 @app.route(route="hello")
 def hello(req: func.HttpRequest) -> func.HttpResponse:
     name = req.params.get("name", "world")
-    return func.HttpResponse(build_greeting(name))
+    return func.HttpResponse(greet(name).message)
 `
 }
 
@@ -54,16 +54,27 @@ export const PYTHON_FUNCTION_APP_REQUIREMENTS = `azure-functions
 `
 
 /**
- * A sample pure helper written into a Python function app's module.
+ * The sample use case written into a generated Python function app.
  *
  * @remarks
- * Gives the app a genuinely testable unit (the HTTP handler would need the
- * Functions runtime), so pytest has a real passing test out of the box.
+ * One outcome, free of the Functions runtime, so pytest needs no `azure-functions`.
+ * `function_app.py` (the handler, a name Azure mandates) decodes the request, calls this
+ * and shapes the response.
+ *
+ * @param moduleDirectory - The app's Python module directory (import root).
+ * @returns The `<module>/greet_use_case.py` contents.
+ * @throws Never - pure string build.
+ * @typeParam None - this function has no generic type parameters.
  */
-export const PYTHON_FUNCTION_APP_GREETING = `def build_greeting(name: str) -> str:
-    """Build the greeting returned by the sample HTTP function."""
-    return "Hello, " + name + "!"
+export function pythonFunctionAppGreetUseCase (moduleDirectory: string): string {
+  return `from ${moduleDirectory}.greeting_contract import Greeting
+
+
+def greet(name: str) -> Greeting:
+    """Greet someone by name."""
+    return Greeting(message="Hello, " + name + "!")
 `
+}
 
 /**
  * The sample pytest proving the Python function app's test target runs.
@@ -73,15 +84,15 @@ export const PYTHON_FUNCTION_APP_GREETING = `def build_greeting(name: str) -> st
  * plain `pytest` — no install step needed.
  *
  * @param moduleDirectory - The app's Python module directory (import root).
- * @returns The `tests/test_greeting_algorithm.py` contents.
+ * @returns The `tests/test_greet_use_case.py` contents.
  * @throws Never - pure string build.
  * @typeParam None - this function has no generic type parameters.
  */
 export function pythonFunctionAppGreetingTest (moduleDirectory: string): string {
-  return `from ${moduleDirectory}.greeting_algorithm import build_greeting
+  return `from ${moduleDirectory}.greet_use_case import greet
 
 
-def test_build_greeting() -> None:
-    assert build_greeting("world") == "Hello, world!"
+def test_greet() -> None:
+    assert greet("world").message == "Hello, world!"
 `
 }

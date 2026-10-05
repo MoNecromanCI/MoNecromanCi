@@ -20,12 +20,12 @@ describe('functionAppGenerator', () => {
     expect(tree.exists('apps/api/pyproject.toml')).toBe(false)
     const functionApp = tree.read('apps/api/function_app.py', 'utf8')
     expect(functionApp).toContain('func.FunctionApp(')
-    expect(functionApp).toContain('from api.greeting_algorithm import build_greeting')
+    expect(functionApp).toContain('from api.greet_use_case import greet')
     expect(tree.read('apps/api/host.json', 'utf8')).toContain('extensionBundle')
     expect(tree.read('apps/api/requirements.txt', 'utf8')).toContain('azure-functions')
-    expect(tree.read('apps/api/api/greeting_algorithm.py', 'utf8')).toContain('def build_greeting')
-    expect(tree.read('apps/api/tests/test_greeting_algorithm.py', 'utf8')).toContain(
-      'from api.greeting_algorithm import build_greeting',
+    expect(tree.read('apps/api/api/greet_use_case.py', 'utf8')).toContain('def greet')
+    expect(tree.read('apps/api/tests/test_greet_use_case.py', 'utf8')).toContain(
+      'from api.greet_use_case import greet',
     )
   })
 })
