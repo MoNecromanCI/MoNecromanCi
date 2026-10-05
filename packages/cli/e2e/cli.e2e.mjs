@@ -2506,11 +2506,11 @@ section('go', ['alt stack'], () => {
     // no `replace` directive — go.work resolves the sibling module locally by its path.
     writeFileSync(
       path.join(altWorkspace, 'apps/goapi/main.go'),
-      `package main\n\nimport (\n\t"fmt"\n\n\t"${goModule}/libs/goutil/goutil"\n)\n\n// Hello delegates across a project boundary, resolved locally through go.work.\nfunc Hello(name string) string {\n\treturn goutil.Goutil(name)\n}\n\nfunc main() {\n\tfmt.Println(Hello("goapi"))\n}\n`,
+      `package main\n\nimport (\n\t"fmt"\n\n\t"${goModule}/libs/goutil/goutil"\n)\n\n// Hello delegates across a project boundary, resolved locally through go.work.\nfunc Hello(name string) string {\n\treturn goutil.Greet(name).Message\n}\n\nfunc main() {\n\tfmt.Println(Hello("goapi"))\n}\n`,
     )
     writeFileSync(
       path.join(altWorkspace, 'apps/goapi/main_test.go'),
-      'package main\n\nimport "testing"\n\nfunc TestHelloUsesTheInternalLib(t *testing.T) {\n\tif got := Hello("x"); got != "Goutil x" {\n\t\tt.Fatalf("got %q", got)\n\t}\n}\n',
+      'package main\n\nimport "testing"\n\nfunc TestHelloUsesTheInternalLib(t *testing.T) {\n\tif got := Hello("x"); got != "Hello, x!" {\n\t\tt.Fatalf("got %q", got)\n\t}\n}\n',
     )
 
     const goVerify = tryRunCapture(
@@ -2548,7 +2548,7 @@ section('go', ['alt stack'], () => {
     mkdirSync(bridge, { recursive: true })
     writeFileSync(
       path.join(bridge, 'bridge_use_case.go'),
-      `package bridge\n\nimport "${goModule}/packages/gocore/gocore"\n\n// Bridge routes goutil to gocore so the project graph has a second hop.\nfunc Bridge(name string) string {\n\treturn gocore.Gocore(name)\n}\n`,
+      `package bridge\n\nimport "${goModule}/packages/gocore/gocore"\n\n// Bridge routes goutil to gocore so the project graph has a second hop.\nfunc Bridge(name string) string {\n\treturn gocore.Greet(name).Message\n}\n`,
     )
 
     /** Projects named by a `nx show projects` result (a JSON array when piped). */
