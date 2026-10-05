@@ -20,6 +20,7 @@
         "description": "accept defaults for anything not passed as a flag",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -28,6 +29,7 @@
         "description": "npm scope for publishable packages (e.g. @demo)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -36,6 +38,7 @@
         "description": "package registry",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false,
         "choices": [
           "azure-artifacts",
@@ -48,6 +51,7 @@
         "description": "Azure DevOps organization",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -56,6 +60,7 @@
         "description": "Azure DevOps project",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -64,6 +69,7 @@
         "description": "Azure Artifacts feed",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -72,6 +78,7 @@
         "description": "CI build agent: a vmImage (e.g. ubuntu-latest) or self-hosted pool name",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -80,6 +87,7 @@
         "description": "Azure DevOps variable group holding the npm PAT",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -88,6 +96,7 @@
         "description": "how npm authenticates to an Azure Artifacts feed: pat (default) | build-identity (npmAuthenticate@0, no PAT; --ci azure only)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -96,6 +105,7 @@
         "description": "CI provider",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false,
         "choices": [
           "azure",
@@ -109,6 +119,7 @@
         "description": "unit-test runner: jest | vitest",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -117,6 +128,7 @@
         "description": "connect the workspace to Nx Cloud (remote caching + CI insights)",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -125,6 +137,7 @@
         "description": "bootstrap into an existing directory (a fresh clone holding only .git); the directory name is the workspace name unless one is given",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -142,6 +155,7 @@
         "description": "npm scope for publishable packages (overrides the persisted value)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -150,6 +164,7 @@
         "description": "azure-artifacts | npm (overrides the persisted value)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -158,6 +173,7 @@
         "description": "Azure DevOps organization",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -166,6 +182,7 @@
         "description": "Azure DevOps project",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -174,6 +191,7 @@
         "description": "Azure Artifacts feed",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -182,6 +200,7 @@
         "description": "CI build agent (overrides the persisted value)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -190,6 +209,7 @@
         "description": "Azure DevOps variable group holding the npm PAT",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -198,6 +218,7 @@
         "description": "how npm authenticates to an Azure Artifacts feed: pat (default) | build-identity (npmAuthenticate@0, no PAT; --ci azure only)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -206,6 +227,7 @@
         "description": "CI provider: azure | github | both (overrides the persisted value)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -214,6 +236,7 @@
         "description": "unit-test runner: jest | vitest (overrides the persisted value)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -231,6 +254,7 @@
         "description": "print the findings as one JSON document, each with its remedy",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -268,6 +292,7 @@
         "description": "report drift and exit non-zero without writing anything",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -276,6 +301,7 @@
         "description": "restrict to one ecosystem: npm | pip | pub | go",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -293,6 +319,7 @@
         "description": "report only; never prompt and never write (the default when piped)",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -302,6 +329,7 @@
         "description": "select every available update without prompting",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -310,6 +338,7 @@
         "description": "restrict to one ecosystem: npm | pip | pub | go",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -318,6 +347,7 @@
         "description": "update the manifests but skip the reinstall step",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": true
       }
     ]
@@ -340,11 +370,12 @@
     "options": [
       {
         "name": "workspace",
-        "flags": "-w, --workspace <project...>",
+        "flags": "-w, --workspace <project>",
         "short": "-w",
-        "description": "target project, by directory (apps/foo) or basename (foo); repeatable",
+        "description": "target project, by directory (apps/foo) or basename (foo); give the flag again for each project",
         "takesValue": "required",
-        "variadic": true,
+        "variadic": false,
+        "repeatable": true,
         "negated": false
       },
       {
@@ -354,6 +385,7 @@
         "description": "add as a development dependency, where the ecosystem distinguishes one",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -410,15 +442,24 @@
         "description": "npm scope for a publishable lib (defaults to @<workspace name>)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
         "name": "framework",
         "flags": "--framework <framework>",
-        "description": "node-app only: express | fastify | koa | nest | none (default: none)",
+        "description": "node-app only: the web framework (default: none)",
         "takesValue": "required",
         "variadic": false,
-        "negated": false
+        "repeatable": false,
+        "negated": false,
+        "choices": [
+          "express",
+          "fastify",
+          "koa",
+          "nest",
+          "none"
+        ]
       },
       {
         "name": "empty",
@@ -426,6 +467,7 @@
         "description": "npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -434,6 +476,7 @@
         "description": "python-vendor only: the internal Python library (libs/<name>) to vendor into <name>",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -442,6 +485,7 @@
         "description": "vscode-extension only: the Marketplace publisher id (defaults to the workspace scope without @)",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -450,6 +494,7 @@
         "description": "vscode-extension only: a go-app whose six-platform build ships in the extension, one .vsix per platform",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -458,6 +503,7 @@
         "description": "go-app only: release the app. Versioned from its git tag, its six-platform zips attached to its GitHub Release",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -466,6 +512,7 @@
         "description": "go-app only: the app needs a C toolchain (a tray icon, a native GUI, a cgo driver), so CI builds it on a runner of each OS instead of cross-compiling",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       },
       {
@@ -474,6 +521,7 @@
         "description": "go-app only: embed and serve this React app (apps/<react-app>, added first): built before the Go app, staged for go:embed, with a dev target that runs both",
         "takesValue": "required",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -491,6 +539,7 @@
         "description": "print the catalog as one JSON document",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -508,6 +557,7 @@
         "description": "print the kinds as one JSON document",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -525,6 +575,7 @@
         "description": "print the projects as one JSON document",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
@@ -542,6 +593,7 @@
         "description": "print the report as one JSON document",
         "takesValue": "none",
         "variadic": false,
+        "repeatable": false,
         "negated": false
       }
     ]
