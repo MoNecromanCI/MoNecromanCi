@@ -464,8 +464,11 @@ kinds (`reshapeReactScaffold`), React apps (`reshapeReactAppScaffold`), Go libra
 `node-function-app` (a `src/hello/` slice written directly). The Python plugin's
 templates follow the language mapping: the sample lives in `<module>_use_case.py`
 behind an `__init__.py` barrel with `__all__`, and the function app's helper is
-`greeting_algorithm.py`. `node-app`, `vscode-extension`, `npm-lib` and `internal-lib`
-already lint clean (measured on generated projects). Not enforced anywhere yet, so
+`greeting_algorithm.py`. `vscode-extension`, `npm-lib` and `internal-lib` already lint clean (measured on
+generated projects). `node-app` gets a `hello` slice (use case + contract + spec, and a
+handler for Express and Koa) from `nodeAppExampleFiles`; Fastify and Nest keep the
+layout their framework mandates (autoload `routes/`, `*.controller.ts`), which the
+rules exempt as tool-mandated names. Not enforced anywhere yet, so
 not reshaped: C#, Flutter and Go apps (no slice lint for them — #232). Still open on
 #290: the worked example for the other families, and `--empty` for the kinds other
 than the four TypeScript libraries.

@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
+import { nodeAppExampleFiles } from './node-app-example.algorithm'
 import { logger } from '../terminal'
 import {
   addNxTargets,
@@ -230,6 +231,15 @@ export function addNodeApp (
   framework: NodeFramework = 'none',
 ): void {
   runNodeApp(workspaceRoot, name, stack, framework)
+  // A `hello` slice (use case + contract + spec, and a handler where the framework has
+  // a transport) replaces the generator's one-file sample. Fastify and Nest keep the
+  // layout their framework mandates.
+  const example = nodeAppExampleFiles(framework)
+  if (example !== null) {
+    for (const [relative, contents] of Object.entries(example)) {
+      writeFileEnsured(join(workspaceRoot, 'apps', name, 'src', relative), contents)
+    }
+  }
   ensureAdmZip(workspaceRoot)
   addNxTargets(join(workspaceRoot, 'apps', name, 'package.json'), {
     package: nodeAppPackageTarget(name),
