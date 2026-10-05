@@ -6,7 +6,9 @@
 
 An opinionated one-command Nx monorepo, with automatic commit-message-driven
 versioning, built as a **thin CLI over what Nx already ships** — no
-hand-rolled templates, shared config packages, or custom CI engines.
+hand-rolled templates and no shared config packages. The pipeline is a few lines of YAML
+that call `npx mnci ci <phase>`, so the same commands run on a laptop and in CI; the
+opinion lives in the CLI, not in the pipeline.
 
 This repository is itself an Nx monorepo, built and managed by the CLI it
 ships — `mnci new`/`mnci add` scaffolded this workspace's own root and both

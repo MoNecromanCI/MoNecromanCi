@@ -17,7 +17,7 @@ import type { CiDependencies } from './phase.contract'
  *
  * After a push to main, this OS's zip is attached to the GitHub Release the release phase just
  * created, by `tools/go-app-release.cjs assets --native`. A workspace with no releasable native
- * app has no such file and skips that; a pull request, a branch and a local run never attach.
+ * app has no such file and skips that; a pull request, a branch, an Azure run and a local run never attach.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param dependencies - The environment, the process runner and the logger; real ones by default.
@@ -50,7 +50,8 @@ export function runNative (workspaceRoot: string, dependencies: Partial<CiDepend
   if (built !== 0) {
     return built
   }
-  if (!isMainPush(environment) || !existsSync(join(workspaceRoot, 'tools', 'go-app-release.cjs'))) {
+  // Only GitHub has a Release to attach to: an Azure leg publishes its zips as a pipeline artifact and stops.
+  if (host !== 'github' || !isMainPush(environment) || !existsSync(join(workspaceRoot, 'tools', 'go-app-release.cjs'))) {
     return 0
   }
 
