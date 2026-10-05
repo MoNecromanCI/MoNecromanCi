@@ -9,6 +9,7 @@
  * developer's machine as in CI.
  */
 
+import { runNative } from './native.use-case'
 import { runPack } from './pack.use-case'
 import { runRelease } from './release.use-case'
 import { runVerify } from './verify.use-case'
@@ -20,9 +21,9 @@ import type { CiDependencies } from './phase.contract'
  * @remarks
  * More arrive as their guards are ported from the generated pipelines. The order is the one
  * the pipeline runs them in: `verify` gates every run; `pack` builds, on main, the per-app
- * artifacts a release then publishes; `release` versions, tags and publishes.
+ * artifacts a release then publishes; `release` versions, tags and publishes; `native` builds and packages the apps that need a C toolchain, on each OS.
  */
-export const CI_PHASES = ['verify', 'pack', 'release'] as const
+export const CI_PHASES = ['verify', 'pack', 'release', 'native'] as const
 
 /**
  * One of {@link CI_PHASES}.
@@ -58,6 +59,9 @@ export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies:
     }
     case 'release': {
       return runRelease(workspaceRoot, dependencies)
+    }
+    case 'native': {
+      return runNative(workspaceRoot, dependencies)
     }
   }
 }

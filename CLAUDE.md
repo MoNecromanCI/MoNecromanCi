@@ -572,6 +572,7 @@ Both providers (`azure-pipelines.yml`, `.github/workflows/ci.yml`) share
 byte-identical guard logic (`workspace-overlay/overlay.use-case.ts`, asserted by an anti-drift test), so a fix
 to one is mirrored in the other by construction:
 
+- **`mnci ci <phase>` (#269)**: the pipeline's inline `node -e` guards, ported to tested TypeScript in `ci-pipeline/` so a laptop runs what CI runs. Phases: `verify` (sync check, then lint/typecheck/test/build, affected-only on a PR), `pack`, `release` (preflights, `nx release`, then the Go zips and the tag push) and `native` (the cgo apps on this OS, attaching its zip after a push to main). **The generated YAML still runs the inline guards**: switching it to call the phases waits for the README wording ("no custom CI engine") to be approved, and several steps have no phase yet (the toolchain installs for Python/Go/Flutter, `npm audit`, `pip-audit`). `publish` stays inside `release`: `nx release` versions, tags and publishes in one command, and splitting it would change what a failed publish leaves behind. `isMainPush` is how a phase knows it may act on the release side.
 - **`AFFECTED_OR_ALL_GUARD`**: verifies affected projects on a PR (via
   `git merge-base`, not `nrwl/nx-set-shas`), everything otherwise. Every fallback
   path (missing ref, unresolvable merge-base, non-PR run) verifies **everything**,

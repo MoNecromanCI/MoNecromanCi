@@ -1,4 +1,4 @@
-import { detectCiHost, groupEnd, groupStart, pullRequestTarget } from './ci-environment.client'
+import { detectCiHost, groupEnd, groupStart, isMainPush, pullRequestTarget } from './ci-environment.client'
 
 describe('detectCiHost', () => {
   it('recognises GitHub Actions by the variable it sets on every run', () => {
@@ -57,5 +57,30 @@ describe('log groups', () => {
     expect(groupStart('local', 'Verify')).toContain('Verify')
     expect(groupStart('local', 'Verify')).not.toContain('::')
     expect(groupEnd('local')).toBeUndefined()
+  })
+})
+
+describe('isMainPush', () => {
+  it('is true for a GitHub push to main, and nothing else on GitHub', () => {
+    const github = { GITHUB_ACTIONS: 'true' }
+
+    expect(isMainPush({ ...github, GITHUB_EVENT_NAME: 'push', GITHUB_REF_NAME: 'main' })).toBe(true)
+    expect(isMainPush({ ...github, GITHUB_EVENT_NAME: 'push', GITHUB_REF_NAME: 'feat/x' })).toBe(false)
+    expect(isMainPush({ ...github, GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF_NAME: 'main' })).toBe(false)
+    expect(isMainPush({ ...github, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_NAME: 'main' })).toBe(false)
+  })
+
+  it('is true for an Azure CI build of main, and not for a pull request or another branch', () => {
+    const azure = { TF_BUILD: 'True', BUILD_SOURCEBRANCHNAME: 'main' }
+
+    expect(isMainPush({ ...azure, BUILD_REASON: 'IndividualCI' })).toBe(true)
+    expect(isMainPush({ ...azure, BUILD_REASON: 'BatchedCI' })).toBe(true)
+    expect(isMainPush({ ...azure, BUILD_REASON: 'PullRequest' })).toBe(false)
+    expect(isMainPush({ TF_BUILD: 'True', BUILD_REASON: 'IndividualCI', BUILD_SOURCEBRANCHNAME: 'dev' })).toBe(false)
+  })
+
+  it('is never true on a developer machine', () => {
+    expect(isMainPush({})).toBe(false)
+    expect(isMainPush({ GITHUB_EVENT_NAME: 'push', GITHUB_REF_NAME: 'main' })).toBe(false)
   })
 })

@@ -263,7 +263,7 @@
     "name": "ci",
     "aliases": [],
     "group": "pipeline",
-    "description": "Run a phase of the CI pipeline here, the same way CI runs it: `verify` is the sync check and then every project (or, in a pull request, the affected ones) through lint, typecheck, test and build. Exits non-zero when it fails",
+    "description": "Run a phase of the CI pipeline here, the same way CI runs it: `verify` is the sync check and then every project (or, in a pull request, the affected ones) through lint, typecheck, test and build. `pack` builds the per-app artifacts, `release` versions, tags and publishes, and `native` builds the apps that need a C toolchain on this OS. Exits non-zero when it fails",
     "arguments": [
       {
         "name": "phase",
@@ -273,7 +273,8 @@
         "choices": [
           "verify",
           "pack",
-          "release"
+          "release",
+          "native"
         ]
       }
     ],
