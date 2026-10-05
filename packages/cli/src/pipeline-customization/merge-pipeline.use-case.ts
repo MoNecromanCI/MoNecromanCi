@@ -1,3 +1,4 @@
+import { migrateLegacyPipeline } from './migrate-legacy-pipeline.use-case'
 import { commentOutPhases, extractSlots, injectSlots, switchedOffPhases } from './pipeline-markers.algorithm'
 
 /**
@@ -24,8 +25,9 @@ export interface MergedPipeline {
  * block the team removed or commented out stays commented out. Everything outside the slots is
  * mnci's and is regenerated.
  *
- * A file with no markers is one written before they existed. It is regenerated whole and the user
- * is told, since edits made outside the slots cannot be carried over.
+ * A file with no markers is one written before they existed. It is regenerated, and the steps in it that
+ * mnci did not write are moved into the slots (see `migrateLegacyPipeline`); what cannot be carried
+ * over is reported.
  *
  * @param existing - The file being replaced, or `undefined` when there is none.
  * @param generated - The freshly generated file.
@@ -39,10 +41,7 @@ export function mergePipeline (existing: string | undefined, generated: string):
   }
   const normalized = existing.replaceAll('\r\n', '\n')
   if (!/^\s*# mnci:(?:slot|phase) /m.test(normalized)) {
-    return {
-      text:  generated,
-      notes: ['This pipeline was written before mnci kept user slots, so it was regenerated whole. Edits outside the generated steps are in git history: re-apply them inside the new "# mnci:slot" blocks.'],
-    }
+    return migrateLegacyPipeline(normalized, generated)
   }
   const off = switchedOffPhases(normalized)
   const text = commentOutPhases(injectSlots(generated, extractSlots(normalized)), off)
