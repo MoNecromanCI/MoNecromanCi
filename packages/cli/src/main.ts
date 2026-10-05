@@ -115,7 +115,7 @@ export function buildProgram (cliVersion: string): Command {
     .command('ci')
     .addArgument(new Argument('<phase>', 'which phase of the pipeline to run').choices(CI_PHASES))
     .description(
-      'Run a phase of the CI pipeline here, the same way CI runs it: `verify` is the sync check and then every project (or, in a pull request, the affected ones) through lint, typecheck, test and build. `pack` builds the per-app artifacts, `release` versions, tags and publishes, and `native` builds the apps that need a C toolchain on this OS. Exits non-zero when it fails',
+      'Run a phase of the CI pipeline here, the same way CI runs it: `verify` is the sync check and then every project (or, in a pull request, the affected ones) through lint, typecheck, test and build. `setup` installs the Python, Go and Flutter toolchains the workspace needs, `audit` fails on a known advisory that has a fix, `pack` builds the per-app artifacts, `release` versions, tags and publishes, and `native` builds the apps that need a C toolchain on this OS. Exits non-zero when it fails',
     )
     .action(async (phase: CiPhase) => {
       process.exitCode = await runCiPhase(phase, process.cwd())

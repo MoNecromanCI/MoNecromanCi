@@ -38,4 +38,10 @@ export interface CiDependencies {
    * with a short timeout. A phase that reads nothing from the network ignores it.
    */
   fetchStatus: (url: string) => Promise<number>
+  /**
+   * Downloads a file, for `setup` fetching a checksum-verified tool release. Injected so that is
+   * testable without a real download; defaults to a real `fetch` with a 60 second timeout, and
+   * rejects on a non-2xx status.
+   */
+  fetchBytes:  (url: string) => Promise<Buffer>
 }
