@@ -487,6 +487,19 @@ process.env.MNCI_ESLINT_CONFIG_SPEC = path.join(
   eslintConfigPackOutput.split('\n').at(-1),
 )
 
+console.log('\n▸ packing @mnci/cli for the e2e to install locally')
+// The generated pipelines call `npx mnci ci <phase>`, so the overlay adds @mnci/cli to every workspace; it is
+// not published at this commit's version, so the suite installs the build it is testing, as it does the
+// eslint config above. The CLI is already built (the suite runs it from dist).
+const cliDirectory = path.resolve(SCRIPT_DIR, '..')
+const cliPackDirectory = path.join(temporary, 'cli-pack')
+mkdirSync(cliPackDirectory, { recursive: true })
+const cliPackOutput = execSync(
+  `npm pack --silent --pack-destination "${cliPackDirectory}"`,
+  { cwd: cliDirectory, encoding: 'utf8' },
+).trim()
+process.env.MNCI_CLI_SPEC = path.join(cliPackDirectory, cliPackOutput.split('\n').at(-1))
+
 section('js stack', [], () => {
   /* ---------------------------------------------------------------------------
    * new

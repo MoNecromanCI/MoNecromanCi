@@ -381,4 +381,5 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   runFormatter(workspaceRoot)
 
   logger.success('Done. Review the changes with `git diff` before committing.')
+  logger.info('Run `npm install` and commit package-lock.json too: the overlay may have added or moved a dependency, and CI installs with `npm ci`, which refuses a stale lockfile.')
 }
