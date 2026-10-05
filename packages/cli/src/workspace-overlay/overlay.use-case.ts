@@ -2871,6 +2871,14 @@ const AFFECTED_OR_ALL_GUARD = affectedOrAllGuard()
 const AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE = affectedOrAllGuard(`--exclude=tag:${GO_CGO_TAG}`)
 
 /**
+ * The Nx targets a native job runs on each OS: lint, test, then build and package for that host.
+ *
+ * @remarks
+ * Shared by the generated pipelines and `mnci ci native`, so the two cannot name different targets.
+ */
+export const NATIVE_TARGETS = 'lint,test,build-native,package-native'
+
+/**
  * What a native job runs on each OS: lint, test, then build and package for that host.
  *
  * @remarks
@@ -2878,7 +2886,7 @@ const AFFECTED_OR_ALL_GUARD_WITHOUT_NATIVE = affectedOrAllGuard(`--exclude=tag:$
  * apps are selected by {@link GO_CGO_TAG}, the same tag the single-agent verify
  * leaves out, so every cgo app is built by exactly one of the two jobs' steps.
  */
-const NATIVE_BUILD_COMMAND = `npx nx run-many -t lint,test,build-native,package-native --projects=tag:${GO_CGO_TAG}`
+const NATIVE_BUILD_COMMAND = `npx nx run-many -t ${NATIVE_TARGETS} --projects=tag:${GO_CGO_TAG}`
 
 /**
  * The Linux prerequisites of a native build, as the one line both providers run.

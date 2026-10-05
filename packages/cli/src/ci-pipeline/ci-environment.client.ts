@@ -54,6 +54,32 @@ export function pullRequestTarget (environment: NodeJS.ProcessEnv): string | und
 }
 
 /**
+ * Whether this run is a push to main, the only place a release-side action may act.
+ *
+ * @remarks
+ * The generated pipelines gate those steps with `github.event_name == 'push' && github.ref_name ==
+ * 'main'` (Azure: `Build.Reason` is `IndividualCI` or `BatchedCI`, on `main`). A phase that must
+ * not act elsewhere reads the same facts from the environment. A local run is never a push to main.
+ *
+ * @param environment - The process environment.
+ * @returns `true` on a push to main on either provider.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function isMainPush (environment: NodeJS.ProcessEnv): boolean {
+  if (environment.GITHUB_ACTIONS === 'true') {
+    return environment.GITHUB_EVENT_NAME === 'push' && environment.GITHUB_REF_NAME === 'main'
+  }
+
+  return (
+    environment.TF_BUILD !== undefined &&
+    environment.TF_BUILD !== '' &&
+    ['IndividualCI', 'BatchedCI'].includes(environment.BUILD_REASON ?? '') &&
+    environment.BUILD_SOURCEBRANCHNAME === 'main'
+  )
+}
+
+/**
  * The line that opens a collapsible group in the provider's log.
  *
  * @remarks
