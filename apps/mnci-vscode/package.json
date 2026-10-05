@@ -1,0 +1,266 @@
+{
+  "name": "mnci-vscode",
+  "version": "0.0.1",
+  "private": true,
+  "displayName": "MNCI",
+  "publisher": "monecromanci",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/main.js",
+  "activationEvents": [
+    "workspaceContains:nx.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "mnci.new",
+        "title": "New workspace",
+        "category": "MNCI",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "mnci.upgrade",
+        "title": "Upgrade this workspace",
+        "category": "MNCI",
+        "icon": "$(versions)"
+      },
+      {
+        "command": "mnci.doctor",
+        "title": "Doctor: check this workspace",
+        "category": "MNCI",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "mnci.add",
+        "title": "Add project",
+        "category": "MNCI",
+        "icon": "$(add)"
+      },
+      {
+        "command": "mnci.install",
+        "title": "Install dependencies",
+        "category": "MNCI",
+        "icon": "$(package)"
+      },
+      {
+        "command": "mnci.sync",
+        "title": "Sync dependency versions",
+        "category": "MNCI",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "mnci.up",
+        "title": "Update dependencies",
+        "category": "MNCI",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "mnci.ci",
+        "title": "Run a CI phase",
+        "category": "MNCI",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "mnci.refresh",
+        "title": "Refresh",
+        "category": "MNCI",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mnci.runTarget",
+        "title": "Run a project target",
+        "category": "MNCI",
+        "icon": "$(play)"
+      },
+      {
+        "command": "mnci.updateCli",
+        "title": "Update mnci",
+        "category": "MNCI",
+        "icon": "$(cloud-download)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mnci",
+          "title": "MNCI Console",
+          "icon": "images/activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "mnci": [
+        {
+          "id": "mnci.commands",
+          "name": "Commands"
+        },
+        {
+          "id": "mnci.projects",
+          "name": "Projects"
+        },
+        {
+          "id": "mnci.update",
+          "name": "Update"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "mnci.commands",
+        "contents": "No mnci workspace is open in this folder.\n[New workspace](command:mnci.new)\nOpen a folder that holds one to see its commands and projects.",
+        "when": "!mnci.isWorkspace"
+      },
+      {
+        "view": "mnci.projects",
+        "contents": "No mnci workspace is open in this folder.\n[New workspace](command:mnci.new)",
+        "when": "!mnci.isWorkspace"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "mnci.refresh",
+          "when": "view == mnci.commands",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mnci.refresh",
+          "when": "view == mnci.projects",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mnci.add",
+          "when": "view == mnci.projects",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mnci.refresh",
+          "when": "view == mnci.update",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mnci.updateCli",
+          "when": "view == mnci.update",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "mnci.runTarget",
+          "when": "view == mnci.projects && viewItem == mnci.project",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MNCI",
+      "properties": {
+        "mnci.cliPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `mnci` executable. Leave empty to use the workspace's own install, then a global one, then `npx @mnci/cli`."
+        }
+      }
+    }
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "executor": "@nx/esbuild:esbuild",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "defaultConfiguration": "production",
+        "options": {
+          "platform": "node",
+          "outputPath": "apps/mnci-vscode/dist",
+          "format": [
+            "cjs"
+          ],
+          "bundle": true,
+          "main": "apps/mnci-vscode/src/main.ts",
+          "tsConfig": "apps/mnci-vscode/tsconfig.app.json",
+          "assets": [
+            {
+              "input": "apps/mnci-vscode/src/assets",
+              "glob": "**/*",
+              "output": "assets"
+            }
+          ],
+          "esbuildOptions": {
+            "sourcemap": true,
+            "outExtension": {
+              ".js": ".js"
+            }
+          },
+          "thirdParty": true,
+          "external": [
+            "vscode"
+          ],
+          "generatePackageJson": false
+        },
+        "configurations": {
+          "development": {},
+          "production": {
+            "esbuildOptions": {
+              "sourcemap": false,
+              "outExtension": {
+                ".js": ".js"
+              }
+            }
+          }
+        }
+      },
+      "test": {
+        "options": {
+          "passWithNoTests": true
+        }
+      },
+      "package": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          "build"
+        ],
+        "outputs": [
+          "{workspaceRoot}/dist/drop/mnci-vscode.vsix"
+        ],
+        "options": {
+          "command": "node tools/vscode-extension.cjs package apps/mnci-vscode"
+        }
+      },
+      "nx-release-publish": {
+        "executor": "nx:run-commands",
+        "dependsOn": [
+          "package"
+        ],
+        "options": {
+          "command": "node tools/vscode-extension.cjs publish apps/mnci-vscode"
+        }
+      }
+    },
+    "name": "mnci-vscode",
+    "tags": [
+      "type:vscode-extension"
+    ]
+  },
+  "dependencies": {
+    "cross-spawn": "^7.0.6"
+  },
+  "description": "The MoNecromanCI monorepo CLI in your editor: create workspaces, add projects, check and update them, from the side bar or the command palette.",
+  "keywords": [
+    "monorepo",
+    "nx",
+    "scaffold",
+    "mnci"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MoNecromanCI/MoNecromanCi.git",
+    "directory": "apps/mnci-vscode"
+  }
+}

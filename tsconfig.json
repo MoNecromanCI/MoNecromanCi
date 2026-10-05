@@ -14,6 +14,9 @@
     },
     {
       "path": "./packages/az-durable"
+    },
+    {
+      "path": "./apps/mnci-vscode"
     }
   ],
   "compilerOptions": {}

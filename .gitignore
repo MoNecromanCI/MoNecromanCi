@@ -12,3 +12,5 @@ test-output
 
 # ESLint --cache artifact (per-machine; see the lint targets)
 .eslintcache
+out-tsc/
+test-output/
