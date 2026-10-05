@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.jest.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false
+  }
+}

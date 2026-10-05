@@ -60,6 +60,33 @@ export function checkForUpdate (currentVersion: string): void {
 }
 
 /**
+ * Asks the registry for the newest published `@mnci/cli`.
+ *
+ * @remarks
+ * Uses `cross-spawn` with an argv array rather than `execSync` with a shell
+ * string: it keeps the workspace's no-shell-injection invariant, and avoids
+ * POSIX-only redirection that would fail outright on a Windows agent. Bounded by a short
+ * timeout, since a slow registry must not stall the command that asked.
+ *
+ * @param None - this function takes no parameters.
+ * @returns The version, or `undefined` when the registry did not answer.
+ * @throws Never - a failed or empty query is `undefined`.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function fetchLatestVersion (): string | undefined {
+  const result = spawn.sync('npm', ['view', PACKAGE_NAME, 'version'], {
+    encoding: 'utf8',
+    timeout:  REGISTRY_TIMEOUT_MS,
+    stdio:    ['ignore', 'pipe', 'ignore'],
+  })
+  if (result.error || result.status !== 0) {
+    return undefined
+  }
+
+  return (result.stdout ?? '').trim() || undefined
+}
+
+/**
  * Queries the registry and prints an update notice when one is warranted.
  *
  * @remarks
@@ -73,16 +100,7 @@ export function checkForUpdate (currentVersion: string): void {
  * @typeParam None - this function has no generic type parameters.
  */
 function reportIfOutdated (currentVersion: string): void {
-  const result = spawn.sync('npm', ['view', PACKAGE_NAME, 'version'], {
-    encoding: 'utf8',
-    timeout:  REGISTRY_TIMEOUT_MS,
-    stdio:    ['ignore', 'pipe', 'ignore'],
-  })
-  if (result.error || result.status !== 0) {
-    return
-  }
-
-  const latestVersion = (result.stdout ?? '').trim()
+  const latestVersion = fetchLatestVersion()
   if (!latestVersion || !isNewerVersion(latestVersion, currentVersion)) {
     return
   }
@@ -111,7 +129,7 @@ function reportIfOutdated (currentVersion: string): void {
  * @throws Never - unparseable input yields `false`.
  * @typeParam None - this function has no generic type parameters.
  */
-function isNewerVersion (candidate: string, current: string): boolean {
+export function isNewerVersion (candidate: string, current: string): boolean {
   const candidateParts = releaseTriple(candidate)
   const currentParts = releaseTriple(current)
   if (!candidateParts || !currentParts) {

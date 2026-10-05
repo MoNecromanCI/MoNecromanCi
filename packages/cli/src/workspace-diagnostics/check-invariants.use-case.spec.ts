@@ -6,7 +6,7 @@ jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), se
 // nx sync:check is the one check that shells out. Mocked so the suite neither
 // needs a real Nx graph nor pays for a subprocess per test; the sync finding is
 // asserted through the mock's return code instead.
-jest.mock('../nx-workspace', () => ({ runShell: jest.fn(() => 0) }))
+jest.mock('../nx-workspace', () => ({ runCapture: jest.fn(() => ({ status: 0, stdout: '' })) }))
 // The only subprocess the doctor starts itself is the C compiler probe. Mocked, so the
 // result depends on neither the machine's PATH (which each OS resolves differently:
 // emptying it hid gcc on Windows and not on Linux) nor on a compiler being installed.
@@ -16,11 +16,11 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runShell } from '../nx-workspace'
+import { runCapture } from '../nx-workspace'
 import { repairDeclarationSpecifiers, upgradeDeclarationSpecifierPlugins } from '../rollup-library'
 import { collectFindings, runDoctor, type Finding } from './check-invariants.use-case'
 
-const mockRunShell = jest.mocked(runShell)
+const mockRunCapture = jest.mocked(runCapture)
 const mockSpawnSync = jest.mocked(spawnSync)
 
 let workspaceRoot: string
@@ -72,7 +72,7 @@ let savedAuthToken: string | undefined
 
 beforeEach(() => {
   workspaceRoot = mkdtempSync(join(tmpdir(), 'mnci-doctor-'))
-  mockRunShell.mockImplementation(() => 0)
+  mockRunCapture.mockImplementation(() => ({ status: 0, stdout: '' }))
   jest.spyOn(console, 'log').mockImplementation(() => {})
   jest.spyOn(console, 'error').mockImplementation(() => {})
   process.exitCode = undefined
@@ -426,9 +426,13 @@ describe('collectFindings', () => {
 
   it('reports a failing nx sync:check', () => {
     seedHealthyWorkspace()
-    mockRunShell.mockImplementation(() => 1)
+    mockRunCapture.mockImplementation(() => ({ status: 1, stdout: 'Stale reference in packages/a/tsconfig.json' }))
 
-    expect(findingFor(collectFindings(workspaceRoot), 'project references synced')?.ok).toBe(false)
+    const finding = findingFor(collectFindings(workspaceRoot), 'project references synced')
+
+    expect(finding?.ok).toBe(false)
+    // Nx's own output travels in the finding, so it is shown to a person and never written past a --json document.
+    expect(finding?.detail).toContain('Stale reference in packages/a/tsconfig.json')
   })
 })
 
@@ -734,6 +738,21 @@ describe('runDoctor', () => {
 
     runDoctor(workspaceRoot)
 
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('prints one JSON document with --json: every finding with its remedy, the counts, and the same exit code', () => {
+    seedHealthyWorkspace()
+    writeFileSync(join(workspaceRoot, '.prettierrc'), '{}')
+    const out = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    runDoctor(workspaceRoot, { json: true })
+
+    const report = JSON.parse(String(out.mock.calls[0][0])) as { findings: Finding[], passed: number, failed: number }
+    out.mockRestore()
+    expect(report.failed).toBeGreaterThan(0)
+    expect(report.passed + report.failed).toBe(report.findings.length)
+    expect(report.findings.find(finding => !finding.ok)?.remedy).toBeDefined()
     expect(process.exitCode).toBe(1)
   })
 
