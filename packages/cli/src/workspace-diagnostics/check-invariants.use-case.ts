@@ -3,6 +3,7 @@ import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
 import { runCapture } from '../nx-workspace'
+import { hasStaleLocalRegistry } from '../lockfile-pruning'
 import { readNativeBuildConfig } from '../native-build-config'
 import { inspectPipeline } from '../pipeline-customization'
 import {
@@ -1238,6 +1239,33 @@ function checkDependencyRangesNotPreserved (nxJson: { release?: { version?: { pr
 }
 
 /**
+ * Checks that the lockfile does not keep the local registry no manifest asks for.
+ *
+ * @remarks
+ * `verdaccio` stays in the lockfile as an optional peer of `@nx/js` after the root dependency is
+ * removed, with a chain that includes `braces`, which has no patched release. `npm audit` then
+ * reports six high advisories on a workspace that uses none of it, and the pipeline's audit step
+ * stops the first run on main.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns A finding when there is a lockfile with the entry, otherwise none.
+ * @throws Never - a workspace without a readable lockfile has nothing to report.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkLockfileHasNoLocalRegistry (workspaceRoot: string): Finding | undefined {
+  if (!fileExists(join(workspaceRoot, 'package-lock.json'))) {
+    return undefined
+  }
+
+  return {
+    check:  'package-lock.json carries no unused local registry (verdaccio)',
+    ok:     !hasStaleLocalRegistry(workspaceRoot),
+    detail: 'package-lock.json still holds verdaccio and its chain, which no manifest declares; npm audit reports high advisories (braces has no patched release) on packages nothing uses',
+    remedy: 'run `mnci upgrade`, which removes it, then commit package-lock.json',
+  }
+}
+
+/**
  * Collects every doctor finding for a workspace.
  *
  * @remarks
@@ -1287,6 +1315,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkPipelinePhases(workspaceRoot),
     ...checkNativeBuildConfig(workspaceRoot),
     checkDependencyRangesNotPreserved(nxJson),
+    checkLockfileHasNoLocalRegistry(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 

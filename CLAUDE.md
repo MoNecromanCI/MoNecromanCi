@@ -710,6 +710,7 @@ to one is mirrored in the other by construction:
   `cli-contract.integration.spec.ts` fails when a command has no group, a kind has no catalog entry,
   or a catalog flag is not one `add` declares. The editor extension reads these and keeps no list of
   its own. Jest cannot load commander 15 (ESM only), so `jest.config.mjs` compiles it.
+- **The lockfile keeps verdaccio** (`lockfile-pruning/`, #343): `verdaccio` is an optional peer of `@nx/js`, so once it is in the lockfile it stays, with its chain (`braces`, which has no patched release), after `removeLocalRegistryScaffolding` drops it from the manifest; neither a re-resolve in place nor `npm uninstall` clears it (measured). `pruneStaleLocalRegistry` deletes the `node_modules/verdaccio` lock entry and re-resolves with `npm install --package-lock-only`, which prunes the chain without moving other versions. It runs after `add npm-lib|react-lib` and in `mnci upgrade`; `mnci doctor` fails a lockfile that has the entry while no manifest declares it.
 - `mnci doctor` is a read-only invariant checker: exits non-zero on any finding,
   and every finding names its remedy (retired formatter files, undeclared root
   dependency hoisted into a rollup-bundled project via `@nx/dependency-checks`,

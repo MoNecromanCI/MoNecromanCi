@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { hasGoProject, registerNxGoPlugin } from '../go-workspace'
+import { pruneStaleLocalRegistry } from '../lockfile-pruning'
 import { runFormatter } from '../nx-workspace'
 import {
   addGoPlatformTargets,
@@ -324,6 +325,15 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
     logger.step('Repointing `types` at the real declaration file')
     for (const path of repairedManifests) {
       logger.detail(`updated ${path}`)
+    }
+  }
+  // A lockfile written before the local registry was removed from the manifest still carries
+  // verdaccio and its chain, which fails the first audit of a workspace for a package nothing uses.
+  const lockfile = pruneStaleLocalRegistry(workspaceRoot)
+  if (lockfile.stale) {
+    logger.step('Dropping the unused local registry (verdaccio) from package-lock.json')
+    if (lockfile.status !== 0) {
+      logger.warn('npm could not re-resolve the lockfile; run `npm install --package-lock-only` once you are online.')
     }
   }
   // Go apps added before cross-compilation existed gain `build-all` and
