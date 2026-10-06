@@ -67,6 +67,25 @@ export function classifyNpmAudit (report: { vulnerabilities?: Record<string, Npm
 }
 
 /**
+ * Whether one entry of a dry-run's `change` list moves nothing.
+ *
+ * @remarks
+ * An entry is `{ from: { name, version }, to: { name, version } }`. Only an entry that names the same
+ * package at the same version on both sides is a no-op; anything not shaped like that is taken to be a
+ * real change, so an unfamiliar plan keeps the gate blocking.
+ *
+ * @param change - One entry of the plan's `change` list.
+ * @returns True when it leaves the package at the version it had.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function isNoOpChange (change: unknown): boolean {
+  const { from, to } = (change ?? {}) as { from?: { name?: unknown, version?: unknown }, to?: { name?: unknown, version?: unknown } }
+
+  return from?.version !== undefined && from.version === to?.version && from.name === to?.name
+}
+
+/**
  * Whether `npm audit fix --dry-run --json` has nothing to apply.
  *
  * @remarks
@@ -74,8 +93,12 @@ export function classifyNpmAudit (report: { vulnerabilities?: Record<string, Npm
  * dependency chain whose leaf has `first_patched_version: null` (`braces`, in the chain of an unused
  * `verdaccio`) is flagged as fixable, and `npm audit fix` then plans no change at all. Blocking on
  * that is blocking on something nobody can do, and the message would claim a published fix. The
- * plan is the evidence: the reify result lists `add`, `change` and `remove`, and when all three are
- * present and empty there is nothing to act on.
+ * plan is the evidence: the reify result lists `add`, `change` and `remove`, and when nothing is
+ * added, nothing removed and no version moves there is nothing to act on.
+ *
+ * A change that keeps the version it had does not count. In a fresh `npm ci` checkout of a workspace
+ * npm lists its own workspace link as `@scope/pkg 1.0.0 => 1.0.0`; read as a plan it would make every
+ * workspace look fixable (measured on CI, where the local run of the same lockfile was empty).
  *
  * Anything else, an output that is not JSON or a plan without those lists, is treated as "may have a
  * plan", so the gate keeps blocking rather than passing on a result it could not read.
@@ -90,9 +113,11 @@ export function planIsEmpty (stdout: string): boolean {
     // npm 11 prints the plan as text lines (`change x 1 => 2`) ahead of the JSON document, so read from the first line that opens it.
     const start = stdout.search(/^\{/m)
     const plan = JSON.parse(start === -1 ? stdout : stdout.slice(start)) as { add?: unknown, change?: unknown, remove?: unknown }
-    const lists = [plan.add, plan.change, plan.remove]
+    if (!Array.isArray(plan.add) || !Array.isArray(plan.change) || !Array.isArray(plan.remove)) {
+      return false
+    }
 
-    return lists.every(list => Array.isArray(list) && list.length === 0)
+    return plan.add.length === 0 && plan.remove.length === 0 && plan.change.every(change => isNoOpChange(change))
   } catch {
     return false
   }

@@ -142,11 +142,18 @@ describe('planIsEmpty', () => {
   it.each([
     ['a plan that adds something', { add: [{ name: 'x' }], change: [], remove: [] }],
     ['a plan that changes something', { add: [], change: [{ name: 'x' }], remove: [] }],
+    ['a plan that moves a version', { add: [], change: [{ from: { name: 'x', version: '1.0.0' }, to: { name: 'x', version: '1.0.1' } }], remove: [] }],
     ['a plan that removes something', { add: [], change: [], remove: [{ name: 'x' }] }],
     ['output without the plan lists', { vulnerabilities: {} }],
     ['a plan whose lists are not lists', { add: 0, change: 0, remove: 0 }],
   ])('is false for %s', (_label, plan) => {
     expect(planIsEmpty(JSON.stringify(plan))).toBe(false)
+  })
+
+  it('ignores a change that leaves the version where it was, which is how npm lists a workspace link in a fresh checkout', () => {
+    const plan = { add: [], change: [{ from: { name: '@mnci/cli', version: '1.0.0', path: '/a' }, to: { name: '@mnci/cli', version: '1.0.0', path: '/b' } }], remove: [] }
+
+    expect(planIsEmpty(JSON.stringify(plan))).toBe(true)
   })
 
   it('reads the JSON document after the text lines npm 11 prints ahead of it', () => {
