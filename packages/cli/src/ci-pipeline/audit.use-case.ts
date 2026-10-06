@@ -35,7 +35,8 @@ function onlyMajorFix (advisory: NpmAdvisory): boolean {
  *
  * @remarks
  * Blocks on an advisory that has a published fix a plain update can apply, at moderate or above:
- * that is a finding someone can act on. Everything else passes with a note saying why: no fix
+ * that is a finding someone can act on. (The phase confirms with `npm audit fix --dry-run` before it
+ * blocks, because npm's `fixAvailable` can be true with no change to make.) Everything else passes with a note saying why: no fix
  * exists upstream, only a semver-major change would remove it (not applied automatically), or the
  * severity is below the threshold. A gate that failed on advisories nobody can fix would go red
  * for ever and be ignored. The fix to apply is a targeted `overrides` entry, never `npm audit fix
@@ -66,15 +67,48 @@ export function classifyNpmAudit (report: { vulnerabilities?: Record<string, Npm
 }
 
 /**
+ * Whether `npm audit fix --dry-run --json` has nothing to apply.
+ *
+ * @remarks
+ * npm reports `fixAvailable: true` for an advisory even when no patched release exists anywhere: a
+ * dependency chain whose leaf has `first_patched_version: null` (`braces`, in the chain of an unused
+ * `verdaccio`) is flagged as fixable, and `npm audit fix` then plans no change at all. Blocking on
+ * that is blocking on something nobody can do, and the message would claim a published fix. The
+ * plan is the evidence: the reify result lists `add`, `change` and `remove`, and when all three are
+ * present and empty there is nothing to act on.
+ *
+ * Anything else, an output that is not JSON or a plan without those lists, is treated as "may have a
+ * plan", so the gate keeps blocking rather than passing on a result it could not read.
+ *
+ * @param stdout - What the dry run printed.
+ * @returns `true` only for a plan that is readable and empty.
+ * @throws Never - an unreadable plan is not an empty one.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function planIsEmpty (stdout: string): boolean {
+  try {
+    // npm 11 prints the plan as text lines (`change x 1 => 2`) ahead of the JSON document, so read from the first line that opens it.
+    const start = stdout.search(/^\{/m)
+    const plan = JSON.parse(start === -1 ? stdout : stdout.slice(start)) as { add?: unknown, change?: unknown, remove?: unknown }
+    const lists = [plan.add, plan.change, plan.remove]
+
+    return lists.every(list => Array.isArray(list) && list.length === 0)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Judges one `npm audit --json` result.
  *
  * @param result - What `npm audit --json` printed and its exit status.
+ * @param dryRun - Runs `npm audit fix --dry-run --json`, asked only when something would block.
  * @param log - The logger.
- * @returns 1 when an advisory has a published fix at moderate or above; otherwise 0, including when the report is not JSON.
+ * @returns 1 when an advisory has a published fix npm can apply, at moderate or above; otherwise 0, including when the report is not JSON.
  * @throws Never - an unreadable report is a pass with a note.
  * @typeParam None - this function has no generic type parameters.
  */
-function auditNpm (result: { status: number, stdout: string }, log: (message: string) => void): number {
+function auditNpm (result: { status: number, stdout: string }, dryRun: () => { status: number, stdout: string }, log: (message: string) => void): number {
   let report: { vulnerabilities?: Record<string, NpmAdvisory> }
   try {
     report = JSON.parse(result.stdout) as typeof report
@@ -89,6 +123,14 @@ function auditNpm (result: { status: number, stdout: string }, log: (message: st
   }
   if (blocking.length === 0) {
     log(`npm audit - ${total} advisory(ies), none actionable at moderate or above.`)
+
+    return 0
+  }
+  if (planIsEmpty(dryRun().stdout)) {
+    for (const advisory of blocking) {
+      log(`  note [${advisory.severity}] ${advisory.name} - npm reports a fix, but npm audit fix has nothing to apply`)
+    }
+    log(`npm audit - ${total} advisory(ies); ${blocking.length} reported as fixable, but no patched release is reachable, so there is nothing to do here.`)
 
     return 0
   }
@@ -139,7 +181,7 @@ export function runAudit (workspaceRoot: string, dependencies: Partial<CiDepende
   }
 
   log(groupStart(host, 'npm audit'))
-  const npm = auditNpm(processes.capture('npm', ['audit', '--json']), log)
+  const npm = auditNpm(processes.capture('npm', ['audit', '--json']), () => processes.capture('npm', ['audit', 'fix', '--dry-run', '--json']), log)
   closeGroup()
   if (npm !== 0) {
     return npm
