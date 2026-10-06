@@ -34,6 +34,18 @@ describe('runMnciJson', () => {
     ).rejects.toThrow(/projects --json failed \(exit 1\): No nx\.json found here\./)
   })
 
+  it('says the CLI is too old, and how to update it, when it rejects --json', async () => {
+    const old = nodeScript("console.error(\"error: unknown option '--json'\"); process.exitCode = 1")
+
+    await expect(runMnciJson(old, ['commands', '--json'], process.cwd())).rejects.toThrow(/older than 4\.32\.0.*npm install --global @mnci\/cli@latest/s)
+  })
+
+  it('does not blame the version for another failure', async () => {
+    await expect(
+      runMnciJson(nodeScript("console.error('No nx.json found here.'); process.exitCode = 1"), ['projects', '--json'], process.cwd()),
+    ).rejects.not.toThrow(/older than/)
+  })
+
   it('rejects when the command cannot be started', async () => {
     await expect(
       runMnciJson({ command: 'definitely-not-a-real-command-mnci', prefix: [], source: 'setting' }, ['info'], process.cwd()),

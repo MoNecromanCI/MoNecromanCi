@@ -7,6 +7,7 @@
  */
 
 export type { CliLocation } from './cli-location.contract'
+export { isCliVersionSupported, MIN_CLI_VERSION } from './cli-version.algorithm'
 export { locateCli, type LocateOptions, type LocateProbes } from './locate-cli.use-case'
 export { MACHINE_PROBES } from './machine-probes.client'
 export { runMnciJson, type CliJsonResult } from './run-mnci-json.client'

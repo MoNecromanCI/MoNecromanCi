@@ -12,10 +12,10 @@ const PROBE_TIMEOUT_MS = 5000
  * `cross-spawn` and not `child_process` directly, so a Windows `.cmd` shim starts without a shell.
  */
 export const MACHINE_PROBES: LocateProbes = {
-  fileExists:   path => existsSync(path),
-  commandWorks: (command, arguments_) => {
-    const result = spawn.sync(command, [...arguments_], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
+  fileExists:    path => existsSync(path),
+  commandOutput: (command, arguments_) => {
+    const result = spawn.sync(command, [...arguments_], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS })
 
-    return result.error === undefined && result.status === 0
+    return result.error === undefined && result.status === 0 ? result.stdout : undefined
   },
 }
