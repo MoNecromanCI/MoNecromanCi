@@ -1443,3 +1443,33 @@ describe('the release dependency-range setting', () => {
     expect(findingFor(collectFindings(workspaceRoot), 'dependency ranges')).toBeUndefined()
   })
 })
+
+/** Writes a lockfile carrying verdaccio next to a healthy workspace whose manifests do not declare it. */
+function writeLockWithVerdaccio (): void {
+  writeWorkspace()
+  writeFileSync(join(workspaceRoot, 'package-lock.json'), JSON.stringify({ packages: { '': {}, 'node_modules/verdaccio': { version: '6.10.5' } } }))
+}
+
+describe('the lockfile and the local registry', () => {
+  it('fails when verdaccio is in the lockfile and nothing declares it (#343)', () => {
+    writeLockWithVerdaccio()
+
+    const finding = findingFor(collectFindings(workspaceRoot), 'unused local registry')
+
+    expect(finding?.ok).toBe(false)
+    expect(finding?.remedy).toContain('mnci upgrade')
+  })
+
+  it('passes a lockfile without it', () => {
+    writeWorkspace()
+    writeFileSync(join(workspaceRoot, 'package-lock.json'), JSON.stringify({ packages: { '': {} } }))
+
+    expect(findingFor(collectFindings(workspaceRoot), 'unused local registry')?.ok).toBe(true)
+  })
+
+  it('says nothing about a workspace with no lockfile', () => {
+    writeWorkspace()
+
+    expect(findingFor(collectFindings(workspaceRoot), 'unused local registry')).toBeUndefined()
+  })
+})

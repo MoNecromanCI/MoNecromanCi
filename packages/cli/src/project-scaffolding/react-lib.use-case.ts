@@ -1,5 +1,6 @@
 import { join } from 'node:path'
-import { promptText } from '../terminal'
+import { pruneStaleLocalRegistry } from '../lockfile-pruning'
+import { logger, promptText } from '../terminal'
 import { repairDeclarationSpecifiers, repairPublishableManifest } from '../rollup-library'
 import { removeLocalRegistryScaffolding } from '../workspace-overlay'
 import {
@@ -113,6 +114,12 @@ export async function addReactLib (
       // config, devDependency, root target) that mnci's tag-only release model
       // has no use for.
       removeLocalRegistryScaffolding(workspaceRoot)
+      // The lockfile keeps verdaccio (an optional peer of @nx/js) and its chain, including
+      // `braces`, which has no patched release: the first CI audit of a fresh workspace fails on it.
+      const pruned = pruneStaleLocalRegistry(workspaceRoot)
+      if (pruned.stale && pruned.status !== 0) {
+        logger.warn('Could not drop the unused local registry from package-lock.json: run `mnci upgrade` once the network is back.')
+      }
       registerProjectCommands(workspaceRoot, name, { build: true })
     },
   )
