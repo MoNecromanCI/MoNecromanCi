@@ -1,5 +1,6 @@
 import spawn from 'cross-spawn'
 import type { CliLocation } from './cli-location.contract'
+import { MIN_CLI_VERSION } from './cli-version.algorithm'
 
 /**
  * What a `--json` invocation of the CLI returned.
@@ -12,6 +13,29 @@ import type { CliLocation } from './cli-location.contract'
 export interface CliJsonResult<T> {
   readonly value:    T
   readonly exitCode: number
+}
+
+/**
+ * The message for a CLI too old to answer `--json`, or `undefined` when the failure is something else.
+ *
+ * @remarks
+ * Releases before the first with the JSON commands reject the flag with commander's
+ * `unknown option '--json'`, which reads like a bug in the extension. Naming the cause and the
+ * remedy is what the person looking at the panel needs.
+ *
+ * @param location - The CLI that was run.
+ * @param stderr - What it printed on standard error.
+ * @returns The explanation, when stderr is the old-CLI rejection.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function oldCliMessage (location: CliLocation, stderr: string): string | undefined {
+  if (!/unknown option '--json'|unknown command/.test(stderr)) {
+    return undefined
+  }
+  const where = location.source === 'npx' ? 'The mnci that npx fetched' : `The mnci at ${location.command}`
+
+  return `${where} is older than ${MIN_CLI_VERSION}, the first release with the commands this panel reads. Update it with: npm install --global @mnci/cli@latest (or npm install --save-dev @mnci/cli@latest in the workspace).`
 }
 
 /** Long enough for `doctor`, which runs `nx sync:check`. */
@@ -69,6 +93,12 @@ export function runMnciJson<T> (
       try {
         resolve({ value: JSON.parse(stdout) as T, exitCode: code ?? 1 })
       } catch {
+        const old = oldCliMessage(location, stderr)
+        if (old !== undefined) {
+          reject(new Error(old))
+
+          return
+        }
         const output = (stderr.trim() || stdout.trim()).slice(0, 800)
         reject(new Error(`mnci ${arguments_.join(' ')} failed (exit ${code ?? 'none'})${output ? `: ${output}` : ''}`))
       }
