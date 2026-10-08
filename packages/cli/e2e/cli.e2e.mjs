@@ -3186,6 +3186,68 @@ section('repository adoption', [], () => {
   const dryRun = tryRunCapture('npx nx release --dry-run --yes', adopted)
   enforce('adopt: a release dry run proposes a version above the old tag, not the disk version', /1\.(?:4\.3|5\.0)/.test(dryRun.output) && !/@acme\/alpha@0\.0\./.test(dryRun.output), dryRun.output.slice(-1500))
 })
+section('node esm apps', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add node-app|node-function-app --esm` (#305): the generated apps are
+   * ES modules end to end. Measured, not assumed: the app has to build, pass its
+   * own lint, typecheck and tests, run from `dist`, and still run once `prune`
+   * has written its own `dist/package.json`, which is where a lost "type" would
+   * turn the bundle back into CommonJS.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'esm')
+  run(`node ${CLI} new esm --yes --registry npm --scope @esm`, temporary)
+  run(`node ${CLI} add node-app api --esm`, root)
+  run(`node ${CLI} add node-function-app fn --esm`, root)
+
+  for (const app of ['api', 'fn']) {
+    const manifest = JSON.parse(readFileSync(path.join(root, 'apps', app, 'package.json'), 'utf8'))
+    enforce(`esm: ${app} is "type": "module" and its build target emits esm`, manifest.type === 'module' && JSON.stringify(manifest.nx.targets.build.options.format) === '["esm"]', JSON.stringify(manifest.type))
+  }
+  const main = readFileSync(path.join(root, 'apps/api/src/main.ts'), 'utf8')
+  enforce('esm: the sample imports its slice by an explicit ./hello/index.js', main.includes("'./hello/index.js'"), main)
+
+  const verify = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=api,fn', root)
+  enforce('esm: lint, typecheck, test and build are green for both apps', verify.ok, verify.output.slice(-2500))
+
+  const bundle = readFileSync(path.join(root, 'apps/api/dist/main.js'), 'utf8')
+  enforce('esm: the built bundle is ES module syntax, not require()', /^import /m.test(bundle) && !/\brequire\(/.test(bundle), bundle.slice(0, 300))
+  const ran = tryRunCapture('node apps/api/dist/main.js', root)
+  enforce('esm: the built app runs', ran.ok && ran.output.includes('Hello, world!'), ran.output)
+
+  const pruned = tryRunCapture('npx nx run api:prune --skip-nx-cache', root)
+  const prunedManifest = existsSync(path.join(root, 'apps/api/dist/package.json')) ? JSON.parse(readFileSync(path.join(root, 'apps/api/dist/package.json'), 'utf8')) : {}
+  enforce('esm: prune keeps "type": "module" in the pruned manifest', pruned.ok && prunedManifest.type === 'module', pruned.output.slice(-1500))
+  const ranPruned = tryRunCapture('node apps/api/dist/main.js', root)
+  enforce('esm: the app still runs from dist after prune', ranPruned.ok && ranPruned.output.includes('Hello, world!'), ranPruned.output)
+
+  const functionBundle = readFileSync(path.join(root, 'apps/fn/dist/main.js'), 'utf8')
+  enforce('esm: the function app bundle is ES module syntax and reaches its hello slice', /^import /m.test(functionBundle) && functionBundle.includes('./hello/index.js'), functionBundle.slice(0, 300))
+
+  // The open question of #305: does a CommonJS app still load an ESM-only library, and after `prune`? It does
+  // through require(esm), which Node has had unflagged since 22.12; older Node cannot, so say so rather than fail.
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+  if (nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 12)) {
+    run(`node ${CLI} add npm-lib core`, root)
+    run(`node ${CLI} add node-app cjs`, root)
+    const cjsManifestPath = path.join(root, 'apps/cjs/package.json')
+    const cjsManifest = JSON.parse(readFileSync(cjsManifestPath, 'utf8'))
+    cjsManifest.dependencies = { ...cjsManifest.dependencies, '@esm/core': '*' }
+    writeFileSync(cjsManifestPath, `${JSON.stringify(cjsManifest, undefined, 2)}\n`)
+    writeFileSync(path.join(root, 'apps/cjs/src/main.ts'), "import { greet } from '@esm/core'\n\nconsole.log(greet('from a cjs app').message)\n")
+    run('npm install --ignore-scripts --no-audit --no-fund', root)
+    run('npx nx sync', root)
+    const built = tryRunCapture('npx nx run-many -t build,typecheck --projects=core,cjs', root)
+    enforce('esm: a CommonJS app typechecks and builds against an ESM-only library', built.ok, built.output.slice(-2000))
+    const ranCjs = tryRunCapture('node apps/cjs/dist/main.js', root)
+    enforce('esm: the CommonJS app loads the ESM-only library (require of an ES module)', ranCjs.ok && ranCjs.output.includes('Hello, from a cjs app!'), ranCjs.output)
+    const prunedCjs = tryRunCapture('npx nx run cjs:prune --skip-nx-cache', root)
+    const installed = tryRunCapture('npm install --omit=dev --ignore-scripts --no-audit --no-fund', path.join(root, 'apps/cjs/dist'))
+    const ranFromDist = tryRunCapture('node main.js', path.join(root, 'apps/cjs/dist'))
+    enforce('esm: after prune and an install in dist, the CommonJS app still loads the library from workspace_modules', prunedCjs.ok && installed.ok && ranFromDist.ok && ranFromDist.output.includes('Hello, from a cjs app!'), `${prunedCjs.output.slice(-800)}\n${installed.output.slice(-800)}\n${ranFromDist.output}`)
+  } else {
+    skip('a CommonJS app loading an ESM-only library', `Node ${process.versions.node} has no unflagged require(esm); it arrives in 22.12`)
+  }
+})
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
    * C# — @nx/dotnet (the official Nx plugin, inference-only: build/test/restore/

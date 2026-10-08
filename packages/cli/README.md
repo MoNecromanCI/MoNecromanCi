@@ -507,6 +507,22 @@ from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
 
+## ES module Node apps (`mnci add node-app|node-function-app --esm`)
+
+Generated Node apps are CommonJS by default, and `npm-lib` packages are ESM-only. `--esm` makes an app an ES module
+too: its `package.json` gets `"type": "module"` and its esbuild target builds `esm`; every relative import in its
+sources names its file the way `nodenext` resolution needs (`./hello` becomes `./hello/index.js`, which TypeScript
+reports as TS2835 otherwise); and its `jest.config.cts` gets a `moduleNameMapper` that resolves `./x.js` back to the
+`./x.ts` Jest transforms. It applies to `node-app` (Express, Koa or no framework) and `node-function-app`; Fastify
+and Nest keep the layout their framework mandates (autoloaded routes, decorators), so `--esm` is refused with them,
+and on any other kind.
+
+Measured on generated apps rather than assumed (the `node esm apps` e2e section): lint, typecheck, test and build are
+green; the built bundle is ES module syntax and runs; `prune` keeps `"type": "module"` in the pruned manifest, so
+`dist` still runs afterwards; and a **CommonJS** app that depends on an ESM-only library typechecks, builds and runs,
+including from `dist` after `prune` and an install there, because Node loads the ES module through `require`
+(unflagged from Node 22.12; the e2e says so and skips on older Node).
+
 ## The interactive wizard (`mnci` with no arguments)
 
 Bare `mnci` lists **every command** (inside a workspace the Projects and Dependencies sections come first, outside

@@ -207,6 +207,10 @@ export function buildProgram (cliVersion: string): Command {
       'npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec',
     )
     .option(
+      '--esm',
+      'node-app, node-function-app: ES module output ("type": "module", explicit .js import specifiers, Jest mapped to match); not with fastify or nest',
+    )
+    .option(
       '--lib <name>',
       'python-vendor only: the internal Python library (libs/<name>) to vendor into <name>',
     )

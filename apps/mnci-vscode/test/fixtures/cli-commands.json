@@ -645,6 +645,15 @@
         "negated": false
       },
       {
+        "name": "esm",
+        "flags": "--esm",
+        "description": "node-app, node-function-app: ES module output (\"type\": \"module\", explicit .js import specifiers, Jest mapped to match); not with fastify or nest",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
         "name": "lib",
         "flags": "--lib <name>",
         "description": "python-vendor only: the internal Python library (libs/<name>) to vendor into <name>",

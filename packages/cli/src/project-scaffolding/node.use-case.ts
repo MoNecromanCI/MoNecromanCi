@@ -1,3 +1,4 @@
+import { convertAppToEsm } from './esm-conversion.use-case'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
@@ -229,6 +230,7 @@ export function addNodeApp (
   name: string,
   stack: WorkspaceStack,
   framework: NodeFramework = 'none',
+  esm = false,
 ): void {
   runNodeApp(workspaceRoot, name, stack, framework)
   // A `hello` slice (use case + contract + spec, and a handler where the framework has
@@ -239,6 +241,9 @@ export function addNodeApp (
     for (const [relative, contents] of Object.entries(example)) {
       writeFileEnsured(join(workspaceRoot, 'apps', name, 'src', relative), contents)
     }
+  }
+  if (esm) {
+    convertAppToEsm(join(workspaceRoot, 'apps', name))
   }
   ensureAdmZip(workspaceRoot)
   addNxTargets(join(workspaceRoot, 'apps', name, 'package.json'), {
@@ -589,6 +594,7 @@ export function addNodeFunctionApp (
   name: string,
   stack: WorkspaceStack,
   empty = false,
+  esm = false,
 ): void {
   runNodeApp(workspaceRoot, name, stack, 'none')
   ensureAzureFunctionsPackage(workspaceRoot)
@@ -607,6 +613,9 @@ export function addNodeFunctionApp (
   }
   writeFileEnsured(join(nodeFunctionAppRoot, 'host.json'), NODE_FUNCTION_APP_HOST_JSON)
   repairNodeFunctionAppManifest(nodeFunctionAppRoot, workspaceRoot)
+  if (esm) {
+    convertAppToEsm(nodeFunctionAppRoot)
+  }
   ensureAdmZip(workspaceRoot)
   addNxTargets(join(nodeFunctionAppRoot, 'package.json'), {
     package: nodeFunctionAppPackageTarget(name),
