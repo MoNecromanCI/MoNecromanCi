@@ -97,6 +97,19 @@ describe('react-lib', () => {
     expect(manifest.publishConfig?.access).toBe('public')
   })
 
+  it('drops the nx.name override, so its release tags are scoped like every other kind (#347)', async () => {
+    seedProjectManifest('packages/ui', '@demo/ui')
+    const manifestPath = join(workspaceRoot, 'packages/ui/package.json')
+    const seeded = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
+    writeFileSync(manifestPath, JSON.stringify({ ...seeded, nx: { name: 'ui', tags: ['type:react-lib'] } }))
+
+    await runAdd('react-lib', 'ui', {})
+
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { nx?: { name?: string, tags?: string[] } }
+    expect(manifest.nx?.name).toBeUndefined()
+    expect(manifest.nx?.tags).toContain('type:react-lib')
+  })
+
   it('honours an explicit --scope over the workspace default', async () => {
     seedProjectManifest('packages/ui', '@demo/ui')
 

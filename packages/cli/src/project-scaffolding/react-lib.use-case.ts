@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { pruneStaleLocalRegistry } from '../lockfile-pruning'
 import { logger, promptText } from '../terminal'
 import { repairDeclarationSpecifiers, repairPublishableManifest } from '../rollup-library'
+import { readJson, toJson, writeFileEnsured } from '../file-system'
 import { removeLocalRegistryScaffolding } from '../workspace-overlay'
 import {
   defaultScope,
@@ -104,6 +105,7 @@ export async function addReactLib (
     publishableManifest,
     () => {
       markPublic(publishableManifest)
+      dropNxProjectName(publishableManifest)
       repairPublishableManifest(publishableManifest)
       repairDeclarationSpecifiers(projectRoot)
       writeProjectReadme(projectRoot, `${scope}/${name}`, stack.testRunner)
@@ -123,6 +125,31 @@ export async function addReactLib (
       registerProjectCommands(workspaceRoot, name, { build: true })
     },
   )
+}
+
+/**
+ * Removes the `nx.name` override `@nx/react:library` writes into a publishable manifest.
+ *
+ * @remarks
+ * The release tag pattern is `{projectName}@{version}`. Without the override the Nx project
+ * name is the package name (`@scope/ui`), as it is for `npm-lib`; with it the project is `ui`
+ * and its tags and GitHub Releases are unscoped (`ui@1.0.0`) while every sibling's are scoped,
+ * which can collide and orphans differently when the scope changes (#347). `nx run ui:build`
+ * keeps working: Nx resolves the unscoped form of a scoped project name.
+ *
+ * @param manifestPath - Absolute path to the lib's `package.json`.
+ * @returns Nothing.
+ * @throws Propagates any `fs`/JSON error reading or writing the manifest.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function dropNxProjectName (manifestPath: string): void {
+  const manifest = readJson<{ nx?: Record<string, unknown> } & Record<string, unknown>>(manifestPath)
+  if (manifest.nx?.name === undefined) {
+    return
+  }
+  const { name: _projectName, ...nx } = manifest.nx
+  const { nx: _nx, ...rest } = manifest
+  writeFileEnsured(manifestPath, toJson(Object.keys(nx).length > 0 ? { ...rest, nx } : rest))
 }
 
 /**
