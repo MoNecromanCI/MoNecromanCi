@@ -507,6 +507,28 @@ from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
 
+## A whole shape in one step (`mnci new --preset`)
+
+Everything else in mnci is per project. `mnci new my-shop --preset web-api` also scaffolds a wired-together shape, so the
+result is a starting point that already runs rather than three projects to connect:
+
+| Preset | Adds | Wiring |
+|---|---|---|
+| `web-api` | `libs/shared` (an internal library), `apps/api` (Express) and `apps/web` (React) | the API answers `GET /api/greeting` with the shared library's `greet`; the frontend asks that route and types the answer with the shared `Greeting`; both declare `@<scope>/shared`; Vite forwards `/api` to the API in development |
+
+Each project is added through `mnci add`, so it is exactly what `add` makes, and the preset then edits them into one shape:
+the API and the frontend drop their own copy of the sample use case and contract (the library owns them now), each gets a
+spec that matches (written without a mock library, so it runs under Jest or Vitest), and one install, one `nx sync` and one
+format finish it. `mnci dev web api` starts both servers, and asking the frontend's origin for `/api/greeting` returns the
+API's answer through the proxy.
+
+A misspelt preset is refused before the workspace is generated, and the wiring edits fail with the file named, not
+silently, if a generator's output ever stops having the text they change. A preset is a starting point to edit: delete what
+you do not need. New presets are an entry in `workspace-presets/preset-catalog.config.ts` plus their wiring.
+
+The `web-api preset` e2e section generates one and checks lint, typecheck, test and build for all three projects, the
+specs under Vitest, and the proxied request while both servers run.
+
 ## Starting projects together (`mnci dev`)
 
 `<name>:start` starts one project. `mnci dev web api` starts several at once, the usual case being a frontend and the

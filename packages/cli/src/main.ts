@@ -7,6 +7,7 @@ import { runAdopt, type AdoptOptions } from './repository-adoption'
 import { runCommands, type CommandsOptions } from './command-catalog'
 import { runInfo, runProjects, type InfoOptions, type ProjectsOptions } from './workspace-info'
 import { runInteractive } from './interactive-wizard'
+import { PRESET_IDS } from './workspace-presets'
 import { runNew, type NewOptions } from './workspace-creation'
 import { runInstall, type InstallOptions } from './dependency-management'
 import { runSync, type SyncOptions } from './dependency-management'
@@ -73,6 +74,10 @@ export function buildProgram (cliVersion: string): Command {
     .option(
       '--into <dir>',
       'bootstrap into an existing directory (a fresh clone holding only .git); the directory name is the workspace name unless one is given',
+    )
+    .addOption(
+      new Option('--preset <preset>', 'also scaffold a whole shape of workspace, its projects wired together (web-api: a React frontend and an Express API sharing one library)')
+        .choices(PRESET_IDS),
     )
     .action(async (name: string | undefined, options: NewOptions) => {
       await runNew(name, options)

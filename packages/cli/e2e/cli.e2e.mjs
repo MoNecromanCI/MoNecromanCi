@@ -3406,6 +3406,50 @@ section('dev up', [], () => {
   const closed = tryRunCapture('node -e "(async()=>{for(let i=0;i<30;i++){const answers=await Promise.all([\'http://localhost:3000/\',\'http://localhost:4200/\'].map(u=>fetch(u).then(()=>true,()=>false)));if(!answers.includes(true)){console.log(\'freed\');return}await new Promise(r=>setTimeout(r,1000))}console.log(\'still answering\');process.exit(1)})()"', root)
   enforce('dev up: stopping the command stops both servers, so both ports are free again', closed.ok && closed.output.includes('freed'), closed.output)
 })
+section('web-api preset', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci new <name> --preset web-api` (#303): a React frontend and an Express API
+   * that share one internal library. A preset is only worth what runs, so this
+   * checks what CI verifies (lint, typecheck, test, build for all three), then
+   * starts the frontend and the API together with `mnci dev` and asks the
+   * FRONTEND's origin for the API's route: the answer comes back through the Vite
+   * proxy, from the API, built from the shared library's greeting.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'presetws')
+  run(`node ${CLI} new presetws --yes --registry npm --scope @pre --preset web-api`, temporary)
+
+  const shared = JSON.parse(readFileSync(path.join(root, 'libs/shared/package.json'), 'utf8')).name
+  const apiManifest = JSON.parse(readFileSync(path.join(root, 'apps/api/package.json'), 'utf8'))
+  const webManifest = JSON.parse(readFileSync(path.join(root, 'apps/web/package.json'), 'utf8'))
+  enforce('preset: the API and the frontend both declare the shared library, and import it by name', apiManifest.dependencies?.[shared] === '*' && webManifest.dependencies?.[shared] === '*' && readFileSync(path.join(root, 'apps/api/src/hello/hello.handler.ts'), 'utf8').includes(`from '${shared}'`), `${shared} ${JSON.stringify(apiManifest.dependencies)}`)
+  enforce('preset: the frontend forwards /api to the API in dev', readFileSync(path.join(root, 'apps/web/vite.config.mts'), 'utf8').includes("'/api'"))
+  enforce('preset: the samples the shared library replaces are gone', !existsSync(path.join(root, 'apps/api/src/hello/greet.use-case.ts')) && !existsSync(path.join(root, 'apps/web/src/greeting/greeting.contract.ts')))
+
+  const verify = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=shared,api,web', root)
+  enforce('preset: lint, typecheck, test and build are green for the library, the API and the frontend', verify.ok, verify.output.slice(-3000))
+
+  const logFile = path.join(temporary, 'preset-dev.log')
+  const logDescriptor = openSync(logFile, 'w')
+  const child = spawn(process.execPath, [CLI, 'dev', 'web', 'api'], { cwd: root, stdio: ['ignore', logDescriptor, logDescriptor], detached: process.platform !== 'win32' })
+  try {
+    const direct = tryRunCapture(fetchScript('http://localhost:3000/api/greeting?name=web'), root)
+    const proxied = tryRunCapture(fetchScript('http://localhost:4200/api/greeting?name=web'), root)
+    const log = () => readFileSync(logFile, 'utf8').slice(-2500)
+    enforce('preset: the API answers /api/greeting with the shared greeting', direct.ok && direct.output.includes('Hello, web!'), `${direct.output}\n${log()}`)
+    enforce('preset: the same answer comes through the frontend\'s own origin, via the Vite proxy', proxied.ok && proxied.output.includes('Hello, web!'), `${proxied.output}\n${log()}`)
+  } finally {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      process.kill(-child.pid, 'SIGTERM')
+    }
+  }
+  // The generated specs use no mock library, so they must pass under Vitest as well as Jest.
+  const vitestRoot = path.join(temporary, 'presetvt')
+  run(`node ${CLI} new presetvt --yes --registry npm --scope @pre --test-runner vitest --preset web-api`, temporary)
+  const vitest = tryRunCapture('npx nx run-many -t test --projects=api,web', vitestRoot)
+  enforce('preset: the generated specs pass under Vitest too', vitest.ok, vitest.output.slice(-3000))
+})
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
    * C# — @nx/dotnet (the official Nx plugin, inference-only: build/test/restore/

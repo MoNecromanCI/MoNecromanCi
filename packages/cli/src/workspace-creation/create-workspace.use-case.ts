@@ -14,6 +14,7 @@ import { promptCi, promptNxCloud, promptRegistry, promptStack, promptText } from
 import { logger } from '../terminal'
 import { assertValidProjectName } from '../project-name'
 import { PROJECT_KINDS } from '../project-scaffolding'
+import { applyPreset, findPreset } from '../workspace-presets'
 import { adoptGeneratedWorkspace, assertAdoptableDirectory } from './adopt-directory.use-case'
 
 /**
@@ -55,6 +56,8 @@ export interface NewOptions {
    * nothing but `.git`) instead of creating a new one.
    */
   into?:          string
+  /** Also scaffold a whole shape of workspace: the projects, wired together (`mnci new --preset web-api`). */
+  preset?:        string
 }
 
 /**
@@ -199,6 +202,8 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
   // takes. Finding out that the target is unusable after generating into a
   // temp directory is finding out too late.
   if (adoptTarget !== undefined) assertAdoptableDirectory(adoptTarget)
+  // Same reason: a misspelt preset must not be discovered after the workspace has been generated.
+  if (options.preset !== undefined) findPreset(options.preset)
 
   const workspaceName =
     name ?? (adoptTarget === undefined ? await promptText('Workspace name') : basename(adoptTarget))
@@ -332,6 +337,10 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
   // very first commit.
   logger.step('Formatting the workspace (eslint --fix, JavaScript Standard Style)')
   runFormatter(workspaceRoot)
+
+  if (options.preset !== undefined) {
+    await applyPreset(workspaceRoot, options.preset)
+  }
 
   logger.success('Done. Next steps:')
   if (adoptTarget === undefined) logger.info(`  cd ${workspaceName}`)
