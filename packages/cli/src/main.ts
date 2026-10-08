@@ -117,6 +117,8 @@ export function buildProgram (cliVersion: string): Command {
     .description('Read an existing repository and report what bringing it under mnci would involve: blockers, warnings and the step that clears each. Read-only unless a step flag is given; exits non-zero when something blocks')
     .option('--json', 'print the report as one JSON document')
     .option('--tags', 'create, locally, the baseline tag each project whose release tags are stranded under an old name needs; nothing is pushed')
+    .option('--toolchain', 'retire old formatter and registry tooling, align the Nx family to one version and run npm audit fix until the audit gate passes; needs a clean git tree and leaves the changes uncommitted')
+    .option('--nx <version>', 'the Nx version --toolchain aligns to (default: the newest published in the major already in use)')
     .action((options: AdoptOptions) => {
       runAdopt(process.cwd(), options)
     })

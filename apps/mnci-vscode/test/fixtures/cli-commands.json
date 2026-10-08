@@ -283,6 +283,24 @@
         "variadic": false,
         "repeatable": false,
         "negated": false
+      },
+      {
+        "name": "toolchain",
+        "flags": "--toolchain",
+        "description": "retire old formatter and registry tooling, align the Nx family to one version and run npm audit fix until the audit gate passes; needs a clean git tree and leaves the changes uncommitted",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "nx",
+        "flags": "--nx <version>",
+        "description": "the Nx version --toolchain aligns to (default: the newest published in the major already in use)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
       }
     ]
   },

@@ -514,6 +514,7 @@ packages under mnci (the plan is #383). So far it is **report mode only and chan
 mnci adopt          # what was found, what blocks, what clears each
 mnci adopt --json   # the same, as one document
 mnci adopt --tags   # step (#379): create the baseline release tags, locally
+mnci adopt --toolchain [--nx <version>]   # step (#380): retire old tooling, align Nx, pass the audit
 ```
 
 It reads git and the filesystem (no Nx, no install, no network) and reports the package manager, the
@@ -528,6 +529,15 @@ names the later adoption step that clears it. Each later step is its own issue u
 disk version. `mnci adopt --tags` creates, for each such project, a lightweight tag under the new name on the
 commit of the old one (`@auto/mysql@1.12.11` on `mysql@1.12.11`). It is local and idempotent, never moves a tag,
 and prints the `git push` for you to run: publishing tags changes the remote, so that stays your decision.
+
+**`--toolchain`** brings the root toolchain to what mnci supports, as one diff to review. It refuses a directory
+that is not a clean git work tree and leaves its changes uncommitted, as `mnci upgrade` does. It removes the
+retired formatter configs and dependencies (Prettier, oxfmt, oxlint), the root scripts that call them (a
+`format:check` running `oxfmt` fails once the dependency is gone), and the local-registry scaffolding
+(`.verdaccio`, `verdaccio`, the `local-registry` target); pins `nx` and every `@nx/*` to one exact version, by
+default the newest published in the major already in use (`--nx <version>` overrides it); installs; and runs
+`npm audit fix` (never `--force`) until `mnci ci audit` passes, up to four passes. Run on a copy of a real
+hand-built workspace it moved Nx 23.1.1 to 23.3.0 and the audit gate passed after one pass.
 
 ## `mnci upgrade`: re-applying the overlay to an existing workspace
 
