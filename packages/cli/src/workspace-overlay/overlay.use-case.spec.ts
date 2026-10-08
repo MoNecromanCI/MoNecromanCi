@@ -2167,6 +2167,24 @@ describe('applyOverlay', () => {
     ])
   })
 
+  it('groups the Nx packages into one Dependabot PR, since they are pinned to one version (#295)', () => {
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'github',
+      stack:         DEFAULT_STACK,
+    })
+
+    const parsed = yaml.load(readFileSync(join(workspaceRoot, '.github/dependabot.yml'), 'utf8')) as {
+      updates: Array<{ 'package-ecosystem': string; 'groups'?: Record<string, { patterns: string[] }> }>
+    }
+
+    expect(parsed.updates.find(update => update['package-ecosystem'] === 'npm')?.groups).toEqual({ nx: { patterns: ['nx', '@nx/*'] } })
+  })
+
   it('adds the pip block once a Python project exists, and not before', () => {
     const options = {
       workspaceName: 'demo',
