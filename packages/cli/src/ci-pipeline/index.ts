@@ -96,3 +96,4 @@ function runPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<
 
 export { detectCiHost, groupEnd, groupStart, pullRequestTarget, type CiHost } from './ci-environment.client'
 export type { CiDependencies, CiProcesses } from './phase.contract'
+export { runAudit } from './audit.use-case'

@@ -1,4 +1,5 @@
 import { logger, printJson } from '../terminal'
+import { adoptToolchain } from './adopt-toolchain.use-case'
 import { createBaselineTags } from './create-baseline-tags.use-case'
 import type { AdoptionReport } from './adoption-report.contract'
 import { inspectRepository } from './inspect-repository.use-case'
@@ -13,9 +14,13 @@ import { judgeAdoption } from './judge-adoption.policy'
  */
 export interface AdoptOptions {
   /** Print the report as one JSON document, for an editor or a script. */
-  json?: boolean
+  json?:      boolean
   /** Create, locally, the baseline tags for projects whose release tags are stranded under an old name. */
-  tags?: boolean
+  tags?:      boolean
+  /** Retire old tooling, align the Nx family and make the audit pass; leaves the changes uncommitted. */
+  toolchain?: boolean
+  /** The Nx version `toolchain` aligns to. */
+  nx?:        string
 }
 
 /**
@@ -48,6 +53,11 @@ export function reportAdoption (repositoryRoot: string): AdoptionReport {
  */
 export function runAdopt (repositoryRoot: string, options: AdoptOptions = {}): void {
   const report = reportAdoption(repositoryRoot)
+  if (options.toolchain === true) {
+    runToolchain(repositoryRoot, options)
+
+    return
+  }
   if (options.tags === true) {
     runBaselineTags(repositoryRoot, report)
 
@@ -119,5 +129,37 @@ function runBaselineTags (repositoryRoot: string, report: AdoptionReport): void 
   if (result.created.length > 0) {
     logger.info(`Local only. Publish them when you are ready: git push origin ${result.created.map(tag => JSON.stringify(tag)).join(' ')}`)
     logger.info('A tag made under the new name at a LOWER version (for example @scope/x@0.0.5) stays; the baseline outranks it, and removing it from the remote is your call.')
+  }
+}
+
+/**
+ * Runs the toolchain step and says what it changed and what to do next.
+ *
+ * @param repositoryRoot - Absolute path to the repository.
+ * @param options - The command's flags.
+ * @returns Nothing.
+ * @throws Never - a refusal is printed and sets the exit code.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function runToolchain (repositoryRoot: string, options: AdoptOptions): void {
+  try {
+    const result = adoptToolchain(repositoryRoot, { nxVersion: options.nx }, { log: message => { logger.step(message) } })
+    for (const line of result.removed) {
+      logger.info(`removed ${line}`)
+    }
+    if (result.aligned.version === undefined) {
+      logger.info('Nx is not declared at the root, so there is no family to align.')
+    } else {
+      logger.info(`Nx family at ${result.aligned.version}${result.aligned.names.length > 0 ? ` (moved: ${result.aligned.names.join(', ')})` : ' (already aligned)'}`)
+    }
+    if (result.auditPasses) {
+      logger.success(`The audit gate passes${result.auditFixes > 0 ? ` after ${result.auditFixes} npm audit fix pass(es)` : ''}. Review with \`git diff\` and commit package.json and package-lock.json.`)
+    } else {
+      logger.error('The audit gate still fails after npm audit fix. Run `mnci ci audit` to see what is left; a targeted overrides entry is the usual answer.')
+      process.exitCode = 1
+    }
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
   }
 }
