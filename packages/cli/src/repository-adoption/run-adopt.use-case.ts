@@ -1,6 +1,6 @@
 import { logger, printJson } from '../terminal'
 import type { UpgradeOptions } from '../workspace-upgrade'
-import { adoptDependencies } from './adopt-dependencies.use-case'
+import { adoptDependencies } from '../dependency-adoption'
 import { adoptKinds } from '../kind-adoption'
 import { adoptOverlay } from './adopt-overlay.use-case'
 import { adoptToolchain } from '../toolchain-adoption'
