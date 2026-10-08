@@ -260,6 +260,24 @@
     ]
   },
   {
+    "name": "adopt",
+    "aliases": [],
+    "group": "inspect",
+    "description": "Read an existing repository and report what bringing it under mnci would involve: blockers, warnings and the step that clears each. Read-only; exits non-zero when something blocks",
+    "arguments": [],
+    "options": [
+      {
+        "name": "json",
+        "flags": "--json",
+        "description": "print the report as one JSON document",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "ci",
     "aliases": [],
     "group": "pipeline",

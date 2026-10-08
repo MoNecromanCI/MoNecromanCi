@@ -95,6 +95,7 @@ committing an upgrade.
 - **`packages/cli/src/workspace-creation/create-workspace.use-case.ts`** — workspace generation (calls `applyOverlay`)
 - **`packages/cli/src/project-scaffolding/add-project.use-case.ts`** — per-project scaffolding (delegates to Nx generators)
 - **`packages/cli/src/workspace-upgrade/upgrade-workspace.use-case.ts`** — re-apply overlay to existing workspace
+- **`packages/cli/src/repository-adoption/run-adopt.use-case.ts`** — `mnci adopt` (#383): read-only report on an existing repository (facts from `inspect-repository.use-case.ts`, judged by the pure `judge-adoption.policy.ts` into blockers and warnings, each naming the later step that clears it). Report mode only; the steps are issues #378-#382
 - **`packages/cli/src/workspace-diagnostics/check-invariants.use-case.ts`** — read-only invariant check (`mnci doctor`); exits non-zero on any finding, and every finding names its remedy
 - **`packages/cli/src/dependency-management/sync-dependencies.use-case.ts`** — `mnci sync`: converge every external dependency range declared at more than one version, then run `nx sync` for TypeScript project references. Owns the one call to `nx sync` (`mnci add` imports it from here)
 - **`packages/cli/src/dependency-management/update-dependencies.use-case.ts`** — `mnci up`: `npm-check -u`'s grouped report and multiselect, plus the projects column, across npm/pip/pub/nuget/go

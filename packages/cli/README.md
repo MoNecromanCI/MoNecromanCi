@@ -505,6 +505,23 @@ from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
 
+## `mnci adopt`: reading an existing repository before changing it
+
+`mnci adopt` is the start of bringing a repository that already has history, tooling and published
+packages under mnci (the plan is #383). So far it is **report mode only and changes nothing**:
+
+```bash
+mnci adopt          # what was found, what blocks, what clears each
+mnci adopt --json   # the same, as one document
+```
+
+It reads git and the filesystem (no Nx, no install, no network) and reports the package manager, the
+`nx` version, every project manifest, the tags and any release tags stranded under an old project name,
+the CI pipelines and whether they already call `mnci ci`, retired tooling (Prettier, oxfmt, verdaccio)
+and the root files that are yours (`CLAUDE.md`, `AGENTS.md`). A **blocker** (not a git repository,
+uncommitted changes, a package manager other than npm, no projects) makes it exit non-zero; a **warning**
+names the later adoption step that clears it. Each later step is its own issue under #383.
+
 ## `mnci upgrade`: re-applying the overlay to an existing workspace
 
 Every fix to `workspace-overlay/overlay.use-case.ts` — a release-config correction, a CI guard rewritten,
