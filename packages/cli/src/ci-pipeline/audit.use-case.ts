@@ -126,28 +126,42 @@ export function planIsEmpty (stdout: string): boolean {
 /**
  * Judges one `npm audit --json` result.
  *
- * @param result - What `npm audit --json` printed and its exit status.
- * @param dryRun - Runs `npm audit fix --dry-run --json`, asked only when something would block.
+ * @remarks
+ * Only an advisory in the production tree (`npm audit --omit=dev`) blocks. A dev dependency is never
+ * shipped to a consumer, so an advisory that reaches only dev dependencies is reported as a note. The
+ * build agent still runs dev tooling, so the note keeps it visible rather than hiding it.
+ *
+ * @param result - What `npm audit --json` printed (the whole tree) and its exit status.
+ * @param production - What `npm audit --omit=dev --json` printed (what ships).
+ * @param dryRun - Runs `npm audit fix --omit=dev --dry-run --json`, asked only when something would block.
  * @param log - The logger.
  * @returns 1 when an advisory has a published fix npm can apply, at moderate or above; otherwise 0, including when the report is not JSON.
  * @throws Never - an unreadable report is a pass with a note.
  * @typeParam None - this function has no generic type parameters.
  */
-function auditNpm (result: { status: number, stdout: string }, dryRun: () => { status: number, stdout: string }, log: (message: string) => void): number {
+function auditNpm (result: { status: number, stdout: string }, production: { status: number, stdout: string }, dryRun: () => { status: number, stdout: string }, log: (message: string) => void): number {
   let report: { vulnerabilities?: Record<string, NpmAdvisory> }
+  let shipped: { vulnerabilities?: Record<string, NpmAdvisory> }
   try {
     report = JSON.parse(result.stdout) as typeof report
+    shipped = JSON.parse(production.stdout) as typeof shipped
   } catch {
     log(`npm audit produced no JSON (exit ${result.status}) - not blocking on a broken audit.`)
 
     return 0
   }
-  const { blocking, total, notes } = classifyNpmAudit(report)
+  const { notes } = classifyNpmAudit(report)
+  const { blocking, total } = classifyNpmAudit(shipped)
+  const productionNames = new Set(Object.keys(shipped.vulnerabilities ?? {}))
+  const developmentOnly = classifyNpmAudit(report).blocking.filter(advisory => !productionNames.has(advisory.name))
   for (const note of notes) {
     log(note)
   }
+  for (const advisory of developmentOnly) {
+    log(`  note [${advisory.severity}] ${advisory.name} - reaches only dev dependencies, which no consumer receives, so it does not block`)
+  }
   if (blocking.length === 0) {
-    log(`npm audit - ${total} advisory(ies), none actionable at moderate or above.`)
+    log(`npm audit - ${Object.keys(report.vulnerabilities ?? {}).length} advisory(ies), none actionable at moderate or above in production dependencies.`)
 
     return 0
   }
@@ -155,7 +169,7 @@ function auditNpm (result: { status: number, stdout: string }, dryRun: () => { s
     for (const advisory of blocking) {
       log(`  note [${advisory.severity}] ${advisory.name} - npm reports a fix, but npm audit fix has nothing to apply`)
     }
-    log(`npm audit - ${total} advisory(ies); ${blocking.length} reported as fixable, but no patched release is reachable, so there is nothing to do here.`)
+    log(`npm audit - ${total} production advisory(ies); ${blocking.length} reported as fixable, but no patched release is reachable, so there is nothing to do here.`)
 
     return 0
   }
@@ -206,7 +220,12 @@ export function runAudit (workspaceRoot: string, dependencies: Partial<CiDepende
   }
 
   log(groupStart(host, 'npm audit'))
-  const npm = auditNpm(processes.capture('npm', ['audit', '--json']), () => processes.capture('npm', ['audit', 'fix', '--dry-run', '--json']), log)
+  const npm = auditNpm(
+    processes.capture('npm', ['audit', '--json']),
+    processes.capture('npm', ['audit', '--omit=dev', '--json']),
+    () => processes.capture('npm', ['audit', 'fix', '--omit=dev', '--dry-run', '--json']),
+    log,
+  )
   closeGroup()
   if (npm !== 0) {
     return npm

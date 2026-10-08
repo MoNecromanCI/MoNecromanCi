@@ -88,7 +88,7 @@ describe('mnci ci audit (#269)', () => {
 
     expect(audit(setup)).toBe(0)
 
-    expect(setup.logged).toContain('npm audit - 0 advisory(ies), none actionable at moderate or above.')
+    expect(setup.logged).toContain('npm audit - 0 advisory(ies), none actionable at moderate or above in production dependencies.')
   })
 
   it('fails on an advisory with a published fix, naming it and the way to fix it', () => {
@@ -98,6 +98,29 @@ describe('mnci ci audit (#269)', () => {
 
     expect(setup.logged).toContain('  BLOCKING [high] lodash - fix available')
     expect(setup.logged.some(line => line.includes('overrides entry'))).toBe(true)
+  })
+
+  it('does not block on an advisory that reaches only dev dependencies, and says so', () => {
+    const setup = harness('')
+    setup.processes.capture = (command, arguments_) => {
+      setup.commands.push([command, ...arguments_].join(' '))
+      const everything = { vulnerabilities: { jest: advisory('jest', 'high', true), lodash: advisory('lodash', 'low', true) } }
+
+      return { status: 0, stdout: JSON.stringify(arguments_.includes('--omit=dev') ? { vulnerabilities: {} } : everything) }
+    }
+
+    expect(audit(setup)).toBe(0)
+
+    expect(setup.logged.some(line => line.includes('note [high] jest - reaches only dev dependencies'))).toBe(true)
+    expect(setup.logged.some(line => line.includes('BLOCKING'))).toBe(false)
+  })
+
+  it('still blocks on an advisory in the production tree', () => {
+    const setup = harness(JSON.stringify({ vulnerabilities: { express: advisory('express', 'high', true) } }))
+
+    expect(audit(setup)).toBe(1)
+
+    expect(setup.commands).toContain('npm audit --omit=dev --json')
   })
 
   it('does not block on a report that is not JSON: a broken audit must not stop a release', () => {
