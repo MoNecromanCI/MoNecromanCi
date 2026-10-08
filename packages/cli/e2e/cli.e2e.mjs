@@ -183,6 +183,11 @@ const failedSections = new Set()
  * @param body - The section itself.
  */
 function section (label, needs, body) {
+  // `MNCI_E2E_ONLY=label[,label]` runs just those sections, to iterate on one without the 25 minutes.
+  const only = process.env.MNCI_E2E_ONLY
+  if (only !== undefined && !only.split(',').includes(label)) {
+    return
+  }
   const blockedBy = needs.find(name => failedSections.has(name))
   if (blockedBy) {
     failedSections.add(label)
@@ -3064,6 +3069,103 @@ section('go adoption', [], () => {
   )
   const targets = tryRunCapture('npx nx run-many -t test,build --projects=cli,core', flat)
   enforce('go adoption: nx test and build are green for the converted projects', targets.ok, targets.output)
+})
+section('repository adoption', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci adopt` (#383), every step in order, on a miniature of the first real
+   * adoption (a hand-built Nx workspace, scoped names, release tags under the old
+   * unscoped names, Prettier and oxfmt leftovers, a local registry, and an Azure
+   * pipeline with a step of the team's own): report, then --tags, --toolchain and
+   * --overlay, each its own commit, then doctor and a release dry-run.
+   * ------------------------------------------------------------------------- */
+  const adopted = path.join(temporary, 'adopted')
+  const write = (file, content) => {
+    mkdirSync(path.dirname(path.join(adopted, file)), { recursive: true })
+    writeFileSync(path.join(adopted, file), typeof content === 'string' ? content : `${JSON.stringify(content, undefined, 2)}\n`)
+  }
+  const commit = message => run(`git add -A && git -c user.email=e2e@test -c user.name=e2e commit -q -m "${message}"`, adopted)
+  const json = command => {
+    const result = tryRunCapture(command, adopted)
+    try {
+      return { ...result, parsed: JSON.parse(result.output.slice(result.output.indexOf('{'), result.output.lastIndexOf('}') + 1)) }
+    } catch {
+      return { ...result, parsed: undefined }
+    }
+  }
+
+  write('package.json', {
+    name:            '@acme/source',
+    private:         true,
+    workspaces:      ['packages/*'],
+    scripts:         { 'format:check': 'oxfmt --check .', 'build': 'nx run-many -t build' },
+    devDependencies: { 'nx': '23.1.1', '@nx/js': '23.1.1', 'prettier': '^3.0.0' },
+  })
+  write('nx.json', { $schema: './node_modules/nx/schemas/nx-schema.json' })
+  write('.gitignore', 'node_modules\n')
+  write('.prettierrc', '{}\n')
+  write('.verdaccio/config.yml', 'storage: ./storage\n')
+  write('packages/alpha/package.json', { name: '@acme/alpha', version: '0.0.1' })
+  write('packages/beta/package.json', { name: '@acme/beta', version: '0.0.1' })
+  write('azure-pipelines.yml', [
+    'trigger:',
+    '  - main',
+    'pool:',
+    '  vmImage: ubuntu-latest',
+    'steps:',
+    '  - script: echo the-teams-own-step',
+    '    displayName: Team step',
+    '  - script: npm ci',
+    '    displayName: Install',
+    '',
+  ].join('\n'))
+  run('git init -q -b main', adopted)
+  commit('feat: the hand-built workspace')
+  run('git tag alpha@1.4.2', adopted)
+  const releasedCommit = tryRunCapture('git rev-list -n 1 alpha@1.4.2', adopted).output.trim()
+
+  // 1. The report changes nothing, and finds what the later steps clear.
+  const report = json(`node ${CLI} adopt --json`)
+  const warnings = (report.parsed?.findings ?? []).map(finding => finding.detail).join('\n')
+  enforce('adopt: the report is ready, and names the stranded tag, the retired tooling and the unrecognised pipeline', report.parsed?.ready === true && warnings.includes('@acme/alpha') && warnings.includes('.prettierrc') && warnings.includes('does not call mnci'), report.output)
+  enforce('adopt: the report changed nothing', tryRunCapture('git status --porcelain', adopted).output.trim() === '', tryRunCapture('git status --porcelain', adopted).output)
+
+  // 2. The baseline tag lands on the commit of the old tag, once.
+  run(`node ${CLI} adopt --tags`, adopted)
+  const baseline = tryRunCapture('git rev-list -n 1 @acme/alpha@1.4.2', adopted)
+  enforce('adopt --tags: the baseline tag is on the commit of the old tag', baseline.ok && baseline.output.trim() === releasedCommit, baseline.output)
+  enforce('adopt --tags: a second run has nothing left to do', tryRunCapture(`node ${CLI} adopt --tags`, adopted).output.includes('Nothing to baseline'))
+
+  // 3. The toolchain: retired tooling gone, one Nx version. The audit verdict is reported, not enforced:
+  // it depends on advisories published after this was written.
+  const toolchain = tryRunCapture(`node ${CLI} adopt --toolchain`, adopted)
+  const manifest = JSON.parse(readFileSync(path.join(adopted, 'package.json'), 'utf8'))
+  const family = ['nx', '@nx/js'].map(name => manifest.devDependencies[name])
+  enforce('adopt --toolchain: Prettier, the oxfmt script and the local registry are gone', manifest.devDependencies.prettier === undefined && manifest.scripts['format:check'] === undefined && !existsSync(path.join(adopted, '.prettierrc')) && !existsSync(path.join(adopted, '.verdaccio')), toolchain.output)
+  enforce('adopt --toolchain: nx and @nx/js are one version, newer than the one pinned', family[0] === family[1] && family[0] !== '23.1.1', JSON.stringify(family))
+  console.log(`  (audit after the toolchain step: ${toolchain.ok ? 'passes' : 'still fails, which depends on advisories published since'})`)
+  commit('chore: adopt the toolchain')
+
+  // 4. The overlay: the pipeline now runs mnci, and the team's step is kept in a slot.
+  run(`node ${CLI} adopt --overlay --scope @acme --registry npm --agent ubuntu-latest --test-runner jest`, adopted)
+  const pipeline = readFileSync(path.join(adopted, 'azure-pipelines.yml'), 'utf8')
+  enforce('adopt --overlay: the pipeline calls mnci ci verify', /mnci ci verify/.test(pipeline), pipeline.slice(0, 600))
+  const slot = pipeline.split('# mnci:slot').slice(1).join('# mnci:slot')
+  enforce('adopt --overlay: the team step survived, inside a slot', pipeline.includes('the-teams-own-step') && slot.includes('the-teams-own-step'), pipeline)
+  const recorded = JSON.parse(readFileSync(path.join(adopted, 'nx.json'), 'utf8'))
+  enforce('adopt --overlay: the choices are recorded in nx.json', recorded.mnci?.scope === '@acme')
+  run('npm install --ignore-scripts --no-audit --no-fund', adopted)
+  commit('chore: adopt the overlay')
+
+  // 5. Doctor agrees: the verify phase is active and no tag is stranded.
+  const doctor = json(`node ${CLI} doctor --json`)
+  const failed = (doctor.parsed?.findings ?? []).filter(finding => !finding.ok).map(finding => finding.check)
+  enforce('adopt: doctor finds the verify phase active and no release tag stranded', doctor.parsed !== undefined && failed.every(check => !/verify phase|release tags resolve/.test(check)), failed.join('\n'))
+
+  // 6. A release would continue from the old version, never restart below it.
+  write('packages/alpha/src/index.ts', 'export const alpha = 1\n')
+  commit('feat(alpha): the first change since the release')
+  const dryRun = tryRunCapture('npx nx release --dry-run --yes', adopted)
+  enforce('adopt: a release dry run proposes a version above the old tag, not the disk version', /1\.(?:4\.3|5\.0)/.test(dryRun.output) && !/@acme\/alpha@0\.0\./.test(dryRun.output), dryRun.output.slice(-1500))
 })
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
