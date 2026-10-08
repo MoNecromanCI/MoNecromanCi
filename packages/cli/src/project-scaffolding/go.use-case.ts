@@ -197,6 +197,64 @@ function setGoModulePath (workspaceRoot: string, projectDir: string): void {
 }
 
 /**
+ * The `go` directive a generated module is held to, so CI's toolchain can always load it.
+ *
+ * @remarks
+ * `@nx-go/nx-go` copies the **developer's** Go version into `go.mod`. CI's `golangci-lint` is built
+ * with whatever Go its release was built with, and it refuses to load a module whose directive is
+ * newer ("the Go language version used to build golangci-lint is lower than the targeted Go
+ * version"), which fails every Go lint target on the first CI run - and only for a developer on
+ * the newest Go, which is why it is missed locally (#348). The scaffold needs nothing newer, so the
+ * directive is clamped and left for the developer to raise deliberately.
+ */
+export const GO_DIRECTIVE_CEILING = '1.24'
+
+/** Whether a `1.x[.y]` Go version is newer than {@link GO_DIRECTIVE_CEILING}. */
+function exceedsGoCeiling (version: string): boolean {
+  const [major, minor] = version.split('.').map(Number)
+  const [ceilingMajor, ceilingMinor] = GO_DIRECTIVE_CEILING.split('.').map(Number)
+
+  return major > ceilingMajor || (major === ceilingMajor && minor > ceilingMinor)
+}
+
+/**
+ * Clamps a `go.mod` or `go.work` `go` directive to {@link GO_DIRECTIVE_CEILING}, dropping a `toolchain` line.
+ *
+ * @param filePath - Absolute path to the `go.mod` or `go.work`.
+ * @returns Nothing.
+ * @throws Propagates an `fs` write error; a missing file is a no-op.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function clampGoDirective (filePath: string): void {
+  if (!fileExists(filePath)) {
+    return
+  }
+  const before = readFileSync(filePath, 'utf8')
+  const directive = /^go\s+(\d+\.\d+(?:\.\d+)?)/m.exec(before)
+  if (directive === null || !exceedsGoCeiling(directive[1])) {
+    return
+  }
+  const after = before
+    .replace(/^go\s+\d+\.\d+(?:\.\d+)?/m, () => `go ${GO_DIRECTIVE_CEILING}`)
+    .replace(/^toolchain\s+\S+(?:\r?\n){1,2}/m, '')
+  writeFileEnsured(filePath, after)
+}
+
+/**
+ * Holds a freshly generated project, and the workspace's `go.work`, to a `go` directive CI can load.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectDir - The project's workspace-relative directory.
+ * @returns Nothing.
+ * @throws Propagates an `fs` write error.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function pinGoDirective (workspaceRoot: string, projectDir: string): void {
+  clampGoDirective(join(workspaceRoot, projectDir, 'go.mod'))
+  clampGoDirective(join(workspaceRoot, 'go.work'))
+}
+
+/**
  * Replaces the generator's root `Hello` with the worked example (a contract and a use case).
  *
  * @remarks
@@ -710,6 +768,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     workspaceRoot,
   )
   setGoModulePath(workspaceRoot, `apps/${name}`)
+  pinGoDirective(workspaceRoot, `apps/${name}`)
   // `--web` replaces main.go with its own server, so the example would be an orphan there.
   if (options.web === undefined) {
     writeGoAppExample(workspaceRoot, `apps/${name}`)
@@ -781,6 +840,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
     workspaceRoot,
   )
   setGoModulePath(workspaceRoot, `apps/${name}`)
+  pinGoDirective(workspaceRoot, `apps/${name}`)
   writeGoAppExample(workspaceRoot, `apps/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
@@ -828,6 +888,7 @@ export function addGoLib (workspaceRoot: string, name: string): void {
     workspaceRoot,
   )
   setGoModulePath(workspaceRoot, `packages/${name}`)
+  pinGoDirective(workspaceRoot, `packages/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'packages', name, 'project.json'), {
     test: goTestTarget(),
     lint: goLintTarget(),
@@ -871,6 +932,7 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
     workspaceRoot,
   )
   setGoModulePath(workspaceRoot, `libs/${name}`)
+  pinGoDirective(workspaceRoot, `libs/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'libs', name, 'project.json'), {
     test: goTestTarget(),
     lint: goLintTarget(),
