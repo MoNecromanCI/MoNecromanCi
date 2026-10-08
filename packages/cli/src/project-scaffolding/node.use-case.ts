@@ -1,4 +1,4 @@
-import { convertAppToEsm } from './esm-conversion.use-case'
+import { convertAppToEsm } from '../esm-conversion'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'

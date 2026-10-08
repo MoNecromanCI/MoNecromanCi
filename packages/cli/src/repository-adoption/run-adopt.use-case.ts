@@ -1,13 +1,11 @@
 import { logger, printJson } from '../terminal'
 import type { UpgradeOptions } from '../workspace-upgrade'
-import { adoptDependencies } from './adopt-dependencies.use-case'
-import { adoptKinds } from './adopt-kinds.use-case'
+import { adoptDependencies } from '../dependency-adoption'
+import { adoptKinds } from '../kind-adoption'
 import { adoptOverlay } from './adopt-overlay.use-case'
-import { adoptToolchain } from './adopt-toolchain.use-case'
-import { createBaselineTags } from './create-baseline-tags.use-case'
-import type { AdoptionReport } from './adoption-report.contract'
-import { inspectRepository } from './inspect-repository.use-case'
-import { judgeAdoption } from './judge-adoption.policy'
+import { adoptToolchain } from '../toolchain-adoption'
+import { createBaselineTags } from '../release-tag-lineage'
+import { reportAdoption, type AdoptionReport } from '../adoption-report'
 
 /**
  * Flags of `mnci adopt`.
@@ -33,21 +31,6 @@ export interface AdoptOptions extends UpgradeOptions {
   kind?:         string[]
   /** Move the root manifest's runtime dependencies into the projects that import them. */
   dependencies?: boolean
-}
-
-/**
- * Reads a repository and says what adopting it into mnci would involve.
- *
- * @remarks
- * Pure of side effects: it reads git and the filesystem and prints nothing, so a test or an editor can call it.
- *
- * @param repositoryRoot - Absolute path to the repository.
- * @returns The report.
- * @throws Error when a manifest it must read is not valid JSON.
- * @typeParam None - this function has no generic type parameters.
- */
-export function reportAdoption (repositoryRoot: string): AdoptionReport {
-  return judgeAdoption(inspectRepository(repositoryRoot))
 }
 
 /**
@@ -171,6 +154,9 @@ function runBaselineTags (repositoryRoot: string, report: AdoptionReport): void 
 function runToolchain (repositoryRoot: string, options: AdoptOptions): void {
   try {
     const result = adoptToolchain(repositoryRoot, { nxVersion: options.nx }, { log: message => { logger.step(message) } })
+    if (result.bootstrapped.length > 0) {
+      logger.info(`Nx was not set up here, so it is now: ${result.bootstrapped.join(', ')} (nx.json and the plugins; review it with \`git diff\`).`)
+    }
     for (const line of result.removed) {
       logger.info(`removed ${line}`)
     }

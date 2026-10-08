@@ -1,9 +1,9 @@
 /**
- * Bringing an existing repository under mnci, step by step (`mnci adopt`).
+ * Turning a generated CommonJS Node app into an ES module app (`mnci add --esm`).
  *
  * @remarks
  * The deliberate public API of this slice: a sibling reaches it only
  * through this barrel, never by a path into the files below.
  */
 
-export { runAdopt, type AdoptOptions } from './run-adopt.use-case'
+export { convertAppToEsm } from './esm-conversion.use-case'

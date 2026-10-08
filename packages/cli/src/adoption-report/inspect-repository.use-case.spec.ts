@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { inspectRepository } from './inspect-repository.use-case'
-import { reportAdoption } from './run-adopt.use-case'
+import { reportAdoption } from './report-adoption.use-case'
 
 let root: string
 

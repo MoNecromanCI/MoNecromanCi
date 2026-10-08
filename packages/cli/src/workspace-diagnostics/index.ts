@@ -6,6 +6,4 @@
  * through this barrel, never by a path into the files below.
  */
 
-export * from './check-invariants.use-case'
-export { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
-export type { StrandedReleaseTag } from './stranded-release-tags.algorithm'
+export { runDoctor, type DoctorOptions } from './check-invariants.use-case'

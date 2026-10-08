@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { locateStrandedReleaseTags } from '../workspace-diagnostics'
+import { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
 import { createBaselineTags } from './create-baseline-tags.use-case'
 
 let root: string

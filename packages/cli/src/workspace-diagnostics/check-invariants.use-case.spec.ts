@@ -18,7 +18,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runCapture } from '../nx-workspace'
 import { repairDeclarationSpecifiers, upgradeDeclarationSpecifierPlugins } from '../rollup-library'
-import { collectFindings, runDoctor, type Finding } from './check-invariants.use-case'
+import { collectFindings, runDoctor } from './check-invariants.use-case'
+import type { Finding } from './finding.contract'
 
 const mockRunCapture = jest.mocked(runCapture)
 const mockSpawnSync = jest.mocked(spawnSync)

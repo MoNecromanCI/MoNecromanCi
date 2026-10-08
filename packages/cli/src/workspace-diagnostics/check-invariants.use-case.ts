@@ -24,31 +24,8 @@ import {
 } from '../rollup-library'
 import { fileExists, readJson } from '../file-system'
 import { logger, printJson } from '../terminal'
-import { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
-
-/**
- * One check's outcome.
- *
- * @remarks
- * `remedy` is separate from `detail` on purpose: the detail says what is wrong in
- * this workspace, the remedy says what to type. A finding without a remedy is a
- * finding the user cannot act on, which is the main way a doctor command becomes
- * noise.
- *
- * @typeParam None - this interface has no generic type parameters.
- */
-export interface Finding {
-  /** Short check name, shown as the line label. */
-  check:    string
-  /** Whether the invariant holds. */
-  ok:       boolean
-  /** What is wrong, when it is not ok. */
-  detail?:  string
-  /** The command or edit that fixes it. */
-  remedy?:  string
-  /** A passing finding the user should still read: reported as a warning, never failing the run. */
-  warning?: boolean
-}
+import { checkReleaseTagsResolve } from './check-release-tags-resolve.use-case'
+import type { Finding } from './finding.contract'
 
 /** The ESLint major this stack supports, derived from the version mnci pins. */
 const SUPPORTED_ESLINT_MAJOR = ESLINT_VERSION.replace(/^\D*/, '').split('.', 1)[0]
@@ -1261,31 +1238,6 @@ function checkLockfileHasNoLocalRegistry (workspaceRoot: string): Finding | unde
     ok:     !hasStaleLocalRegistry(workspaceRoot),
     detail: 'package-lock.json still holds verdaccio and its chain, which no manifest declares; npm audit reports high advisories (braces has no patched release) on packages nothing uses',
     remedy: 'run `mnci upgrade`, which removes it, then commit package-lock.json',
-  }
-}
-
-/**
- * Checks that no project's release tags are stranded under a name it no longer has.
- *
- * @remarks
- * See {@link findStrandedReleaseTags}. Skipped when `nx.json` sets a release tag pattern other than mnci's `{projectName}@{version}`, since
- * the lookup name is then not the project name this check assumes. The remedy names each baseline tag.
- *
- * @param workspaceRoot - Absolute path to the workspace.
- * @param nxJson - The parsed `nx.json`.
- * @param nxJson.release - Its release block.
- * @returns A finding when a project would restart from its disk version, otherwise none.
- * @throws Never - a workspace that is not a git repository has no tags to read.
- * @typeParam None - this function has no generic type parameters.
- */
-function checkReleaseTagsResolve (workspaceRoot: string, nxJson: { release?: { releaseTag?: { pattern?: string } } }): Finding | undefined {
-  const stranded = locateStrandedReleaseTags(workspaceRoot, nxJson.release?.releaseTag?.pattern)
-
-  return {
-    check:  "release tags resolve under each project's current name",
-    ok:     stranded.length === 0,
-    detail: `${stranded.map(entry => `${entry.project} has only ${entry.oldTag}`).join('; ')} - nx release finds no tag under the new name and would release from the disk version, a downgrade`,
-    remedy: `run \`mnci adopt --tags\` to create the baseline tag for each (${stranded.map(entry => entry.newTag).join(', ')}) on the commit of its old tag, then push the tags`,
   }
 }
 

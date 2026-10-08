@@ -4,7 +4,7 @@ import { locateProjects, type ProjectLocation } from '../dependency-management'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { runCapture } from '../nx-workspace'
 import { PROJECT_KINDS } from '../project-scaffolding'
-import { requireCleanWorkingTree } from './clean-working-tree.validator'
+import { requireCleanWorkingTree } from '../clean-working-tree'
 import { inferProjectKind, type KindProposal, type ProjectEvidence } from './infer-project-kind.algorithm'
 
 /** The prefix of the tag that records a project's kind. */

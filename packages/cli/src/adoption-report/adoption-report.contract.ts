@@ -1,4 +1,4 @@
-import type { StrandedReleaseTag } from '../workspace-diagnostics'
+import type { StrandedReleaseTag } from '../release-tag-lineage'
 
 /**
  * One project the repository already holds.

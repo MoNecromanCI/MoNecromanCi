@@ -4,7 +4,7 @@ import { fileExists, readJson } from '../file-system'
 import { runCapture } from '../nx-workspace'
 import { runUpgrade, type UpgradeOptions } from '../workspace-upgrade'
 import { readMnciConfig, type CiProvider } from '../workspace-overlay'
-import { requireCleanWorkingTree } from './clean-working-tree.validator'
+import { requireCleanWorkingTree } from '../clean-working-tree'
 
 /**
  * What {@link adoptOverlay} needs from its environment, so a test can run it without Nx or npm.
@@ -69,7 +69,7 @@ function detectTestRunner (repositoryRoot: string): 'jest' | 'vitest' | undefine
  *
  * @remarks
  * This is `mnci upgrade` behind the guard rails adoption needs. It refuses an unclean git tree, needs an
- * `nx.json` (adopt does not install Nx), and fills the CI provider and the test runner from what the
+ * `nx.json` (`mnci adopt --toolchain` sets Nx up first when there is none), and fills the CI provider and the test runner from what the
  * repository already has when neither a flag nor a previous `mnci` block names them. The pipeline is merged
  * by the same legacy migration `upgrade` uses: steps mnci does not recognise go into the three slots, the
  * ones it does are replaced by `mnci ci <phase>`. Everything else (scope, registry, agent) has no safe
@@ -85,7 +85,7 @@ function detectTestRunner (repositoryRoot: string): 'jest' | 'vitest' | undefine
 export function adoptOverlay (repositoryRoot: string, options: UpgradeOptions, dependencies: Partial<OverlayDependencies> = {}): void {
   requireCleanWorkingTree(repositoryRoot, dependencies.capture ?? runCapture)
   if (!fileExists(join(repositoryRoot, 'nx.json'))) {
-    throw new Error('There is no nx.json, so Nx is not set up here. Set it up first (`npx nx@latest init`); adopt does not install Nx yet.')
+    throw new Error('There is no nx.json, so Nx is not set up here. Run `mnci adopt --toolchain` first: it sets Nx up (nx init, then nx add), and the overlay needs that.')
   }
   const persisted = readMnciConfig(repositoryRoot)
   const filled: UpgradeOptions = {
