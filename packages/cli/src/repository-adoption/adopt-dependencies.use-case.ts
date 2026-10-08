@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { locateProjects } from '../dependency-management'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { runCapture, runShell } from '../nx-workspace'
-import { requireCleanWorkingTree } from './clean-working-tree.validator'
+import { requireCleanWorkingTree } from '../clean-working-tree'
 import { extractImportedPackages } from './extract-imports.algorithm'
 import { planDependencyMoves, type DependencyPlan, type DependencyUsage } from './plan-dependency-moves.algorithm'
 

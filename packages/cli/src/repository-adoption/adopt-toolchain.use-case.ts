@@ -4,7 +4,7 @@ import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { pruneStaleLocalRegistry } from '../lockfile-pruning'
 import { runCapture, runShell } from '../nx-workspace'
 import { alignNxFamily, chooseNxVersion } from './align-nx-family.algorithm'
-import { requireCleanWorkingTree } from './clean-working-tree.validator'
+import { requireCleanWorkingTree } from '../clean-working-tree'
 import { retireTooling } from './retire-tooling.use-case'
 
 /** How many times `npm audit fix` is run before giving up: it needed three passes on a real workspace. */

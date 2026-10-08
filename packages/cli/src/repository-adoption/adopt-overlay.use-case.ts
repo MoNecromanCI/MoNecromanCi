@@ -4,7 +4,7 @@ import { fileExists, readJson } from '../file-system'
 import { runCapture } from '../nx-workspace'
 import { runUpgrade, type UpgradeOptions } from '../workspace-upgrade'
 import { readMnciConfig, type CiProvider } from '../workspace-overlay'
-import { requireCleanWorkingTree } from './clean-working-tree.validator'
+import { requireCleanWorkingTree } from '../clean-working-tree'
 
 /**
  * What {@link adoptOverlay} needs from its environment, so a test can run it without Nx or npm.
