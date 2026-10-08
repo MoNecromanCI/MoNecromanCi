@@ -632,7 +632,7 @@ describe('the declaration-specifier check', () => {
     // command. Asserted because the wrong remedy is easy to reintroduce and
     // impossible to notice from the code alone.
     expect(finding?.remedy).toContain('by hand')
-    expect(finding?.remedy).toContain('cannot restore a missing one')
+    expect(finding?.remedy).toContain('cannot add it')
   })
 
   it('does recommend mnci upgrade for the stale plugin, because there it genuinely repairs', () => {

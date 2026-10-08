@@ -14,6 +14,7 @@ import {
 import {
   repairPublishableManifests,
   repairRollupSourceMaps,
+  addMissingDeclarationSpecifierPlugins,
   upgradeDeclarationSpecifierPlugins,
 } from '../rollup-library'
 import {
@@ -367,6 +368,13 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (hasGoProject(workspaceRoot) && registerNxGoPlugin(workspaceRoot)) {
     logger.step('Registering the Go plugin in nx.json, so Nx can see which Go project imports which')
     logger.detail('updated nx.json')
+  }
+  const addedDtsPlugins = addMissingDeclarationSpecifierPlugins(workspaceRoot)
+  if (addedDtsPlugins.length > 0) {
+    logger.step('Adding the declaration-specifier plugin to rollup configs that lacked it')
+    for (const path of addedDtsPlugins) {
+      logger.detail(`updated ${path}`)
+    }
   }
   const upgradedDtsPlugins = upgradeDeclarationSpecifierPlugins(workspaceRoot)
   if (upgradedDtsPlugins.length > 0) {
