@@ -100,6 +100,28 @@ function sourceMapCapableCompiler (indent: string): string {
  */
 const ROLLUP_ARG_ONE_BOUNDARY = ['  },', '  {', ''].join('\n')
 
+/**
+ * The same boundary written on one line, as `@nx/react:library` writes it.
+ *
+ * @remarks
+ * `@nx/js:lib` puts the two arguments of `withNx` on separate lines (`},` then `{`); the React
+ * generator writes `}, {`. Both are the same call, so both are repaired; the one-line form is split
+ * into the two-line one first, and the formatter puts the layout back to its own taste.
+ */
+const ROLLUP_ARG_ONE_BOUNDARY_ONE_LINE = /^ {2}\},[ \t]*\{[ \t]*$/m
+
+/**
+ * Splits a one-line `}, {` boundary into the two-line form the repairs anchor on.
+ *
+ * @param config - The config file's text.
+ * @returns The config with the boundary on two lines, or unchanged when it already is.
+ * @throws Never - pure text.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function withBoundaryOnTwoLines (config: string): string {
+  return config.replace(ROLLUP_ARG_ONE_BOUNDARY_ONE_LINE, () => ROLLUP_ARG_ONE_BOUNDARY.replace(/\n$/, ''))
+}
+
 /** The same boundary, with the source-map flag appended to argument one. */
 const ROLLUP_ARG_ONE_WITH_SOURCE_MAPS = [
   '    // Added by MoNecromanCI: without this rollup emits no .js.map at all, so',
@@ -156,7 +178,7 @@ export function hasRollupSourceMaps (config: string): boolean {
  * @typeParam None - this function has no generic type parameters.
  */
 export function canRepairRollupConfig (config: string): boolean {
-  return config.includes(ROLLUP_ARG_ONE_BOUNDARY)
+  return config.includes(ROLLUP_ARG_ONE_BOUNDARY) || ROLLUP_ARG_ONE_BOUNDARY_ONE_LINE.test(config)
 }
 
 /**
@@ -177,15 +199,16 @@ export function canRepairRollupConfig (config: string): boolean {
  * and disagreeing here means inserting a second `sourceMap: true` into a
  * config `eslint --fix` had only reformatted, not left off.
  *
- * @param config - The config file's text.
+ * @param original - The config file's text.
  * @returns The config with source maps enabled, or unchanged when already so.
  * @throws Never - an unrecognised config is returned unchanged.
  * @typeParam None - this function has no generic type parameters.
  */
-export function withRollupSourceMaps (config: string): string {
-  if (hasRollupSourceMaps(config) || !canRepairRollupConfig(config)) {
-    return config
+export function withRollupSourceMaps (original: string): string {
+  if (hasRollupSourceMaps(original) || !canRepairRollupConfig(original)) {
+    return original
   }
+  const config = withBoundaryOnTwoLines(original)
   const withCompiler = config.replace(GENERATED_COMPILER_PATTERN, (_match, indent: string) =>
     sourceMapCapableCompiler(indent),
   )
@@ -500,4 +523,50 @@ export function withUpgradedDeclarationSpecifierPlugin (config: string): string 
   const [start, end] = span
 
   return `${config.slice(0, start)}${DECLARATION_SPECIFIER_PLUGIN}${config.slice(end)}`
+}
+
+/** The `plugins` array of `withNx`'s second argument, as the generator writes it. */
+const PLUGINS_ARRAY_OPEN = /^ {4}plugins\s*:\s*\[[ \t]*$/m
+
+/**
+ * Whether the declaration-specifier plugin can be added to this config.
+ *
+ * @remarks
+ * True for a config that has no such plugin and has a `plugins` array in `withNx`'s second argument,
+ * which is what `@nx/react:library` writes (it registers the SVG and URL plugins there). The
+ * write-time twin of {@link withDeclarationSpecifierPlugin}, and what `mnci doctor` asks so its
+ * advice and `mnci upgrade`'s edit cannot disagree.
+ *
+ * @param config - The config file's own text.
+ * @returns True when {@link withDeclarationSpecifierPlugin} would add it.
+ * @throws Never - pure text.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function canAddDeclarationSpecifierPlugin (config: string): boolean {
+  return !hasDeclarationSpecifierPlugin(config) && !config.includes(ROLLUP_CONFIG_PLACEHOLDER) && PLUGINS_ARRAY_OPEN.test(config)
+}
+
+/**
+ * Adds the declaration-specifier plugin to a config whose second argument already has `plugins`.
+ *
+ * @remarks
+ * The other generators (`@nx/js:lib`) leave an empty second argument that the plugin is written into
+ * as a whole (see {@link ROLLUP_CONFIG_WITH_DTS_FIX}). `@nx/react:library` fills that argument with
+ * its own plugins, so the placeholder never matches and the plugin was never added: the declarations
+ * of a React library kept their extensionless relative imports, which a `nodenext` consumer cannot
+ * resolve (TS2834, or an empty module under `skipLibCheck`).
+ *
+ * The plugin goes first in the existing array, with the generator's own entries untouched after it.
+ *
+ * @param config - The config file's text.
+ * @returns The config with the plugin added, or unchanged when it is there already or there is no array to add it to.
+ * @throws Never - an unrecognised shape is returned unchanged.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function withDeclarationSpecifierPlugin (config: string): string {
+  if (!canAddDeclarationSpecifierPlugin(config)) {
+    return config
+  }
+
+  return config.replace(PLUGINS_ARRAY_OPEN, (opening: string) => `${opening}\n${DECLARATION_SPECIFIER_PLUGIN},`)
 }

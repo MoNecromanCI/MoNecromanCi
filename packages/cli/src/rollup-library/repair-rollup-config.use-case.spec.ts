@@ -1,3 +1,5 @@
+jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), select: jest.fn(), checkbox: jest.fn(), Separator: class {} }))
+
 // `withUpgradedDeclarationSpecifierPlugin` is a pure transform and would
 // otherwise belong beside `rollup-config.algorithm.ts`. It is tested here
 // because it shares OLD_DTS_PLUGIN_CONFIG, EXTENSION_ONLY_DTS_PLUGIN_CONFIG
@@ -8,8 +10,19 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { withUpgradedDeclarationSpecifierPlugin } from './rollup-config.algorithm'
-import { repairDeclarationSpecifiers, upgradeDeclarationSpecifierPlugins } from './repair-rollup-config.use-case'
+import {
+  canAddDeclarationSpecifierPlugin,
+  canRepairRollupConfig,
+  hasDeclarationSpecifierPlugin,
+  hasRollupSourceMaps,
+  withUpgradedDeclarationSpecifierPlugin,
+} from './rollup-config.algorithm'
+import {
+  addMissingDeclarationSpecifierPlugins,
+  repairDeclarationSpecifiers,
+  upgradeDeclarationSpecifierPlugins,
+} from './repair-rollup-config.use-case'
+import { logger } from '../terminal'
 
 let workspaceRoot: string
 
@@ -399,5 +412,102 @@ describe('upgradeDeclarationSpecifierPlugins', () => {
     upgradeDeclarationSpecifierPlugins(workspaceRoot)
 
     expect(upgradeDeclarationSpecifierPlugins(workspaceRoot)).toEqual([])
+  })
+})
+
+/** What `@nx/react:library --bundler=rollup` writes (#342): its own plugins fill the second argument. */
+const REACT_LIBRARY_CONFIG = [
+  "const { withNx } = require('@nx/rollup/with-nx')",
+  'const svg = () => ({ name: "svg" })',
+  'const url = () => ({ name: "url" })',
+  'module.exports = withNx(',
+  '  {',
+  "    main: './src/index.ts',",
+  "    compiler: 'swc',",
+  '  }, {',
+  '    // Provide additional rollup configuration here. See: https://rollupjs.org/configuration-options',
+  '    plugins: [',
+  '      svg({ svgo: false, titleProp: true, ref: true }),',
+  '      url({ limit: 10000 }),',
+  '    ],',
+  '  },',
+  ')',
+  '',
+].join('\n')
+
+const DELEGATING_CONFIG = "module.exports = require('../../rollup.base.cjs')()\n"
+
+describe('repairDeclarationSpecifiers: the @nx/react:library config shape (#342)', () => {
+  it('adds the source maps and the declaration plugin, keeping the generator\'s own plugins', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'mnci-dts-fix-'))
+    writeFileSync(join(projectRoot, 'rollup.config.cjs'), REACT_LIBRARY_CONFIG)
+
+    repairDeclarationSpecifiers(projectRoot)
+
+    const repaired = readFileSync(join(projectRoot, 'rollup.config.cjs'), 'utf8')
+
+    expect(hasRollupSourceMaps(repaired)).toBe(true)
+    expect(repaired).toContain("compiler: 'babel'")
+    expect(repaired).toContain('sourcemapPathTransform')
+    expect(hasDeclarationSpecifierPlugin(repaired)).toBe(true)
+    expect(repaired).toContain('svg({ svgo: false')
+    expect(repaired).toContain('url({ limit: 10000 })')
+  })
+
+  it('writes a config that loads and whose first plugin rewrites bare specifiers', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'mnci-dts-fix-'))
+    writeFileSync(join(projectRoot, 'rollup.config.cjs'), REACT_LIBRARY_CONFIG)
+    repairDeclarationSpecifiers(projectRoot)
+
+    const distDir = join(projectRoot, 'dist')
+    mkdirSync(join(distDir, 'src', 'lib'), { recursive: true })
+    writeFileSync(join(distDir, 'index.d.ts'), 'export * from "./src/index";')
+    writeFileSync(join(distDir, 'src', 'index.d.ts'), "export * from './lib/align';\n")
+    writeFileSync(join(distDir, 'src', 'lib', 'align.d.ts'), 'export declare const align: number;\n')
+
+    loadWriteBundle(projectRoot)({ dir: distDir })
+
+    expect(readFileSync(join(distDir, 'src', 'index.d.ts'), 'utf8')).toBe("export * from './lib/align.js';\n")
+  })
+
+  it('is idempotent', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'mnci-dts-fix-'))
+    writeFileSync(join(projectRoot, 'rollup.config.cjs'), REACT_LIBRARY_CONFIG)
+    repairDeclarationSpecifiers(projectRoot)
+    const once = readFileSync(join(projectRoot, 'rollup.config.cjs'), 'utf8')
+    repairDeclarationSpecifiers(projectRoot)
+
+    expect(readFileSync(join(projectRoot, 'rollup.config.cjs'), 'utf8')).toBe(once)
+  })
+
+  it('warns, instead of doing nothing silently, when the config has a shape it does not know', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'mnci-dts-fix-'))
+    writeFileSync(join(projectRoot, 'rollup.config.cjs'), DELEGATING_CONFIG)
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined)
+
+    repairDeclarationSpecifiers(projectRoot)
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('does not recognise'))
+    expect(readFileSync(join(projectRoot, 'rollup.config.cjs'), 'utf8')).toBe(DELEGATING_CONFIG)
+    warn.mockRestore()
+  })
+
+  it('recognises the shape for the doctor, and not a delegating config', () => {
+    expect(canRepairRollupConfig(REACT_LIBRARY_CONFIG)).toBe(true)
+    expect(canAddDeclarationSpecifierPlugin(REACT_LIBRARY_CONFIG)).toBe(true)
+    expect(canRepairRollupConfig(DELEGATING_CONFIG)).toBe(false)
+    expect(canAddDeclarationSpecifierPlugin(DELEGATING_CONFIG)).toBe(false)
+  })
+})
+
+describe('addMissingDeclarationSpecifierPlugins', () => {
+  it('repairs a React library generated before the shape was recognised, then reports nothing', () => {
+    mkdirSync(join(workspaceRoot, 'packages/ui'), { recursive: true })
+    const configPath = join(workspaceRoot, 'packages/ui/rollup.config.cjs')
+    writeFileSync(configPath, REACT_LIBRARY_CONFIG)
+
+    expect(addMissingDeclarationSpecifierPlugins(workspaceRoot)).toEqual(['packages/ui/rollup.config.cjs'])
+    expect(hasDeclarationSpecifierPlugin(readFileSync(configPath, 'utf8'))).toBe(true)
+    expect(addMissingDeclarationSpecifierPlugins(workspaceRoot)).toEqual([])
   })
 })
