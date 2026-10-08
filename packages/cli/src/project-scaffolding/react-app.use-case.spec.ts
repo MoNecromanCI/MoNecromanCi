@@ -59,6 +59,43 @@ describe('runAdd react-app', () => {
     )
   })
 
+  it('--e2e asks the generator for Playwright and replaces its sample with a test of the greeting', async () => {
+    mockRunNx.mockImplementation((arguments_: string[]) => {
+      if (arguments_[0] !== 'g') {
+        return
+      }
+
+      mkdirSync(join(workspaceRoot, 'apps/web-e2e/src'), { recursive: true })
+      mkdirSync(join(workspaceRoot, 'apps/web'), { recursive: true })
+      writeFileSync(join(workspaceRoot, 'apps/web-e2e/src/example.spec.ts'), "expect(h1).toContain('Welcome')")
+      writeFileSync(join(workspaceRoot, 'apps/web/package.json'), JSON.stringify({ name: '@demo/web' }))
+    })
+
+    let generator: string[] | undefined
+    try {
+      await runAdd('react-app', 'web', { e2e: true })
+      generator = mockRunNx.mock.calls[1][0]
+    } finally {
+      mockRunNx.mockReset()
+    }
+
+    expect(generator).toContain('--e2eTestRunner=playwright')
+    expect(existsSync(join(workspaceRoot, 'apps/web-e2e/src/example.spec.ts'))).toBe(false)
+    const spec = readFileSync(join(workspaceRoot, 'apps/web-e2e/src/greeting.e2e.spec.ts'), 'utf8')
+    expect(spec).toContain("getByText('Hello, web!')")
+    const scripts = (JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts
+    expect(scripts['web-e2e:qa']).toBe('nx run web-e2e:lint && nx run web-e2e:typecheck')
+    expect(scripts['web-e2e:build']).toBeUndefined()
+    expect(scripts['web-e2e:start']).toBeUndefined()
+    expect(scripts['web:qa']).toBe('nx run web:lint && nx run web:test')
+  })
+
+  it('leaves the runner off without --e2e', async () => {
+    await runAdd('react-app', 'web', {})
+
+    expect(mockRunNx.mock.calls[1][0]).toContain('--e2eTestRunner=none')
+  })
+
   it('skips the plugin install when it is already a devDependency', async () => {
     writeFileSync(
       join(workspaceRoot, 'package.json'),

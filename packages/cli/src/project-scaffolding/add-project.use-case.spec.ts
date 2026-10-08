@@ -155,6 +155,10 @@ describe('runAdd', () => {
     expect(manifest.nx.targets.test.options.passWithNoTests).toBe(true)
   })
 
+  it('refuses --e2e on a kind that is not a React app, rather than ignoring it', async () => {
+    await expect(runAdd('node-app', 'svc', { e2e: true })).rejects.toThrow('--e2e applies to react-app, not node-app')
+  })
+
   it('refuses --esm on a kind that is not a Node app, and on a framework whose layout is mandated', async () => {
     await expect(runAdd('python-app', 'svc', { esm: true })).rejects.toThrow('--esm applies to node-app and node-function-app')
     await expect(runAdd('node-app', 'svc', { esm: true, framework: 'nest' })).rejects.toThrow('--esm is not supported with --framework nest')

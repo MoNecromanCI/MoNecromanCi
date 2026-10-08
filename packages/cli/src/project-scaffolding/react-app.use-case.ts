@@ -2,7 +2,7 @@ import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
-import { reactAppExampleFiles } from './react-app-example.algorithm'
+import { reactAppE2eSpec, reactAppExampleFiles } from './react-app-example.algorithm'
 import {
   addNxTargets,
   ensureAdmZip,
@@ -141,7 +141,7 @@ function allowEnvFiles (workspaceRoot: string): void {
  * @throws Error when the generator or a required install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addReactApp (workspaceRoot: string, name: string, stack: WorkspaceStack): void {
+export function addReactApp (workspaceRoot: string, name: string, stack: WorkspaceStack, e2e = false): void {
   ensurePlugin(workspaceRoot, '@nx/react')
   runNx(
     [
@@ -152,7 +152,7 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
       `--unitTestRunner=${stack.testRunner}`,
       '--linter=none',
       '--style=css',
-      '--e2eTestRunner=none',
+      `--e2eTestRunner=${e2e ? 'playwright' : 'none'}`,
       '--no-interactive',
     ],
     workspaceRoot,
@@ -177,4 +177,34 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
   // Vite's inferred 'serve' target (the dev server) is what @nx/react:app
   // already wires — no per-env variant needed for local dev, unlike build.
   registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:serve` })
+  if (e2e) {
+    pairE2eProject(workspaceRoot, name)
+  }
+}
+
+/**
+ * Finishes the Playwright project `@nx/react:app` paired with an app.
+ *
+ * @remarks
+ * Swaps Nx's sample test for one that checks the greeting this app really renders, makes sure no per-project
+ * ESLint config survives, and registers the commands. The project is `<name>-e2e`; it has lint and typecheck
+ * (CI's verify runs both) and an inferred `e2e` target that needs a browser (`npx playwright install`), which
+ * CI's verify does not run. So its `:qa` is lint and typecheck, and it has no `:build` or `:start`.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param name - The React app's project name.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function pairE2eProject (workspaceRoot: string, name: string): void {
+  const e2eName = `${name}-e2e`
+  const e2eRoot = join(workspaceRoot, 'apps', e2eName)
+  rmSync(join(e2eRoot, 'src/example.spec.ts'), { force: true })
+  writeFileEnsured(join(e2eRoot, 'src/greeting.e2e.spec.ts'), reactAppE2eSpec(name))
+  removeGeneratedEslintConfig(workspaceRoot, `apps/${e2eName}`)
+  registerProjectCommands(workspaceRoot, e2eName, {
+    build: false,
+    qa:    `nx run ${e2eName}:lint && nx run ${e2eName}:typecheck`,
+  })
 }

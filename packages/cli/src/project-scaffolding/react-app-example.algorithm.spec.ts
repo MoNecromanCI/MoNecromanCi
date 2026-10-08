@@ -1,4 +1,4 @@
-import { reactAppExampleFiles } from './react-app-example.algorithm'
+import { reactAppE2eSpec, reactAppExampleFiles } from './react-app-example.algorithm'
 
 describe('reactAppExampleFiles', () => {
   const files = reactAppExampleFiles('web')
@@ -35,5 +35,14 @@ describe('reactAppExampleFiles', () => {
     for (const contents of Object.values(files)) {
       expect(contents).not.toContain('`')
     }
+  })
+})
+
+describe('reactAppE2eSpec', () => {
+  it('visits the app and looks for the greeting of its own name', () => {
+    const spec = reactAppE2eSpec('storefront')
+
+    expect(spec).toContain("page.goto('/')")
+    expect(spec).toContain("getByText('Hello, storefront!')")
   })
 })
