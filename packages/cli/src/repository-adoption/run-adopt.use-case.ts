@@ -1,4 +1,5 @@
 import { logger, printJson } from '../terminal'
+import { createBaselineTags } from './create-baseline-tags.use-case'
 import type { AdoptionReport } from './adoption-report.contract'
 import { inspectRepository } from './inspect-repository.use-case'
 import { judgeAdoption } from './judge-adoption.policy'
@@ -7,12 +8,14 @@ import { judgeAdoption } from './judge-adoption.policy'
  * Flags of `mnci adopt`.
  *
  * @remarks
- * Only the report exists so far; later steps add their own flags.
+ * The report is the default; each step that changes something is its own flag.
  * @typeParam None - this interface has no generic type parameters.
  */
 export interface AdoptOptions {
   /** Print the report as one JSON document, for an editor or a script. */
   json?: boolean
+  /** Create, locally, the baseline tags for projects whose release tags are stranded under an old name. */
+  tags?: boolean
 }
 
 /**
@@ -45,6 +48,11 @@ export function reportAdoption (repositoryRoot: string): AdoptionReport {
  */
 export function runAdopt (repositoryRoot: string, options: AdoptOptions = {}): void {
   const report = reportAdoption(repositoryRoot)
+  if (options.tags === true) {
+    runBaselineTags(repositoryRoot, report)
+
+    return
+  }
   if (!report.ready) {
     process.exitCode = 1
   }
@@ -67,5 +75,49 @@ export function runAdopt (repositoryRoot: string, options: AdoptOptions = {}): v
     logger.success('Nothing blocks adoption. This was a read-only report; nothing was changed.')
   } else {
     logger.error('Adoption is blocked. Clear the blockers above and run the report again.')
+  }
+}
+
+/**
+ * Creates the baseline tags for the stranded projects and says how to publish them.
+ *
+ * @remarks
+ * Local only. The push is printed, not run: it changes the remote, so it stays the person's decision.
+ *
+ * @param repositoryRoot - Absolute path to the repository.
+ * @param report - The adoption report, whose facts name the stranded projects.
+ * @returns Nothing.
+ * @throws Never - a refused tag is reported and sets the exit code.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function runBaselineTags (repositoryRoot: string, report: AdoptionReport): void {
+  if (!report.facts.isGitRepo) {
+    logger.error('This directory is not a git repository, so there are no tags to baseline.')
+    process.exitCode = 1
+
+    return
+  }
+  const { strandedTags } = report.facts
+  if (strandedTags.length === 0) {
+    logger.success('No project has release tags stranded under an old name. Nothing to baseline.')
+
+    return
+  }
+  const result = createBaselineTags(repositoryRoot, strandedTags)
+  for (const tag of result.created) {
+    logger.success(`created ${tag}`)
+  }
+  for (const tag of result.existing) {
+    logger.info(`${tag} already exists, left alone`)
+  }
+  for (const tag of result.failed) {
+    logger.error(`could not create ${tag}: its old tag does not resolve to a commit`)
+  }
+  if (result.failed.length > 0) {
+    process.exitCode = 1
+  }
+  if (result.created.length > 0) {
+    logger.info(`Local only. Publish them when you are ready: git push origin ${result.created.map(tag => JSON.stringify(tag)).join(' ')}`)
+    logger.info('A tag made under the new name at a LOWER version (for example @scope/x@0.0.5) stays; the baseline outranks it, and removing it from the remote is your call.')
   }
 }

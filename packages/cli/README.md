@@ -513,6 +513,7 @@ packages under mnci (the plan is #383). So far it is **report mode only and chan
 ```bash
 mnci adopt          # what was found, what blocks, what clears each
 mnci adopt --json   # the same, as one document
+mnci adopt --tags   # step (#379): create the baseline release tags, locally
 ```
 
 It reads git and the filesystem (no Nx, no install, no network) and reports the package manager, the
@@ -521,6 +522,12 @@ the CI pipelines and whether they already call `mnci ci`, retired tooling (Prett
 and the root files that are yours (`CLAUDE.md`, `AGENTS.md`). A **blocker** (not a git repository,
 uncommitted changes, a package manager other than npm, no projects) makes it exit non-zero; a **warning**
 names the later adoption step that clears it. Each later step is its own issue under #383.
+
+**`--tags`** keeps a release from restarting below what was already published. When a project's name changed
+(for example `mysql` became `@auto/mysql`), `nx release` finds no tag under the new name and versions from the
+disk version. `mnci adopt --tags` creates, for each such project, a lightweight tag under the new name on the
+commit of the old one (`@auto/mysql@1.12.11` on `mysql@1.12.11`). It is local and idempotent, never moves a tag,
+and prints the `git push` for you to run: publishing tags changes the remote, so that stays your decision.
 
 ## `mnci upgrade`: re-applying the overlay to an existing workspace
 

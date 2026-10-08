@@ -114,8 +114,9 @@ export function buildProgram (cliVersion: string): Command {
 
   program
     .command('adopt')
-    .description('Read an existing repository and report what bringing it under mnci would involve: blockers, warnings and the step that clears each. Read-only; exits non-zero when something blocks')
+    .description('Read an existing repository and report what bringing it under mnci would involve: blockers, warnings and the step that clears each. Read-only unless a step flag is given; exits non-zero when something blocks')
     .option('--json', 'print the report as one JSON document')
+    .option('--tags', 'create, locally, the baseline tag each project whose release tags are stranded under an old name needs; nothing is pushed')
     .action((options: AdoptOptions) => {
       runAdopt(process.cwd(), options)
     })
