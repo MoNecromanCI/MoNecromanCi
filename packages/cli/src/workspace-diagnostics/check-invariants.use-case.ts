@@ -24,7 +24,7 @@ import {
 } from '../rollup-library'
 import { fileExists, readJson } from '../file-system'
 import { logger, printJson } from '../terminal'
-import { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
+import { locateStrandedReleaseTags } from '../release-tag-lineage'
 
 /**
  * One check's outcome.

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { hasGoProject, registerNxGoPlugin } from '../go-workspace'
 import { pruneStaleLocalRegistry } from '../lockfile-pruning'
-import { locateStrandedReleaseTags } from '../workspace-diagnostics'
+import { locateStrandedReleaseTags } from '../release-tag-lineage'
 import { runFormatter } from '../nx-workspace'
 import {
   addGoPlatformTargets,

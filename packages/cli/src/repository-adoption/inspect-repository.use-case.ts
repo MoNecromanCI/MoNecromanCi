@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { locateProjects } from '../dependency-management'
 import { fileExists, readJson } from '../file-system'
 import { runCapture } from '../nx-workspace'
-import { locateStrandedReleaseTags } from '../workspace-diagnostics'
+import { locateStrandedReleaseTags } from '../release-tag-lineage'
 import type { RepositoryFacts } from './adoption-report.contract'
 
 /** The lockfile each package manager writes, in the order they are looked for. */

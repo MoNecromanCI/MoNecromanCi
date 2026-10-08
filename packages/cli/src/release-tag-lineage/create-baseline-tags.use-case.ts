@@ -1,5 +1,5 @@
 import { runCapture } from '../nx-workspace'
-import type { StrandedReleaseTag } from '../workspace-diagnostics'
+import type { StrandedReleaseTag } from './stranded-release-tags.algorithm'
 
 /**
  * What {@link createBaselineTags} did.
