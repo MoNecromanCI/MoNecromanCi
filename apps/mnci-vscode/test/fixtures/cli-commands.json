@@ -139,6 +139,18 @@
         "variadic": false,
         "repeatable": false,
         "negated": false
+      },
+      {
+        "name": "preset",
+        "flags": "--preset <preset>",
+        "description": "also scaffold a whole shape of workspace, its projects wired together (web-api: a React frontend and an Express API sharing one library)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false,
+        "choices": [
+          "web-api"
+        ]
       }
     ]
   },
