@@ -24,6 +24,7 @@ import {
 } from '../rollup-library'
 import { fileExists, readJson } from '../file-system'
 import { logger, printJson } from '../terminal'
+import { findStrandedReleaseTags } from './stranded-release-tags.algorithm'
 
 /**
  * One check's outcome.
@@ -1264,6 +1265,43 @@ function checkLockfileHasNoLocalRegistry (workspaceRoot: string): Finding | unde
 }
 
 /**
+ * Checks that no project's release tags are stranded under a name it no longer has.
+ *
+ * @remarks
+ * See {@link findStrandedReleaseTags}. Skipped when `nx.json` sets a release tag pattern other than mnci's `{projectName}@{version}`, since
+ * the lookup name is then not the project name this check assumes. The remedy names each baseline tag.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param nxJson - The parsed `nx.json`.
+ * @param nxJson.release - Its release block.
+ * @returns A finding when a project would restart from its disk version, otherwise none.
+ * @throws Never - a workspace that is not a git repository has no tags to read.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function checkReleaseTagsResolve (workspaceRoot: string, nxJson: { release?: { releaseTag?: { pattern?: string } } }): Finding | undefined {
+  const pattern = nxJson.release?.releaseTag?.pattern
+  if (pattern !== undefined && pattern !== '{projectName}@{version}') {
+    return undefined
+  }
+  const listed = runCapture('git', ['tag', '--list'], workspaceRoot)
+  if (listed.status !== 0) {
+    return undefined
+  }
+  const projects = globSync('{apps,libs,packages}/*/package.json', { cwd: workspaceRoot })
+    .map(path => readJson<{ name?: string, private?: boolean }>(join(workspaceRoot, path)))
+    .filter(manifest => manifest.private !== true && manifest.name !== undefined)
+    .map(manifest => manifest.name as string)
+  const stranded = findStrandedReleaseTags(projects, listed.stdout.split(/\r?\n/).filter(Boolean))
+
+  return {
+    check:  "release tags resolve under each project's current name",
+    ok:     stranded.length === 0,
+    detail: `${stranded.map(entry => `${entry.project} has only ${entry.oldTag}`).join('; ')} - nx release finds no tag under the new name and would release from the disk version, a downgrade`,
+    remedy: `on the commit of each old tag run: ${stranded.map(entry => `git tag ${entry.newTag} ${entry.oldTag}^{commit}`).join(' ; ')} - then push the tags`,
+  }
+}
+
+/**
  * Collects every doctor finding for a workspace.
  *
  * @remarks
@@ -1290,7 +1328,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
   const nxJson = readJson<{
     plugins?: unknown[]
     mnci?:    { registry?: RegistryConfig; scope?: string }
-    release?: { version?: { preserveMatchingDependencyRanges?: unknown } }
+    release?: { version?: { preserveMatchingDependencyRanges?: unknown }, releaseTag?: { pattern?: string } }
   }>(nxJsonPath)
 
   return [
@@ -1314,6 +1352,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     ...checkNativeBuildConfig(workspaceRoot),
     checkDependencyRangesNotPreserved(nxJson),
     checkLockfileHasNoLocalRegistry(workspaceRoot),
+    checkReleaseTagsResolve(workspaceRoot, nxJson),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 
