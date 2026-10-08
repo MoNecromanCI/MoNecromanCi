@@ -301,6 +301,105 @@
         "variadic": false,
         "repeatable": false,
         "negated": false
+      },
+      {
+        "name": "overlay",
+        "flags": "--overlay",
+        "description": "apply the mnci overlay (release config, pipeline, npmrc, commitlint, scripts) with the flags mnci upgrade takes; the pipeline keeps the steps mnci does not recognise in its slots; needs a clean git tree and an nx.json",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "scope",
+        "flags": "--scope <scope>",
+        "description": "npm scope for publishable packages (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "registry",
+        "flags": "--registry <kind>",
+        "description": "azure-artifacts | npm (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "organization",
+        "flags": "--organization <name>",
+        "description": "Azure DevOps organization (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "project",
+        "flags": "--project <name>",
+        "description": "Azure DevOps project (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "artifacts-feed",
+        "flags": "--artifacts-feed <name>",
+        "description": "Azure Artifacts feed (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "agent",
+        "flags": "--agent <pool>",
+        "description": "CI build agent (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "variable-group",
+        "flags": "--variable-group <name>",
+        "description": "Azure DevOps variable group holding the npm PAT (--overlay)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "npm-auth",
+        "flags": "--npm-auth <mode>",
+        "description": "pat (default) | build-identity (--overlay, --ci azure only)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "ci",
+        "flags": "--ci <provider>",
+        "description": "azure | github | both (--overlay; default: what the repository already has)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "test-runner",
+        "flags": "--test-runner <runner>",
+        "description": "jest | vitest (--overlay; default: what the repository already declares)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
       }
     ]
   },
