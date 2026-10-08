@@ -515,6 +515,7 @@ mnci adopt          # what was found, what blocks, what clears each
 mnci adopt --json   # the same, as one document
 mnci adopt --tags   # step (#379): create the baseline release tags, locally
 mnci adopt --toolchain [--nx <version>]   # step (#380): retire old tooling, align Nx, pass the audit
+mnci adopt --overlay --scope @org --registry npm --agent ubuntu-latest   # step (#381): the overlay and pipeline
 ```
 
 It reads git and the filesystem (no Nx, no install, no network) and reports the package manager, the
@@ -538,6 +539,16 @@ retired formatter configs and dependencies (Prettier, oxfmt, oxlint), the root s
 default the newest published in the major already in use (`--nx <version>` overrides it); installs; and runs
 `npm audit fix` (never `--force`) until `mnci ci audit` passes, up to four passes. Run on a copy of a real
 hand-built workspace it moved Nx 23.1.1 to 23.3.0 and the audit gate passed after one pass.
+
+**`--overlay`** applies the mnci overlay (release config, `.npmrc`, commitlint, the curated root scripts and the
+CI pipeline) to a repository that has an `nx.json`. It is `mnci upgrade` behind adoption's guard rails: it
+refuses an unclean git tree, takes the same flags (`--scope`, `--registry`, `--organization`, `--project`,
+`--artifacts-feed`, `--agent`, `--variable-group`, `--npm-auth`, `--ci`, `--test-runner`) and fills `--ci` and
+`--test-runner` from what the repository already has (its pipeline files, `jest` or `vitest` in the root
+manifest). The existing pipeline goes through the legacy migration: steps mnci does not recognise are kept in
+the three `# mnci:slot` blocks, the ones it does are replaced by `mnci ci <phase>`, and what cannot be carried
+over is listed. Scope, registry and agent have no safe guess, so they are asked for by flag. Adopt does not
+install Nx: a repository with no `nx.json` is told to run `npx nx@latest init` first.
 
 ## `mnci upgrade`: re-applying the overlay to an existing workspace
 

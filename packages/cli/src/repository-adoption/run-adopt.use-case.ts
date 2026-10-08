@@ -1,4 +1,6 @@
 import { logger, printJson } from '../terminal'
+import type { UpgradeOptions } from '../workspace-upgrade'
+import { adoptOverlay } from './adopt-overlay.use-case'
 import { adoptToolchain } from './adopt-toolchain.use-case'
 import { createBaselineTags } from './create-baseline-tags.use-case'
 import type { AdoptionReport } from './adoption-report.contract'
@@ -12,7 +14,7 @@ import { judgeAdoption } from './judge-adoption.policy'
  * The report is the default; each step that changes something is its own flag.
  * @typeParam None - this interface has no generic type parameters.
  */
-export interface AdoptOptions {
+export interface AdoptOptions extends UpgradeOptions {
   /** Print the report as one JSON document, for an editor or a script. */
   json?:      boolean
   /** Create, locally, the baseline tags for projects whose release tags are stranded under an old name. */
@@ -21,6 +23,8 @@ export interface AdoptOptions {
   toolchain?: boolean
   /** The Nx version `toolchain` aligns to. */
   nx?:        string
+  /** Apply the mnci overlay (release config, pipeline, npmrc, commitlint) with the flags `mnci upgrade` takes. */
+  overlay?:   boolean
 }
 
 /**
@@ -53,6 +57,11 @@ export function reportAdoption (repositoryRoot: string): AdoptionReport {
  */
 export function runAdopt (repositoryRoot: string, options: AdoptOptions = {}): void {
   const report = reportAdoption(repositoryRoot)
+  if (options.overlay === true) {
+    runOverlay(repositoryRoot, options)
+
+    return
+  }
   if (options.toolchain === true) {
     runToolchain(repositoryRoot, options)
 
@@ -158,6 +167,26 @@ function runToolchain (repositoryRoot: string, options: AdoptOptions): void {
       logger.error('The audit gate still fails after npm audit fix. Run `mnci ci audit` to see what is left; a targeted overrides entry is the usual answer.')
       process.exitCode = 1
     }
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  }
+}
+
+/**
+ * Applies the overlay and says what to check next.
+ *
+ * @param repositoryRoot - Absolute path to the repository.
+ * @param options - The command's flags, which include everything `mnci upgrade` takes.
+ * @returns Nothing.
+ * @throws Never - a refusal is printed and sets the exit code.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function runOverlay (repositoryRoot: string, options: AdoptOptions): void {
+  try {
+    adoptOverlay(repositoryRoot, options)
+    logger.info('Steps of your old pipeline that mnci does not recognise are in its slots (# mnci:slot); anything it could not carry over was listed above.')
+    logger.info('Run `mnci doctor` to confirm the verify phase is active, then review with `git diff`.')
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1

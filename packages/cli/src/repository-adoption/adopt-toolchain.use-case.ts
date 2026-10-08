@@ -4,6 +4,7 @@ import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { pruneStaleLocalRegistry } from '../lockfile-pruning'
 import { runCapture, runShell } from '../nx-workspace'
 import { alignNxFamily, chooseNxVersion } from './align-nx-family.algorithm'
+import { requireCleanWorkingTree } from './clean-working-tree.validator'
 import { retireTooling } from './retire-tooling.use-case'
 
 /** How many times `npm audit fix` is run before giving up: it needed three passes on a real workspace. */
@@ -99,13 +100,7 @@ export function adoptToolchain (repositoryRoot: string, options: ToolchainOption
   const audit = dependencies.audit ?? ((root: string) => runAudit(root))
   const log = dependencies.log ?? ((message: string) => { console.log(message) })
 
-  const inside = capture('git', ['rev-parse', '--is-inside-work-tree'], repositoryRoot)
-  if (inside.status !== 0) {
-    throw new Error('This directory is not a git repository. Every adoption step is one diff to review, so it needs git.')
-  }
-  if (capture('git', ['status', '--porcelain'], repositoryRoot).stdout.trim() !== '') {
-    throw new Error('The working tree has uncommitted changes. Commit or stash them, so this step is one diff you can review or discard.')
-  }
+  requireCleanWorkingTree(repositoryRoot, capture)
   const manifestPath = join(repositoryRoot, 'package.json')
   if (!fileExists(manifestPath)) {
     throw new Error('No package.json at the repository root.')
