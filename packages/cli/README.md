@@ -517,6 +517,7 @@ mnci adopt --tags   # step (#379): create the baseline release tags, locally
 mnci adopt --toolchain [--nx <version>]   # step (#380): retire old tooling, align Nx, pass the audit
 mnci adopt --overlay --scope @org --registry npm --agent ubuntu-latest   # step (#381): the overlay and pipeline
 mnci adopt --kinds [--kind apps/api=node-app]   # step (#378): record each project's kind
+mnci adopt --dependencies   # step (#392): root runtime dependencies into the projects that import them
 ```
 
 It reads git and the filesystem (no Nx, no install, no network) and reports the package manager, the
@@ -549,6 +550,16 @@ guess and why, and **not** tagged; name it with `--kind <dir>=<kind>` (repeatabl
 guess, and the step exits non-zero until every project has a kind. A project that already has a `type:*` tag
 keeps it, even one that is not an mnci kind name. Nothing is regenerated and no target is written: Nx infers an
 npm project's targets from its scripts. Needs a clean git tree.
+
+**`--dependencies`** moves the root `package.json`'s runtime `dependencies` into the npm projects that import
+them. The root is private and never published, and a bundler externalises only what a project's own manifest
+declares, so a runtime dependency kept at the root ships as an inlined private copy (`mnci doctor` reports it).
+For each root dependency it reads the projects' source (not `node_modules` or build output), adds the package to
+every project that imports it from shipped code at the range the root had, to `devDependencies` where only test
+files import it, and removes it from the root; it then reinstalls so the lockfile follows. A project that already
+declares the package keeps its own range (a different one is reported), and a package no project imports stays at
+the root and is listed, because only you know whether it is root tooling or unused. The root's own
+`devDependencies` stay: sharing the toolchain is what the root is for. Needs a clean git tree.
 
 **`--overlay`** applies the mnci overlay (release config, `.npmrc`, commitlint, the curated root scripts and the
 CI pipeline) to a repository that has an `nx.json`. It is `mnci upgrade` behind adoption's guard rails: it

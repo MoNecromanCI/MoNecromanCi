@@ -1,5 +1,6 @@
 import { logger, printJson } from '../terminal'
 import type { UpgradeOptions } from '../workspace-upgrade'
+import { adoptDependencies } from './adopt-dependencies.use-case'
 import { adoptKinds } from './adopt-kinds.use-case'
 import { adoptOverlay } from './adopt-overlay.use-case'
 import { adoptToolchain } from './adopt-toolchain.use-case'
@@ -17,19 +18,21 @@ import { judgeAdoption } from './judge-adoption.policy'
  */
 export interface AdoptOptions extends UpgradeOptions {
   /** Print the report as one JSON document, for an editor or a script. */
-  json?:      boolean
+  json?:         boolean
   /** Create, locally, the baseline tags for projects whose release tags are stranded under an old name. */
-  tags?:      boolean
+  tags?:         boolean
   /** Retire old tooling, align the Nx family and make the audit pass; leaves the changes uncommitted. */
-  toolchain?: boolean
+  toolchain?:    boolean
   /** The Nx version `toolchain` aligns to. */
-  nx?:        string
+  nx?:           string
   /** Apply the mnci overlay (release config, pipeline, npmrc, commitlint) with the flags `mnci upgrade` takes. */
-  overlay?:   boolean
+  overlay?:      boolean
   /** Record each project's mnci kind as a `type:<kind>` tag; guesses are listed, not applied. */
-  kinds?:     boolean
+  kinds?:        boolean
   /** Kinds chosen by the person, as `<dir>=<kind>`; repeatable. */
-  kind?:      string[]
+  kind?:         string[]
+  /** Move the root manifest's runtime dependencies into the projects that import them. */
+  dependencies?: boolean
 }
 
 /**
@@ -62,6 +65,11 @@ export function reportAdoption (repositoryRoot: string): AdoptionReport {
  */
 export function runAdopt (repositoryRoot: string, options: AdoptOptions = {}): void {
   const report = reportAdoption(repositoryRoot)
+  if (options.dependencies === true) {
+    runDependencies(repositoryRoot)
+
+    return
+  }
   if (options.kinds === true) {
     runKinds(repositoryRoot, options)
 
@@ -252,6 +260,40 @@ function runKinds (repositoryRoot: string, options: AdoptOptions): void {
       process.exitCode = 1
     } else {
       logger.success('Every project has a kind. Review with `git diff` and commit.')
+    }
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  }
+}
+
+/**
+ * Moves the root runtime dependencies into their projects and says what was left.
+ *
+ * @param repositoryRoot - Absolute path to the repository.
+ * @returns Nothing.
+ * @throws Never - a refusal is printed and sets the exit code.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function runDependencies (repositoryRoot: string): void {
+  try {
+    const { plan, installed } = adoptDependencies(repositoryRoot)
+    for (const move of plan.moves) {
+      logger.success(`${move.name} ${move.range} -> ${move.dir} (${move.field})`)
+    }
+    for (const conflict of plan.conflicts) {
+      logger.warn(`${conflict.name}: ${conflict.dir} already declares ${conflict.projectRange}; the root had ${conflict.rootRange}. The project's own range is kept.`)
+    }
+    for (const kept of plan.keptAtRoot) {
+      logger.warn(`${kept.name} stays at the root: ${kept.reason}`)
+    }
+    if (plan.removed.length === 0) {
+      logger.success('The root declares no runtime dependency that a project imports. Nothing to move.')
+    } else if (installed) {
+      logger.success(`Moved ${plan.removed.length} package(s) out of the root and reinstalled. Review with \`git diff\` and commit package.json files and package-lock.json.`)
+    } else {
+      logger.error('The moves were written, but npm install failed. Run `npm install` and read its error before committing.')
+      process.exitCode = 1
     }
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error))
