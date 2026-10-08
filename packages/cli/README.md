@@ -507,6 +507,22 @@ from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
 
+## Starting projects together (`mnci dev`)
+
+`<name>:start` starts one project. `mnci dev web api` starts several at once, the usual case being a frontend and the
+API it calls: `mnci dev` with no names asks which (or `--all` starts every one that can be started, and `--dry-run`
+prints what would run). A script with no terminal must name them, and a name that is a library, or a typo, is refused
+with the list that can be started.
+
+Each project runs the Nx target its own start script names. That is not always `start`: a React or Node app's
+`<name>:start` runs its `serve` target, a Go app's runs `start`, so `nx run-many -t start` would find nothing for the
+first two. Output is shown with a `[project]` prefix. The projects run until the **first one stops**; then the others
+are stopped too, so a crashed API does not leave a frontend quietly talking to nothing, and Ctrl+C stops them all
+(`taskkill /T` on Windows, the process group elsewhere). The command exits with the status of the first to stop.
+
+The `dev up` e2e section starts a real Vite server and an Express API together, talks to both, and checks that stopping
+the command frees both ports.
+
 ## Container images (`mnci add container <name> --app <app>`)
 
 `container` is a kind that wraps an app you already have, so the app keeps its own kind and the image is a project

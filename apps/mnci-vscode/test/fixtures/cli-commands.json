@@ -242,6 +242,40 @@
     ]
   },
   {
+    "name": "dev",
+    "aliases": [],
+    "group": "projects",
+    "description": "Start several projects together, such as a frontend and the API it calls: runs their start targets as one Nx command, so Ctrl+C stops them all. Name the projects, pass --all, or pick from a list",
+    "arguments": [
+      {
+        "name": "projects",
+        "description": "the projects to start (those with a start command)",
+        "required": false,
+        "variadic": true
+      }
+    ],
+    "options": [
+      {
+        "name": "all",
+        "flags": "--all",
+        "description": "start every project that has a start command",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "dry-run",
+        "flags": "--dry-run",
+        "description": "print the Nx command and start nothing",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "doctor",
     "aliases": [],
     "group": "workspace",

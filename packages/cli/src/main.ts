@@ -1,6 +1,7 @@
 import { Argument, Command, Option } from 'commander'
 import { CI_PHASES, runCiPhase, type CiPhase } from './ci-pipeline'
 import { PROJECT_KINDS, runAdd, runKinds, type AddOptions, type KindsOptions, type ProjectKind } from './project-scaffolding'
+import { runDev, type DevOptions } from './dev-servers'
 import { runDoctor, type DoctorOptions } from './workspace-diagnostics'
 import { runAdopt, type AdoptOptions } from './repository-adoption'
 import { runCommands, type CommandsOptions } from './command-catalog'
@@ -100,6 +101,16 @@ export function buildProgram (cliVersion: string): Command {
     )
     .action((options: UpgradeOptions) => {
       runUpgrade(process.cwd(), options)
+    })
+
+  program
+    .command('dev')
+    .argument('[projects...]', 'the projects to start (those with a start command)')
+    .description('Start several projects together, such as a frontend and the API it calls: runs their start targets as one Nx command, so Ctrl+C stops them all. Name the projects, pass --all, or pick from a list')
+    .option('--all', 'start every project that has a start command')
+    .option('--dry-run', 'print the Nx command and start nothing')
+    .action(async (projects: string[], options: DevOptions) => {
+      await runDev(process.cwd(), projects, options)
     })
 
   program

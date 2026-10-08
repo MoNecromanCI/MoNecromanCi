@@ -18,7 +18,7 @@
  * in the suite is skippable.
  */
 
-import { execSync, spawn } from 'node:child_process'
+import { execSync, spawn, spawnSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -28,6 +28,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  openSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
@@ -3360,6 +3361,50 @@ section('container images', [], () => {
   } finally {
     clean()
   }
+})
+section('dev up', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci dev web api` (#302): a frontend and the API it calls, started together.
+   * Each project runs the Nx target its own start script names (a React or Node
+   * app's start is `serve`, which is why `nx run-many -t start` would find nothing),
+   * their output is prefixed, and stopping the command stops both servers. Measured
+   * against the real dev servers, on whichever OS this runs on, since killing a
+   * process tree is the part that differs between them.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'devup')
+  run(`node ${CLI} new devup --yes --registry npm --scope @dev`, temporary)
+  run(`node ${CLI} add node-app api --framework express`, root)
+  run(`node ${CLI} add react-app web`, root)
+
+  const dry = tryRunCapture(`node ${CLI} dev web api --dry-run`, root)
+  enforce('dev up: --dry-run names each project and the target it would run, and starts nothing', dry.ok && dry.output.includes('web: nx run web:serve') && dry.output.includes('api: nx run api:serve'), dry.output)
+  const refused = tryRunCapture(`node ${CLI} dev web nope`, root)
+  enforce('dev up: a name that cannot be started is refused with the list that can', !refused.ok && refused.output.includes('Startable: api, web'), refused.output)
+
+  const logFile = path.join(temporary, 'dev-up.log')
+  const logDescriptor = openSync(logFile, 'w')
+  const child = spawn(process.execPath, [CLI, 'dev', 'web', 'api'], { cwd: root, stdio: ['ignore', logDescriptor, logDescriptor], detached: process.platform !== 'win32' })
+  const stop = () => {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      process.kill(-child.pid, 'SIGTERM')
+    }
+  }
+  try {
+    const api = tryRunCapture(fetchScript('http://localhost:3000/'), root)
+    const web = tryRunCapture(fetchScript('http://localhost:4200/'), root)
+    const log = () => readFileSync(logFile, 'utf8')
+    enforce('dev up: the API answers while started together with the frontend', api.ok && api.output.includes('Hello, world!'), `${api.output}\n${log().slice(-2500)}`)
+    enforce('dev up: the frontend serves its page', web.ok && web.output.startsWith('200 ') && web.output.includes('id="root"'), `${web.output.slice(0, 300)}\n${log().slice(-2500)}`)
+    enforce('dev up: each project\'s output is prefixed with its name', /\[api\]/.test(log()) && /\[web\]/.test(log()), log().slice(-2500))
+  } finally {
+    stop()
+  }
+
+  // Stopping the command has to stop the servers: the ports must be free again.
+  const closed = tryRunCapture('node -e "(async()=>{for(let i=0;i<30;i++){const answers=await Promise.all([\'http://localhost:3000/\',\'http://localhost:4200/\'].map(u=>fetch(u).then(()=>true,()=>false)));if(!answers.includes(true)){console.log(\'freed\');return}await new Promise(r=>setTimeout(r,1000))}console.log(\'still answering\');process.exit(1)})()"', root)
+  enforce('dev up: stopping the command stops both servers, so both ports are free again', closed.ok && closed.output.includes('freed'), closed.output)
 })
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
