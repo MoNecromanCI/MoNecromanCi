@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { hasGoProject, registerNxGoPlugin } from '../go-workspace'
 import { pruneStaleLocalRegistry } from '../lockfile-pruning'
+import { locateStrandedReleaseTags } from '../workspace-diagnostics'
 import { runFormatter } from '../nx-workspace'
 import {
   addGoPlatformTargets,
@@ -27,7 +28,7 @@ import {
   type RegistryConfig,
   type StackConfig,
 } from '../workspace-overlay'
-import { fileExists } from '../file-system'
+import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
 
 /**
@@ -397,6 +398,13 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
     'Formatting the workspace (eslint --fix) — the slowest step, minutes on a large workspace',
   )
   runFormatter(workspaceRoot)
+
+  // The first release after an upgrade is where a renamed project restarts from its disk version.
+  const nxJson = readJson<{ release?: { releaseTag?: { pattern?: string } } }>(join(workspaceRoot, 'nx.json'))
+  const stranded = locateStrandedReleaseTags(workspaceRoot, nxJson.release?.releaseTag?.pattern)
+  for (const entry of stranded) {
+    logger.warn(`${entry.project} has release tags only under ${entry.oldTag}: nx release would restart it from its disk version. Run \`git tag ${entry.newTag} ${entry.oldTag}^{commit}\` before the next release (\`mnci doctor\` lists them all).`)
+  }
 
   logger.success('Done. Review the changes with `git diff` before committing.')
   logger.info('Run `npm install` and commit package-lock.json too: the overlay may have added or moved a dependency, and CI installs with `npm ci`, which refuses a stale lockfile.')

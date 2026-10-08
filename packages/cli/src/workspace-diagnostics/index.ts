@@ -7,3 +7,5 @@
  */
 
 export * from './check-invariants.use-case'
+export { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
+export type { StrandedReleaseTag } from './stranded-release-tags.algorithm'

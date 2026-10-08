@@ -24,7 +24,7 @@ import {
 } from '../rollup-library'
 import { fileExists, readJson } from '../file-system'
 import { logger, printJson } from '../terminal'
-import { findStrandedReleaseTags } from './stranded-release-tags.algorithm'
+import { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
 
 /**
  * One check's outcome.
@@ -1279,19 +1279,7 @@ function checkLockfileHasNoLocalRegistry (workspaceRoot: string): Finding | unde
  * @typeParam None - this function has no generic type parameters.
  */
 function checkReleaseTagsResolve (workspaceRoot: string, nxJson: { release?: { releaseTag?: { pattern?: string } } }): Finding | undefined {
-  const pattern = nxJson.release?.releaseTag?.pattern
-  if (pattern !== undefined && pattern !== '{projectName}@{version}') {
-    return undefined
-  }
-  const listed = runCapture('git', ['tag', '--list'], workspaceRoot)
-  if (listed.status !== 0) {
-    return undefined
-  }
-  const projects = globSync('{apps,libs,packages}/*/package.json', { cwd: workspaceRoot })
-    .map(path => readJson<{ name?: string, private?: boolean }>(join(workspaceRoot, path)))
-    .filter(manifest => manifest.private !== true && manifest.name !== undefined)
-    .map(manifest => manifest.name as string)
-  const stranded = findStrandedReleaseTags(projects, listed.stdout.split(/\r?\n/).filter(Boolean))
+  const stranded = locateStrandedReleaseTags(workspaceRoot, nxJson.release?.releaseTag?.pattern)
 
   return {
     check:  "release tags resolve under each project's current name",
