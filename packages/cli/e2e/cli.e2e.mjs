@@ -3280,6 +3280,87 @@ section('react e2e project', [], () => {
     skip('running the Playwright test', 'chromium could not be installed here')
   }
 })
+/**
+ * The command that polls a URL until it answers, then prints the status and the body.
+ *
+ * @param url - What to fetch.
+ * @returns A shell command running a one-off Node script.
+ */
+function fetchScript (url) {
+  return `node -e "const u=process.argv[1];(async()=>{for(let i=0;i<40;i++){try{const r=await fetch(u);console.log(r.status+' '+(await r.text()));return}catch{await new Promise(r=>setTimeout(r,1000))}}console.log('no answer');process.exit(1)})()" ${url}`
+}
+
+section('container images', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add container <name> --app <app>` (#300). The Dockerfile is only worth
+   * what the image does, so this builds each one and talks to the container it
+   * starts: a Node app answering on its published port (which needs HOST set,
+   * since the sample binds to localhost), a React app behind nginx whose unknown
+   * paths fall back to index.html, and a Go app's static binary on distroless.
+   * Needs a Docker engine that runs Linux images; says so and skips when it has none.
+   * ------------------------------------------------------------------------- */
+  if (!tryRunCapture('docker info', temporary).ok) {
+    skip('the entire container images section', 'no Docker engine is running here')
+
+    return
+  }
+  const root = path.join(temporary, 'images')
+  const images = ['api-image', 'web-image', 'svc-image']
+  const containers = ['mnci-e2e-api', 'mnci-e2e-web']
+  const clean = () => {
+    for (const container of containers) {
+      tryRunCapture(`docker rm -f ${container}`, temporary)
+    }
+    for (const image of images) {
+      tryRunCapture(`docker rmi -f ${image}:latest ${image}:dev`, temporary)
+    }
+  }
+
+  try {
+    run(`node ${CLI} new images --yes --registry npm --scope @img`, temporary)
+
+    // A Node app.
+    run(`node ${CLI} add node-app api --framework express`, root)
+    run(`node ${CLI} add container api-image --app api --port 3000`, root)
+    const dockerfile = readFileSync(path.join(root, 'apps/api-image/Dockerfile'), 'utf8')
+    enforce('container: the Node image sets HOST so a published port is reachable', dockerfile.includes('ENV HOST=0.0.0.0'), dockerfile)
+    const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts
+    enforce('container: api-image has :image and :start scripts, and no :build for CI to trip over', scripts['api-image:image'] !== undefined && scripts['api-image:start'] !== undefined && scripts['api-image:build'] === undefined, JSON.stringify(Object.keys(scripts)))
+    const ci = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=api,api-image', root)
+    enforce('container: CI\'s lint, typecheck, test and build ignore the image project (it needs Docker)', ci.ok, ci.output.slice(-1500))
+    const built = tryRunCapture('npx nx run api-image:image', root)
+    enforce('container: the Node image builds', built.ok, built.output.slice(-3000))
+    run('docker run -d --rm -p 3000:3000 --name mnci-e2e-api api-image:latest', root)
+    const answer = tryRunCapture(fetchScript('http://localhost:3000/'), root)
+    enforce('container: the Node container answers on its published port', answer.ok && answer.output.includes('Hello, world!'), `${answer.output}\n${tryRunCapture('docker logs mnci-e2e-api', root).output}`)
+    tryRunCapture('docker rm -f mnci-e2e-api', root)
+
+    // A React app.
+    run(`node ${CLI} add react-app web`, root)
+    run(`node ${CLI} add container web-image --app web`, root)
+    const builtWeb = tryRunCapture('npx nx run web-image:image', root)
+    enforce('container: the React image builds', builtWeb.ok, builtWeb.output.slice(-3000))
+    run('docker run -d --rm -p 8080:80 --name mnci-e2e-web web-image:latest', root)
+    const index = tryRunCapture(fetchScript('http://localhost:8080/'), root)
+    const deep = tryRunCapture(fetchScript('http://localhost:8080/some/client/route'), root)
+    enforce('container: nginx serves the app, and an unknown path falls back to index.html', index.ok && index.output.startsWith('200 ') && deep.ok && deep.output.startsWith('200 ') && deep.output.slice(4) === index.output.slice(4), `${index.output.slice(0, 200)}\n${deep.output.slice(0, 200)}`)
+    tryRunCapture('docker rm -f mnci-e2e-web', root)
+
+    // A Go app.
+    if (hasGo()) {
+      run(`node ${CLI} add go-app svc`, root)
+      run(`node ${CLI} add container svc-image --app svc`, root)
+      const builtGo = tryRunCapture('npx nx run svc-image:image', root)
+      enforce('container: the Go image builds from the static linux binary', builtGo.ok, builtGo.output.slice(-3000))
+      const ranGo = tryRunCapture('docker run --rm svc-image:latest', root)
+      enforce('container: the Go image runs its binary', ranGo.ok && ranGo.output.trim().length > 0, ranGo.output)
+    } else {
+      skip('the Go container image', 'the Go toolchain is not on PATH')
+    }
+  } finally {
+    clean()
+  }
+})
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
    * C# — @nx/dotnet (the official Nx plugin, inference-only: build/test/restore/

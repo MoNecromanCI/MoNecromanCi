@@ -17,6 +17,7 @@ import {
   addPythonLib,
   addPythonVendor,
 } from './python.use-case'
+import { addContainer } from './container.use-case'
 import { addReactApp } from './react-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
 import { addVscodeExtension } from './vscode-extension.use-case'
@@ -140,7 +141,8 @@ export type ProjectKind =
   'csharp-function-app' |
   'csharp-lib' |
   'csharp-internal-lib' |
-  'vscode-extension'
+  'vscode-extension' |
+  'container'
 
 /**
  * Every kind {@link runAdd} accepts, in menu order.
@@ -175,6 +177,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'csharp-lib',
   'csharp-internal-lib',
   'vscode-extension',
+  'container',
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
@@ -244,6 +247,17 @@ export async function runAdd (
     if (options.framework === 'fastify' || options.framework === 'nest') {
       throw new Error(`--esm is not supported with --framework ${options.framework}: its layout (autoloaded routes, decorators) is mandated by the framework. Use express, koa or none.`)
     }
+  }
+  if (resolvedKind === 'container' && options.app === undefined) {
+    throw new Error('container needs --app <project>: the app to put in an image, for example `mnci add container api-image --app api`.')
+  }
+  for (const [flag, requested] of [['--app', options.app !== undefined], ['--port', options.port !== undefined]] as const) {
+    if (resolvedKind !== 'container' && requested) {
+      throw new Error(`${flag} applies to container, not ${resolvedKind}.`)
+    }
+  }
+  if (options.port !== undefined && !/^\d+$/.test(options.port)) {
+    throw new Error(`--port ${options.port}: a port is a whole number.`)
   }
   if (resolvedKind !== 'react-app' && options.e2e === true) {
     throw new Error(`--e2e applies to react-app, not ${resolvedKind}.`)
@@ -329,6 +343,10 @@ export async function runAdd (
     }
     case 'python-internal-lib': {
       addPythonInternalLib(workspaceRoot, resolvedName)
+      break
+    }
+    case 'container': {
+      addContainer(workspaceRoot, resolvedName, { app: options.app as string, port: options.port === undefined ? undefined : Number(options.port) })
       break
     }
     case 'go-app': {

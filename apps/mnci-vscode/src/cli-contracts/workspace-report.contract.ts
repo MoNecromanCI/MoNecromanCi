@@ -5,7 +5,7 @@
  * Mirrors `ProjectLanguage` in the CLI's `project-scaffolding` slice.
  * @typeParam None - this type has no generic type parameters.
  */
-export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp'
+export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'container'
 
 /**
  * One project kind `mnci add` accepts.

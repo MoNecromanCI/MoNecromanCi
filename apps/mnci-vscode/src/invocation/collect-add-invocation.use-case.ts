@@ -10,6 +10,7 @@ const LANGUAGES: ReadonlyArray<readonly [ProjectLanguage, string]> = [
   ['go', 'Go'],
   ['flutter', 'Flutter / Dart'],
   ['csharp', 'C# / .NET'],
+  ['container', 'Containers'],
 ]
 
 /**

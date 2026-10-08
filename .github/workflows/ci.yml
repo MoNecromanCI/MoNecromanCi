@@ -255,3 +255,44 @@ jobs:
 
       - run: node packages/cli/e2e/cli.e2e.mjs
         name: Run the real e2e suite (mnci new/add, real npm/pip installs and zip packaging)
+
+  # The container images, on Linux. They are Linux images: a Windows runner cannot run them, and a developer
+  # machine may have no Docker engine running, so this is where `mnci add container` is proven for real. It runs
+  # only the one e2e section that needs a Docker engine, the same cadence as the Windows e2e (nightly and on
+  # demand), so a PR does not wait for it.
+  e2e-containers:
+    name: e2e (container images)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm install -g npm@11
+        name: Pin npm to the major mnci verifies against
+
+      - run: npm ci
+        name: Install dependencies
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # The Go app's image is built from a binary `go build` produces, so the toolchain is needed here too.
+      - uses: actions/setup-go@v6
+        name: Install Go (so the Go app's image is built)
+        continue-on-error: true
+        with:
+          go-version: stable
+
+      - run: npx nx build @mnci/cli
+        name: Build @mnci/cli
+
+      - run: node packages/cli/e2e/cli.e2e.mjs
+        name: Build and run the container images
+        env:
+          MNCI_E2E_ONLY: container images
