@@ -124,6 +124,15 @@ describe('registerNxGoPlugin', () => {
     expect(readFileSync(join(workspaceRoot, 'nx.json'), 'utf8')).toBe(once)
   })
 
+  it('takes the prefix from a root go.mod, so nx.json and go.mod agree (#390)', () => {
+    writeFileSync(join(workspaceRoot, 'go.mod'), ['module lore-master', '', 'go 1.24', ''].join('\n'))
+    nxJson({ plugins: [{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'github.com/acme/other' } }] })
+
+    expect(registerNxGoPlugin(workspaceRoot)).toBe(true)
+    expect(readNxJson().plugins).toEqual([{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'lore-master' } }])
+    expect(registerNxGoPlugin(workspaceRoot)).toBe(false)
+  })
+
   it('leaves an entry that already has options alone', () => {
     nxJson({ plugins: [{ plugin: NX_GO_PLUGIN, options: { skipGoDependencyCheck: true } }] })
 

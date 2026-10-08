@@ -23,13 +23,14 @@ import { logger } from '../terminal'
  * @param command - The executable to run (e.g. `npx`).
  * @param arguments_ - The arguments passed to the executable.
  * @param cwd - The working directory to run the command in.
+ * @param environment - Extra environment variables for the child, on top of this process's own.
  * @returns The child process exit status (`0` on success); `1` when the process
  * was terminated by a signal or never produced a status (e.g. spawn failure).
  * @throws Never - spawn failures surface through the returned status, not a throw.
  * @typeParam None - this function has no generic type parameters.
  */
-export function runShell (command: string, arguments_: string[], cwd: string): number {
-  const result = spawn.sync(command, arguments_, { stdio: 'inherit', cwd })
+export function runShell (command: string, arguments_: string[], cwd: string, environment?: Record<string, string>): number {
+  const result = spawn.sync(command, arguments_, { stdio: 'inherit', cwd, env: environment === undefined ? undefined : { ...process.env, ...environment } })
 
   return result.status ?? 1
 }
@@ -281,11 +282,13 @@ export function runFormatter (cwd: string, target = '.'): void {
   // No `--cache` here: this runs once on freshly written files, where a cache
   // can only cost a write. The lint TARGETS carry it, which is where repeat
   // runs actually happen.
-  const status = runShell('npx', ['eslint', target, '--fix'], cwd)
+  // A whole tree through the type-aware rules outgrows Node's default heap (exit code 134, #390), so the child gets
+  // more room than the default rather than failing on a large repository.
+  const status = runShell('npx', ['eslint', target, '--fix'], cwd, { NODE_OPTIONS: '--max-old-space-size=8192' })
   if (status !== 0) {
     logger.warn(
-      `eslint could not format '${target}' (exit code ${status}). ` +
-        "The project was generated; run 'npm run format' to normalise it.",
+      `eslint could not format '${target}' (exit code ${status}), so formatting was SKIPPED and the tree is ` +
+        "not normalised. The project was generated; run 'npm run format' to finish it.",
     )
   }
 }

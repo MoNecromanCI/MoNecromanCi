@@ -126,6 +126,22 @@ export function goModulePrefix (workspaceRoot: string): string | undefined {
 }
 
 /**
+ * The module path a root `go.mod` declares.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The `module` line's path, or `undefined` when there is no root `go.mod` (a multi-module workspace).
+ * @throws Never - an unreadable file has no module.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function rootModulePath (workspaceRoot: string): string | undefined {
+  try {
+    return /^module\s+(\S+)/m.exec(readFileSync(join(workspaceRoot, 'go.mod'), 'utf8'))?.[1]
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Registers the Go plugin in `nx.json`, with a `modulePrefix` option when one is derivable.
  *
  * @remarks
@@ -147,7 +163,10 @@ export function registerNxGoPlugin (workspaceRoot: string): boolean {
   if (!fileExists(nxJsonPath)) {
     return false
   }
-  const modulePrefix = goModulePrefix(workspaceRoot)
+  // A root go.mod already names the module (an adopted flat repo, or a name derived from the npm scope), and the
+  // plugin's prefix must agree with it or generated import paths do not resolve (#390). Only a repository with
+  // no root module takes its prefix from the git remote.
+  const modulePrefix = rootModulePath(workspaceRoot) ?? goModulePrefix(workspaceRoot)
   const entry: PluginEntry = modulePrefix === undefined ? NX_GO_PLUGIN : { plugin: NX_GO_PLUGIN, options: { modulePrefix } }
   const nxJson = readJson<NxJsonWithPlugins>(nxJsonPath)
   const plugins = [...(nxJson.plugins ?? [])]
