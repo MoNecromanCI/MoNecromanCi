@@ -6,5 +6,4 @@
  * through this barrel, never by a path into the files below.
  */
 
-export * from './run-dev.use-case'
-export { listStartableProjects } from './startable-projects.use-case'
+export { runDev, type DevOptions } from './run-dev.use-case'

@@ -6,5 +6,4 @@
  * through this barrel, never by a path into the files below.
  */
 
-export * from './check-invariants.use-case'
-export type { Finding } from './finding.contract'
+export { runDoctor, type DoctorOptions } from './check-invariants.use-case'

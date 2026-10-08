@@ -6,5 +6,5 @@
  * through this barrel, never by a path into the files below.
  */
 
-export * from './apply-preset.use-case'
-export { PRESET_IDS, PRESETS, type Preset, type PresetProject } from './preset-catalog.config'
+export { applyPreset, findPreset } from './apply-preset.use-case'
+export { PRESET_IDS } from './preset-catalog.config'
