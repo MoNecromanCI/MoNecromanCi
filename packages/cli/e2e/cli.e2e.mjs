@@ -76,13 +76,24 @@ function venvExecutable (venvPath, name) {
     : path.join(venvPath, 'bin', name)
 }
 
-/** Runs a command inheriting stdio, throwing on non-zero exit. */
+/**
+ * The longest any one command may run before it is killed and counted as failed.
+ *
+ * A command that never returns used to hold the whole job until the runner's six-hour limit, and twice it stalled a
+ * nightly for nearly two hours with no output (a `git commit` in the `go adoption` section, cause unknown). The
+ * slowest legitimate step, a Flutter or .NET build, takes minutes, so thirty is generous; a hang now fails ONE
+ * section, which `section()` records, and the rest of the suite runs.
+ */
+const COMMAND_TIMEOUT_MS = 30 * 60 * 1000
+
+/** Runs a command inheriting stdio, throwing on non-zero exit or when it exceeds {@link COMMAND_TIMEOUT_MS}. */
 function run (command, cwd) {
   console.log(`\n$ ${command}   (cwd: ${cwd})`)
   execSync(command, {
     cwd,
-    stdio: 'inherit',
-    env:   { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true' },
+    stdio:   'inherit',
+    timeout: COMMAND_TIMEOUT_MS,
+    env:     { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true' },
   })
 }
 
@@ -126,6 +137,7 @@ function tryRunCapture (command, cwd, extraEnvironment = {}) {
       cwd,
       encoding: 'utf8',
       stdio:    ['ignore', 'pipe', 'pipe'],
+      timeout:  COMMAND_TIMEOUT_MS,
       env:      { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true', ...extraEnvironment },
     })
     console.log(output)
