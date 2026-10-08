@@ -303,6 +303,24 @@
         "negated": false
       },
       {
+        "name": "kinds",
+        "flags": "--kinds",
+        "description": "record each project's mnci kind as a type:<kind> tag (npm, Python, Go, Flutter and C# projects); a project where two kinds fit is listed with a guess and not tagged; needs a clean git tree",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "kind",
+        "flags": "--kind <dir=kind>",
+        "description": "the kind you choose for one project, for --kinds (repeatable)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
         "name": "overlay",
         "flags": "--overlay",
         "description": "apply the mnci overlay (release config, pipeline, npmrc, commitlint, scripts) with the flags mnci upgrade takes; the pipeline keeps the steps mnci does not recognise in its slots; needs a clean git tree and an nx.json",

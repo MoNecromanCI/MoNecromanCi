@@ -3145,6 +3145,16 @@ section('repository adoption', [], () => {
   console.log(`  (audit after the toolchain step: ${toolchain.ok ? 'passes' : 'still fails, which depends on advisories published since'})`)
   commit('chore: adopt the toolchain')
 
+  // 3b. The kinds: what the evidence names is tagged, and mnci projects shows it.
+  write('packages/alpha/package.json', { name: '@acme/alpha', version: '0.0.1', main: './dist/index.js' })
+  write('packages/beta/package.json', { name: '@acme/beta', version: '0.0.1', private: true })
+  commit('chore: declare what the packages are')
+  run(`node ${CLI} adopt --kinds`, adopted)
+  const projects = json(`node ${CLI} projects --json`)
+  const kinds = Object.fromEntries((Array.isArray(projects.parsed) ? projects.parsed : JSON.parse(projects.output)).map(project => [project.name, project.kind]))
+  enforce('adopt --kinds: a library with an entry and a private package are tagged, and mnci projects shows both', kinds.alpha === 'npm-lib' && kinds.beta === 'internal-lib', JSON.stringify(kinds))
+  commit('chore: adopt the kinds')
+
   // 4. The overlay: the pipeline now runs mnci, and the team's step is kept in a slot.
   run(`node ${CLI} adopt --overlay --scope @acme --registry npm --agent ubuntu-latest --test-runner jest`, adopted)
   const pipeline = readFileSync(path.join(adopted, 'azure-pipelines.yml'), 'utf8')

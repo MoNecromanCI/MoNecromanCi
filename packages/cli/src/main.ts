@@ -119,6 +119,8 @@ export function buildProgram (cliVersion: string): Command {
     .option('--tags', 'create, locally, the baseline tag each project whose release tags are stranded under an old name needs; nothing is pushed')
     .option('--toolchain', 'retire old formatter and registry tooling, align the Nx family to one version and run npm audit fix until the audit gate passes; needs a clean git tree and leaves the changes uncommitted')
     .option('--nx <version>', 'the Nx version --toolchain aligns to (default: the newest published in the major already in use)')
+    .option('--kinds', 'record each project\'s mnci kind as a type:<kind> tag (npm, Python, Go, Flutter and C# projects); a project where two kinds fit is listed with a guess and not tagged; needs a clean git tree')
+    .option('--kind <dir=kind>', 'the kind you choose for one project, for --kinds (repeatable)', (value: string, previous: string[] = []) => [...previous, value])
     .option('--overlay', 'apply the mnci overlay (release config, pipeline, npmrc, commitlint, scripts) with the flags mnci upgrade takes; the pipeline keeps the steps mnci does not recognise in its slots; needs a clean git tree and an nx.json')
     .option('--scope <scope>', 'npm scope for publishable packages (--overlay)')
     .option('--registry <kind>', 'azure-artifacts | npm (--overlay)')

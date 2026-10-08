@@ -38,7 +38,9 @@ export function listProjects (workspaceRoot: string): ProjectSummary[] {
       const project = fileExists(projectJsonPath)
         ? readJson<{ tags?: string[], targets?: Record<string, unknown> }>(projectJsonPath)
         : {}
-      const typeTag = (project.tags ?? []).find(tag => tag.startsWith(TYPE_TAG_PREFIX))
+      const manifestPath = join(workspaceRoot, location.dir, 'package.json')
+      const manifestTags = fileExists(manifestPath) ? readJson<{ nx?: { tags?: string[] } }>(manifestPath).nx?.tags ?? [] : []
+      const typeTag = [...project.tags ?? [], ...manifestTags].find(tag => tag.startsWith(TYPE_TAG_PREFIX))
 
       return {
         name:      location.name,
