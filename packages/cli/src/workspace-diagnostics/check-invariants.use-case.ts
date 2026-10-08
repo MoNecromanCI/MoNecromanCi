@@ -15,6 +15,7 @@ import {
   type RegistryConfig,
 } from '../workspace-overlay'
 import {
+  canAddDeclarationSpecifierPlugin,
   canRepairRollupConfig,
   hasDeclarationSpecifierPlugin,
   hasDirectoryAwareDeclarationSpecifiers,
@@ -1058,7 +1059,7 @@ function checkRollupSourceMaps (workspaceRoot: string): Finding[] {
           'rollup emits no .js.map without it, so a breakpoint in a .ts file can never bind',
         remedy: canRepairRollupConfig(config)
           ? 'run `mnci upgrade`, which adds it to every rollup config'
-          : "this config delegates via require() to a shared base mnci does not own — add `sourceMap: true` to withNx's first argument there by hand; `mnci upgrade` cannot repair a config in this shape",
+          : "mnci does not recognise the shape of this config (it edits the boundary between withNx's two arguments, which is not here; a config that delegates via require() to a shared base is one such shape) — add `sourceMap: true` to withNx's first argument by hand; `mnci upgrade` cannot repair a config in this shape",
       },
     ]
   })
@@ -1118,16 +1119,13 @@ function checkDeclarationSpecifiers (workspaceRoot: string): Finding[] {
           ok:    false,
           detail:
             'no mnci-normalise-declaration-specifiers plugin — the emitted .d.ts files keep the extensionless imports tsconfig.lib.json allows, which a nodenext consumer cannot resolve',
-          // Deliberately NOT `mnci upgrade`, which would send the user in a
-          // circle: `upgradeDeclarationSpecifierPlugins` only rewrites a
-          // plugin that is already there, and `repairDeclarationSpecifiers`
-          // is anchored on the generator's own placeholder comment, which a
-          // config in this state no longer has. Verified by running the
-          // command against exactly this shape — it no-ops. Naming a command
-          // that silently does nothing is the failure mode this file's own
-          // source-map check already goes out of its way to avoid.
-          remedy:
-            "add the plugin to withNx's second argument by hand (copy it from a freshly `mnci add npm-lib`'d project) — `mnci upgrade` only updates a plugin that is already present, it cannot restore a missing one",
+          // `mnci upgrade` adds the plugin only to a config whose second argument already has a
+          // `plugins` array (what @nx/react:library writes). For any other shape it would no-op, and
+          // naming a command that silently does nothing is the failure mode the source-map check
+          // above goes out of its way to avoid, so the remedy depends on the shape.
+          remedy: canAddDeclarationSpecifierPlugin(readFileSync(configPath, 'utf8'))
+            ? 'run `mnci upgrade`, which adds the plugin to the plugins array of withNx\'s second argument'
+            : "add the plugin to withNx's second argument by hand (copy it from a freshly `mnci add npm-lib`'d project) — mnci does not recognise the shape of this config, so `mnci upgrade` cannot add it",
         },
       ]
     }
