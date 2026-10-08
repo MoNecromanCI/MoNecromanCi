@@ -42,6 +42,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "mnci.dev",
+        "title": "Start projects together",
+        "category": "MNCI",
+        "icon": "$(play)"
+      },
+      {
         "command": "mnci.install",
         "title": "Install dependencies",
         "category": "MNCI",
