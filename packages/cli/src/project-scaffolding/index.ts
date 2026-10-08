@@ -17,3 +17,4 @@ export {
   refreshVscodeExtensionScript,
   VSCODE_EXTENSION_SCRIPT_PATH,
 } from './vscode-extension.use-case'
+export { refreshContainerScript } from './container.use-case'

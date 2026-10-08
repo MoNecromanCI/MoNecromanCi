@@ -56,6 +56,10 @@ export interface AddOptions {
   esm?:       boolean
   /** `react-app` only: also scaffold a Playwright end-to-end project, `<name>-e2e` (`mnci add --e2e`). */
   e2e?:       boolean
+  /** `container` only: the app to put in an image (`mnci add container api-image --app api`). */
+  app?:       string
+  /** `container` only: the port the app listens on, exposed by the image and published by `start`. */
+  port?:      string
 }
 
 /**
@@ -494,6 +498,11 @@ export interface ProjectCommands {
    */
   qa?:    string
   /**
+   * More scripts, by suffix (`image` gives `<name>:image`), for a kind whose project has targets the three
+   * standard ones do not cover.
+   */
+  extra?: Record<string, string>
+  /**
    * The exact command for `<name>:start` (e.g. `nx run <name>:serve`,
    * `nx run <name>:start`) — omitted entirely when the kind has no local
    * dev-server story.
@@ -540,11 +549,15 @@ function findCodeWorkspaceFile (workspaceRoot: string): string | undefined {
  * @throws Never - pure object construction.
  * @typeParam None - this function has no generic type parameters.
  */
-function projectTask (name: string, kind: 'build' | 'qa' | 'start'): Record<string, unknown> {
+function projectTask (name: string, kind: string): Record<string, unknown> {
   const script = `${name}:${kind}`
   const base = { label: `${name}: ${kind}`, type: 'npm', script, problemMatcher: [] }
 
-  return kind === 'start' ? { ...base, isBackground: true } : { ...base, group: kind }
+  if (kind === 'start') {
+    return { ...base, isBackground: true }
+  }
+
+  return kind === 'build' || kind === 'qa' ? { ...base, group: kind } : base
 }
 
 /**
@@ -958,6 +971,10 @@ export function registerProjectCommands (
   if (commands.start) {
     scripts[`${name}:start`] = commands.start
   }
+  const extraScripts = Object.entries(commands.extra ?? {})
+  for (const [suffix, command] of extraScripts) {
+    scripts[`${name}:${suffix}`] = command
+  }
 
   // Re-derived after every add, because whether the pip/pub blocks belong
   // depends on what projects now EXIST, and this add may have created the
@@ -999,6 +1016,7 @@ export function registerProjectCommands (
     projectTask(name, 'qa'),
     ...(commands.build ? [projectTask(name, 'build')] : []),
     ...(commands.start ? [projectTask(name, 'start')] : []),
+    ...Object.keys(commands.extra ?? {}).map(suffix => projectTask(name, suffix)),
   ]
   writeFileEnsured(
     codeWorkspacePath,

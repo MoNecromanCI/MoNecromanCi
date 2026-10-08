@@ -507,6 +507,35 @@ from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
 
+## Container images (`mnci add container <name> --app <app>`)
+
+`container` is a kind that wraps an app you already have, so the app keeps its own kind and the image is a project
+of its own beside it: `mnci add container api-image --app api --port 3000`. It writes `apps/<name>/` with a
+`Dockerfile`, a `Dockerfile.dockerignore`, a `files/` directory for anything the image copies from beside the build
+context, and a manifest tagged `type:container` with two targets. `image` builds `<name>:<VERSION>` and
+`<name>:latest` after the app's own output target (`VERSION` is `dev` when unset, as in the Go builds), and `start`
+runs the image, publishing the port. The project declares the app as an implicit dependency, so `nx affected`
+knows a change to the app affects its image. `npm run <name>:image` and `<name>:start` are registered; `:qa` builds
+the image.
+
+One recipe per app kind, each a plain image of what the app already produces:
+
+| App | Build context | Image |
+|---|---|---|
+| `node-app` | the app's pruned output (`prune` target) | `node:24-alpine`, production dependencies installed, runs as `node`, `HOST=0.0.0.0` so a published port is reachable |
+| `react-app` | its production `dist` | `nginx` with a server block that falls back to `index.html` for client-side routes |
+| `go-app` | the static `linux-amd64` binary from `build-all` | `distroless/static`, non-root |
+
+An Azure Functions app is refused, because its image is the Functions host's own and needs its own entry point.
+
+The target is called `image`, not `build`, **on purpose**: CI runs every project's `build`, and building an image needs a
+Docker engine that an agent may not have (a Windows agent cannot run Linux images at all). Adding a container project
+therefore does not change what CI verifies; building and publishing images is a step you add in a pipeline slot where
+the agent has Docker. `mnci upgrade` rewrites `tools/container-image.cjs`, the small helper both targets run.
+
+The `container images` e2e section builds a Node, a React and a Go image and talks to the running containers. It needs
+a Docker engine, so it skips where there is none and runs in CI's Linux `e2e-containers` job (nightly and on demand).
+
 ## A paired Playwright project (`mnci add react-app web --e2e`)
 
 `--e2e` scaffolds `apps/<name>-e2e` beside a React app with `@nx/react:app --e2eTestRunner=playwright`. It is

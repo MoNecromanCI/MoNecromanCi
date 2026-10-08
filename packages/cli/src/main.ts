@@ -206,6 +206,8 @@ export function buildProgram (cliVersion: string): Command {
       '--empty',
       'npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec',
     )
+    .option('--app <project>', 'container only: the app to put in an image (a node-app, react-app or go-app)')
+    .option('--port <port>', 'container only: the port the app listens on, exposed by the image and published by start')
     .option(
       '--e2e',
       'react-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify',

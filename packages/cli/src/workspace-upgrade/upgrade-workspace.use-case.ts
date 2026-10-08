@@ -9,6 +9,7 @@ import {
   GO_RELEASE_SCRIPT_PATH,
   pinVscodeExtensionProjectNames,
   refreshGoReleaseScript,
+  refreshContainerScript,
   refreshVscodeExtensionScript,
   VSCODE_EXTENSION_SCRIPT_PATH,
 } from '../project-scaffolding'
@@ -359,6 +360,10 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (refreshVscodeExtensionScript(workspaceRoot)) {
     logger.step('Updating the VS Code extension packaging script')
     logger.detail(`updated ${VSCODE_EXTENSION_SCRIPT_PATH}`)
+  }
+  if (refreshContainerScript(workspaceRoot)) {
+    logger.step('Updating the container image script')
+    logger.detail('updated tools/container-image.cjs')
   }
   if (refreshGoReleaseScript(workspaceRoot)) {
     logger.step('Updating the releasable Go app script')
