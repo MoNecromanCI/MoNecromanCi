@@ -38,7 +38,16 @@ src/
   workspace-overlay/          the config files mnci owns and rewrites
   workspace-creation/         mnci new
   interactive-wizard/         bare mnci: every command and option, asked from the command's own description
-  repository-adoption/        mnci adopt — bringing an existing repository under mnci, step by step
+  repository-adoption/        mnci adopt — the command, which runs the step slices below
+  adoption-report/            what adopt reads from a repository and the blockers and warnings it judges
+  toolchain-adoption/         adopt --toolchain: retired tooling gone, one Nx version, an audit that passes
+  kind-adoption/              adopt --kinds: each project's mnci kind as a type tag
+  dependency-adoption/        adopt --dependencies: root runtime dependencies into the projects that import them
+  clean-working-tree/         the git precondition every step that changes files shares
+  release-tag-lineage/        release tags kept reachable across a rename; doctor, upgrade and adopt all use it
+  esm-conversion/             a generated Node app made an ES module (add --esm)
+  dev-servers/                mnci dev: several projects started together
+  workspace-presets/          mnci new --preset: a whole shape of workspace, wired
   workspace-upgrade/          mnci upgrade
   workspace-diagnostics/      mnci doctor
   project-scaffolding/        mnci add — one use case per kind, plus post-generation repairs
@@ -50,6 +59,18 @@ src/
   project-name/               name validation
   cli-version/                the update check
 ```
+
+**Written exception: `src/project-scaffolding/` is over the 12-file review threshold.**
+- *Rule waived:* the folder-size review point (it holds a dispatcher, one file per project kind, and
+  `post-generation.use-case.ts`).
+- *Constraint:* every kind calls `registerProjectCommands` (and uses its `ProjectCommands` type) from
+  `post-generation.use-case.ts`. A kind moved to a slice of its own would import that back from
+  `project-scaffolding` while `project-scaffolding` imports the kind: a cycle, type-only imports included.
+- *Owner:* the repository owner. *Temporary:* it ends when `registerProjectCommands`, `ProjectCommands` and the
+  helpers they use move out of `post-generation.use-case.ts` into a `project-commands/` slice; each kind
+  (`container` first) can then move into a slice of its own. Splitting a file this size is its own change and needs a
+  yes, so it is recorded here and not done as a side effect. The ESM conversion had no such dependency and is
+  already its own slice (`esm-conversion/`).
 
 The dependency graph is acyclic and flows one way: `main` → the command
 slices → the infrastructure slices → `file-system` as a leaf. That is checked,
