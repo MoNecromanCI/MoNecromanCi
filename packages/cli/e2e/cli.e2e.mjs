@@ -3098,8 +3098,10 @@ section('repository adoption', [], () => {
     private:         true,
     workspaces:      ['packages/*'],
     scripts:         { 'format:check': 'oxfmt --check .', 'build': 'nx run-many -t build' },
+    dependencies:    { ms: '^2.1.3' },
     devDependencies: { 'nx': '23.1.1', '@nx/js': '23.1.1', 'prettier': '^3.0.0' },
   })
+  write('packages/alpha/src/index.ts', "import ms from 'ms'\nexport const alpha = ms('1s')\n")
   write('nx.json', { $schema: './node_modules/nx/schemas/nx-schema.json' })
   write('.gitignore', 'node_modules\n')
   write('.prettierrc', '{}\n')
@@ -3155,6 +3157,13 @@ section('repository adoption', [], () => {
   enforce('adopt --kinds: a library with an entry and a private package are tagged, and mnci projects shows both', kinds.alpha === 'npm-lib' && kinds.beta === 'internal-lib', JSON.stringify(kinds))
   commit('chore: adopt the kinds')
 
+  // 3c. The root's runtime dependency moves into the package that imports it.
+  run(`node ${CLI} adopt --dependencies`, adopted)
+  const movedAlpha = JSON.parse(readFileSync(path.join(adopted, 'packages/alpha/package.json'), 'utf8'))
+  const rootAfter = JSON.parse(readFileSync(path.join(adopted, 'package.json'), 'utf8'))
+  enforce('adopt --dependencies: ms moved from the root into the package that imports it', movedAlpha.dependencies?.ms === '^2.1.3' && rootAfter.dependencies === undefined, JSON.stringify({ alpha: movedAlpha.dependencies, root: rootAfter.dependencies }))
+  commit('chore: adopt the dependencies')
+
   // 4. The overlay: the pipeline now runs mnci, and the team's step is kept in a slot.
   run(`node ${CLI} adopt --overlay --scope @acme --registry npm --agent ubuntu-latest --test-runner jest`, adopted)
   const pipeline = readFileSync(path.join(adopted, 'azure-pipelines.yml'), 'utf8')
@@ -3169,7 +3178,7 @@ section('repository adoption', [], () => {
   // 5. Doctor agrees: the verify phase is active and no tag is stranded.
   const doctor = json(`node ${CLI} doctor --json`)
   const failed = (doctor.parsed?.findings ?? []).filter(finding => !finding.ok).map(finding => finding.check)
-  enforce('adopt: doctor finds the verify phase active and no release tag stranded', doctor.parsed !== undefined && failed.every(check => !/verify phase|release tags resolve/.test(check)), failed.join('\n'))
+  enforce('adopt: doctor finds the verify phase active, no release tag stranded and no root runtime dependency', doctor.parsed !== undefined && failed.every(check => !/verify phase|release tags resolve|runtime dependencies in the root/.test(check)), failed.join('\n'))
 
   // 6. A release would continue from the old version, never restart below it.
   write('packages/alpha/src/index.ts', 'export const alpha = 1\n')

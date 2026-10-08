@@ -303,6 +303,15 @@
         "negated": false
       },
       {
+        "name": "dependencies",
+        "flags": "--dependencies",
+        "description": "move the root package.json runtime dependencies into the projects that import them (same range), then reinstall; a package no project imports stays and is listed; needs a clean git tree",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
         "name": "kinds",
         "flags": "--kinds",
         "description": "record each project's mnci kind as a type:<kind> tag (npm, Python, Go, Flutter and C# projects); a project where two kinds fit is listed with a guess and not tagged; needs a clean git tree",
