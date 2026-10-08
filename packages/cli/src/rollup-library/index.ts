@@ -16,6 +16,7 @@
 // The repairs themselves.
 export { repairPublishableManifest, repairPublishableManifests } from './repair-publishable-manifest.use-case'
 export {
+  addMissingDeclarationSpecifierPlugins,
   repairDeclarationSpecifiers,
   repairRollupSourceMaps,
   upgradeDeclarationSpecifierPlugins,
@@ -25,6 +26,7 @@ export {
 // `mnci doctor` needs in order to report without changing anything.
 export { resolveRollupConfigText } from './rollup-config.repository'
 export {
+  canAddDeclarationSpecifierPlugin,
   canRepairRollupConfig,
   hasDeclarationSpecifierPlugin,
   hasDirectoryAwareDeclarationSpecifiers,
