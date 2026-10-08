@@ -894,7 +894,7 @@ guard decodes. Check which before wiring a third protocol.
 - `mnci upgrade` re-applies overlay safely (overwrites mnci-owned files only)
 - Stack is persisted in `nx.json`'s `mnci` block (upgrade reads it back)
 - All shell commands use cross-spawn (safe from injection)
-- Shared dev/tool packages live at the ROOT; runtime dependencies belong to the package that imports them. Go now follows this too (#289): one `go.mod` per project, so each owns its dependencies
+- **Code (runtime) dependencies are installed in the project that imports them, never in the root**, in every language; only shared dev/tool packages live at the ROOT. Go follows this too (#289): one `go.mod` per project, so each owns its dependencies. A runtime dependency in the root manifest is a defect: `mnci doctor` fails it and `mnci adopt --dependencies` moves it
 - A peer range is never rewritten by mnci: it declares compatibility, not a version choice, and narrowing it drops consumers
 - `nx sync` reconciles TypeScript project references ONLY — it has no opinion about dependency versions
 - Python toolchain is invoked as `python3 -m <tool>` (not venv paths, works cross-platform)

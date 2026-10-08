@@ -153,15 +153,24 @@ cannot be half-done silently. Also update the "Next steps" hint in `new.ts`.
 
 ## 4. The dependency model — the single most important concept
 
-Every stack uses **one central root manifest**. Projects consume it; nothing
-maintains per-project dependency islands.
+**Code dependencies are installed in the project that imports them, never in the
+root.** The root holds only the shared development and tooling packages (linter,
+test runner, Nx, type-checker) and the files that tie the projects together. This
+is the same rule in every language, and `mnci install -w <project> <package>` is
+the one command that adds a code dependency, to exactly one project.
 
-| Stack   | Root manifest                           | How a project consumes it                 | CI dependency injection                                          |
-| ------- | --------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- |
-| TS/JS   | `package.json` + `package-lock.json`    | npm workspaces + TS project refs          | `npm ci`                                                         |
-| Python  | `requirements-dev.txt` (toolchain only) | per-project `pyproject.toml`              | 2 guards: toolchain install, then `pip install -e` every project |
-| Go      | **one root `go.mod`**                   | plain import path, `<module>/libs/<name>` | `go mod download`                                                |
-| Flutter | **root `pubspec.yaml` (pub workspace)** | `resolution: workspace` in each member    | **one** `flutter pub get` at the root                            |
+| Stack   | Code dependencies are declared in                          | What the root holds                                                  | CI dependency injection                                          |
+| ------- | ---------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| TS/JS   | each project's own `package.json`                          | `package.json` (scripts, devDependencies, `overrides`) + the one `package-lock.json` | `npm ci`                                         |
+| Python  | each project's `pyproject.toml` (function app: `requirements.txt`) | `requirements-dev.txt` — the toolchain, nothing else         | 2 guards: toolchain install, then `pip install -e` every project |
+| Go      | each project's own `go.mod` (multi-module)                 | `go.work` — the `use` list only; mnci owns it                        | `go work sync`                                                   |
+| Flutter | each member's own `pubspec.yaml`                           | `pubspec.yaml` — the member list (pub workspace), no dependency blocks | **one** `flutter pub get` at the root                          |
+
+A runtime dependency in the root manifest is a defect, not a tidy-up (see invariant
+17): the root is private and never published, so no consumer receives it, and
+`@nx/rollup` externalises only what a project's own manifest declares. `mnci doctor`
+fails a root that holds one, and `mnci adopt --dependencies` moves them into the
+projects that import them.
 
 ### Why Flutter is the cleanest case
 
@@ -195,8 +204,8 @@ depend on an unpublished workspace lib, so the internal lib's module must be
 `pyproject.toml`; the plugin's `build` executor stages and copies the module. It
 is idempotent and refuses self-vendoring.
 
-- **Go** needs none: `go build` links statically, and one module means siblings
-  are plain subpackages.
+- **Go** needs none: `go build` links statically, and `go.work` resolves a
+  sibling module's path locally.
 - **Flutter** needs none: pub workspaces resolve members locally.
 
 ---
@@ -217,17 +226,18 @@ projects: ['packages/*', 'python-packages/*', '!tag:type:go-lib']
 ```
 
 **`!tag:type:go-lib` is a bug fix, not tuning.** A `go-lib` lives in `packages/`
-but has **no per-project manifest** (mnci puts every Go project in one root
-`go.mod`), so Nx's default `versionActions` looks for a `package.json` that is
-not there and **aborts while building the release graph** — which kills
-`nx release` for the _entire_ workspace, not just the Go project.
+but has **no `package.json`**, so Nx's default `versionActions` looks for one that
+is not there and **aborts while building the release graph** — which kills
+`nx release` for the _entire_ workspace, not just the Go project. (It has its own
+`go.mod` now; the exclusion stays until Go nested-module tags,
+`libs/<name>/v1.2.3`, are implemented — the remaining #289 work.)
 
 _Verified A/B against a real `@nx-go/nx-go:library`:_ without the exclusion
 `EXIT=1`; with it `EXIT=0` and the npm lib releases normally.
 
-Excluding is also semantically right: one root `go.mod` means **one module**, so
-its packages have no independent versions. `go get <module>/packages/<x>@vX.Y.Z`
-resolves against the _module's_ tag.
+Excluding is also right for now: a Go module is versioned by a tag whose prefix
+is its directory (`packages/<x>/v1.2.3`), not by the `{projectName}@{version}`
+tag `nx release` writes, so the two do not meet until nested-module tags exist.
 
 A **Dart** package in `packages/` needs no such exclusion — `pubspec.yaml` has a
 real `version:` field and `@mnci/nx-flutter` stamps a `versionActions` override.
@@ -344,7 +354,7 @@ The pattern is always: check a sentinel → `console.log('No X - skipping.')` an
 | Stack   | Sentinel file          | Written by                 |
 | ------- | ---------------------- | -------------------------- |
 | Python  | `requirements-dev.txt` | first `mnci add python-*`  |
-| Go      | `go.mod`               | first `mnci add go-*`      |
+| Go      | `go.work`              | first `mnci add go-*`      |
 | Flutter | `pubspec.yaml`         | first `mnci add flutter-*` |
 
 **Critical architectural fact:** `applyOverlay()` has **no knowledge** of which
@@ -541,7 +551,7 @@ Persists `scope`, `registry`, `agent`, `variableGroup`, `ci`, and
 `.stack`; `mnci upgrade` reads the whole thing as its defaults.
 
 **Stack-specific state is NOT stored here.** It lives in the sentinel files
-(`go.mod`, `requirements-dev.txt`, `pubspec.yaml`). Adding a stack should not
+(`go.work`, `requirements-dev.txt`, `pubspec.yaml`). Adding a stack should not
 touch this block.
 
 ---
@@ -647,11 +657,15 @@ the default PR job does not run it.
 3. **All shell commands use `cross-spawn`** with the `(command, args[])` array
    form — never string concatenation with `shell: true`. Every argument can come
    from user input; the old design let a crafted name run arbitrary shell.
-4. **Go uses a SINGLE root `go.mod`.** Never reintroduce `go.work` — one stale
-   `use` entry makes `go list -m -json` fail, which breaks the **entire** Nx
-   project graph, not just Go.
-5. **Go targets are written explicitly.** `@nx-go/nx-go`'s inference needs a
-   per-project `go.mod`, which the single-module layout does not have.
+4. **Go is MULTI-module: one `go.mod` per project, and a root `go.work` that mnci
+   owns** (#289). The hazard is a stale `use` entry — a project directory removed
+   by hand makes `go list -m -json` fail, which breaks the **entire** Nx project
+   graph, not just Go — so `mnci doctor` fails on one and names the line to
+   remove. An adopted flat repository (existing root `go.mod`, no `go.work`) is
+   left single-module until migrated.
+5. **Go targets are written explicitly** by `project-scaffolding/go.use-case.ts`
+   and override the plugin's inferred ones, so lint is pinned to `golangci-lint`
+   rather than the plugin's `go fmt` default.
 6. **Flutter members need BOTH** `resolution: workspace` _and_ an entry in the
    root `workspace:` list. Miss either and pub silently resolves that project
    standalone — it gets its own lockfile and drops out of shared resolution. The
@@ -713,10 +727,10 @@ the default PR job does not run it.
     `@nx/dependency-checks` fails the project whose import is now undeclared;
     `mnci doctor` fails the root that took it.
 
-    **Go is the stated exception, not an oversight.** Its single root `go.mod`
-    (invariant 4) means there are no per-project manifests to own anything, so
-    every Go dependency is a root dependency by construction. Making Go comply
-    would require the `go.work` layout invariant 4 forbids.
+    **Go follows the same rule** since the multi-module switch (invariant 4):
+    each Go project's own `go.mod` owns its requirements, and `mnci i -w
+    <go-project> <pkg>` runs `go get` in exactly that module. The root holds only
+    the `go.work` `use` list.
 18. **A peer range is never rewritten by mnci.** `>=21.0.0` on `@nx/devkit` is a
     compatibility declaration, not a version choice: narrowing it to whatever the
     workspace happens to resolve drops support for every earlier major, for every
