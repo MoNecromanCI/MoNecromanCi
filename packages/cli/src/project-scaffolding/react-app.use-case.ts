@@ -2,6 +2,7 @@ import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
+import { separateReactAppOutput } from '../react-app-output'
 import { reactAppE2eSpec, reactAppExampleFiles } from './react-app-example.algorithm'
 import {
   addNxTargets,
@@ -166,6 +167,8 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
   addNxTargets(join(reactAppRoot, 'package.json'), reactAppTargets(name))
   // src/app/*.tsx get the .component role and a barrel, so the slice rules accept them.
   reshapeReactAppScaffold(reactAppRoot)
+  // tsc's output is never used for an app, and it must not share a folder with the bundle Vite writes (#346).
+  separateReactAppOutput(reactAppRoot)
   // Nx's 850-line welcome page is a demo, not a template. A greeting feature (contract,
   // use case, component, specs) composed by App replaces it.
   rmSync(join(reactAppRoot, 'src/app/nx-welcome.component.tsx'), { force: true })

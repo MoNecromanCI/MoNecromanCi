@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { hasGoProject, registerNxGoPlugin } from '../go-workspace'
 import { pruneStaleLocalRegistry } from '../lockfile-pruning'
+import { separateReactAppsOutput } from '../react-app-output'
 import { locateStrandedReleaseTags } from '../release-tag-lineage'
 import { runFormatter } from '../nx-workspace'
 import {
@@ -360,6 +361,13 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (refreshVscodeExtensionScript(workspaceRoot)) {
     logger.step('Updating the VS Code extension packaging script')
     logger.detail(`updated ${VSCODE_EXTENSION_SCRIPT_PATH}`)
+  }
+  const separatedApps = separateReactAppsOutput(workspaceRoot)
+  if (separatedApps.length > 0) {
+    logger.step('Moving tsc output out of the folder Vite builds into (build and typecheck raced, TS6305)')
+    for (const dir of separatedApps) {
+      logger.detail(`updated ${dir}/tsconfig.app.json`)
+    }
   }
   if (refreshContainerScript(workspaceRoot)) {
     logger.step('Updating the container image script')
