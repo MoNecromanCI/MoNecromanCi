@@ -1,9 +1,9 @@
 /**
- * Bringing an existing repository under mnci (`mnci adopt`).
+ * Bringing an existing repository under mnci, step by step (`mnci adopt`).
  *
  * @remarks
  * The deliberate public API of this slice: a sibling reaches it only
- * through this barrel, never by a path into the files below. Report mode only so far (#377).
+ * through this barrel, never by a path into the files below.
  */
 
-export * from './run-adopt.use-case'
+export { runAdopt, type AdoptOptions } from './run-adopt.use-case'
