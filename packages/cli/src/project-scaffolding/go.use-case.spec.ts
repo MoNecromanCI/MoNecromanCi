@@ -176,6 +176,26 @@ describe('runAdd go', () => {
     expect(readFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'utf8')).toContain('module apps/api')
   })
 
+  it('clamps a generated go directive to one the CI linter can load, and drops the toolchain line (#348)', async () => {
+    seedProjectJson('apps/api', 'api')
+    writeFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'module apps/api\n\ngo 1.27.0\n\ntoolchain go1.27.0\n')
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27.0\n\nuse ./apps/api\n')
+
+    await runAdd('go-app', 'api', {})
+
+    expect(readFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'utf8')).toBe('module apps/api\n\ngo 1.24\n\n')
+    expect(readFileSync(join(workspaceRoot, 'go.work'), 'utf8')).toBe('go 1.24\n\nuse ./apps/api\n')
+  })
+
+  it('leaves a go directive at or below the ceiling alone (#348)', async () => {
+    seedProjectJson('apps/api', 'api')
+    writeFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'module apps/api\n\ngo 1.22\n')
+
+    await runAdd('go-app', 'api', {})
+
+    expect(readFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'utf8')).toBe('module apps/api\n\ngo 1.22\n')
+  })
+
   describe('onto a repository that already has its own go.mod (#261)', () => {
     const ADOPTED_GO_MOD = 'module youtube-downloader\n\ngo 1.24\n\nrequire github.com/charmbracelet/bubbletea v1.3.4\n'
 
