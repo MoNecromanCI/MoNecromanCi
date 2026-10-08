@@ -7,3 +7,4 @@
  */
 
 export * from './check-invariants.use-case'
+export type { Finding } from './finding.contract'
