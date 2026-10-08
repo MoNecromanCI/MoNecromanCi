@@ -3268,6 +3268,13 @@ section('react e2e project', [], () => {
   const verify = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=web,web-e2e', root)
   enforce('react e2e: lint, typecheck, test and build are green for the app and its e2e project (what CI verifies)', verify.ok, verify.output.slice(-2500))
 
+  // #346: tsc and Vite both wrote to dist, and Nx runs an app's build and typecheck together, so the typecheck failed
+  // some runs with TS6305. The output is moved; a race can only be shown by running them together more than once.
+  const appTsconfig = JSON.parse(readFileSync(path.join(root, 'apps/web/tsconfig.app.json'), 'utf8'))
+  enforce('react: tsc writes to out-tsc/app, not to the folder Vite builds into', appTsconfig.compilerOptions.outDir === 'out-tsc/app' && appTsconfig.compilerOptions.tsBuildInfoFile.startsWith('out-tsc/app/'), JSON.stringify(appTsconfig.compilerOptions))
+  const racing = [1, 2, 3].map(() => tryRunCapture('npx nx run-many -t build,typecheck --projects=web --skip-nx-cache', root))
+  enforce('react: build and typecheck run together three times without TS6305', racing.every(result => result.ok), racing.map(result => result.output.slice(-600)).join('\n---\n'))
+
   const qa = tryRunCapture('npm run web-e2e:qa', root)
   enforce('react e2e: npm run web-e2e:qa passes', qa.ok, qa.output.slice(-1500))
 

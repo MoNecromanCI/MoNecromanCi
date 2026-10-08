@@ -3584,6 +3584,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # The Nx packages are pinned to one exact version and must move together: a PR for one alone fails resolution
+    # (ERESOLVE between @nx/eslint and @nx/jest) or leaves a second copy of nx in the lockfile (#295).
+    groups:
+      nx:
+        patterns:
+          - "nx"
+          - "@nx/*"
 
   - package-ecosystem: github-actions
     directory: "/"

@@ -1689,7 +1689,7 @@ release version --dry-run`), which wins over the workspace's default
   every Python project workspace-wide (the workspace-wide install above) —
   both skipped cleanly when the workspace has no Python projects.
 
-## Go (`@nx-go/nx-go` — one root `go.mod`, golangci-lint + `go test`)
+## Go (`@nx-go/nx-go` — a `go.mod` per project, a root `go.work`, golangci-lint + `go test`)
 
 Requires **Go 1.21+** on the machine and on the build agent; `mnci add go-*`
 fails fast with an install link when `go` is not on the `PATH`. The generated
@@ -1702,14 +1702,14 @@ pipeline installs `golangci-lint` itself (see below).
 | `go-lib`          | `packages/<name>` | publishable **by git tag** — see below; lint + test targets only                                                                                                                                              |
 | `go-internal-lib` | `libs/<name>`     | private shared code, lint + test only — a non-`main` package produces no binary                                                                                                                               |
 
-- **One root `go.mod`**, matching how TS uses one root `package.json` and
-  Python one root `requirements-dev.txt`. `project-scaffolding/go.use-case.ts` bootstraps it on the
-  first Go `add` by running the plugin's `init` then `convert-to-one-mod`
-  generators, in that order — `convert-to-one-mod` refuses once `go.work`
-  lists any module, so it has to happen before the first Go project exists.
-  Every Go project then shares that module and imports its siblings as
-  `<module>/libs/<name>/<slice>`, with no per-project manifests and no
-  `replace` directives.
+- **One `go.mod` per project, and a root `go.work` mnci owns** (#289), so a Go
+  project's dependencies are declared in that project, like every other
+  language's. `project-scaffolding/go.use-case.ts` bootstraps the workspace on
+  the first Go `add` with the plugin's `init` (no `convert-to-one-mod`); each
+  generator then writes its own `go.mod`, whose module line mnci rewrites to
+  `<host>/<org>/<repo>/<dir>` from the git origin. Siblings import each other
+  by that path, and `go.work` resolves them locally, with no `replace`
+  directives.
 - **A Go library is a capability of slice packages.** The plugin's library
   generator writes `<name>.go` at the project root, which makes the root
   package the whole library. mnci replaces it with a root `doc.go` and moves
@@ -1723,16 +1723,17 @@ pipeline installs `golangci-lint` itself (see below).
   plants a failing test and a lint finding in a nested package and asserts
   both fail the project target, so a plugin change that stopped recursing
   would surface there rather than as a silently green lib.
-- **The `go.work` multi-module layout was rejected deliberately.** Besides
-  splitting dependencies across per-project manifests, it is brittle: a
-  single stale `use` entry — a project directory removed by hand — makes
-  `go list -m -json` fail, and that breaks the **entire** Nx project graph,
-  not just the Go projects. Verified empirically.
+- **The `go.work` multi-module layout was first rejected and then adopted**
+  (#289), because per-project dependencies are the point. Its one hazard is
+  real: a single stale `use` entry — a project directory removed by hand —
+  makes `go list -m -json` fail, and that breaks the **entire** Nx project
+  graph, not just the Go projects. `mnci doctor` fails on one and names the
+  line to remove.
 - **Targets are written explicitly** rather than inferred. `@nx-go/nx-go`
-  supplies `build`/`test`/`lint` by inference, but keys that inference on a
-  per-project `go.mod` — which single-module mode does not have, so nothing
-  is inferred. mnci writes them into `project.json` instead, as it already
-  does for most kinds.
+  supplies `build`/`test`/`lint` by inference, but mnci writes them into
+  `project.json` explicitly so lint is pinned to `golangci-lint` (the plugin's
+  default is `go fmt`, which only reformats), as it already does for most
+  kinds.
 - **The project graph is still inferred, so `affected` is correct.** What the
   plugin does not infer is targets; it still derives the _graph_ from imports.
   An app that imports `libs/<name>/<slice>` depends on that lib, transitively,

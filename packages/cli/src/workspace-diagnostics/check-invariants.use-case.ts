@@ -24,6 +24,7 @@ import {
 } from '../rollup-library'
 import { fileExists, readJson } from '../file-system'
 import { logger, printJson } from '../terminal'
+import { checkReactAppOutput } from './check-react-app-output.use-case'
 import { checkReleaseTagsResolve } from './check-release-tags-resolve.use-case'
 import type { Finding } from './finding.contract'
 
@@ -529,8 +530,11 @@ const LEGACY_NPM_TOKEN = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{1
  * `mnci doctor` stays offline. What it can do is notice that the value is not
  * an npm token at all — every current one begins `npm_`, and the legacy format
  * is a UUID. Anything else is either a credential for somewhere else or a typo,
- * and both are worth a line. The remedy names `npm whoami` because that is the
- * one command that settles what this cannot.
+ * and both are worth a line. The remedy starts with the local, safe step
+ * (where the variable comes from) and only then offers `npm whoami`, run
+ * outside the workspace: inside it the project `.npmrc` binds the variable to
+ * the public registry, so the command would send the very credential this
+ * check has just said probably belongs to another service (#349).
  *
  * The token's value never appears in the output. Its length does, which is
  * enough to recognise what you set without putting a secret on a terminal that
@@ -568,8 +572,10 @@ function npmjsCredentialShape (
       'is sent to the PUBLIC registry. A write then fails as a 404 on the PUT, which reads like a ' +
       'missing package',
     remedy:
-      '`npm whoami` to confirm — it is the only thing that separates a wrong token from an ' +
-      `expired one. Then unset \`${variable}\` for local work, or set it to a real npm token`,
+      `find where \`${variable}\` is set (shell profile, CI secret, another tool) and whether it is meant for ` +
+      `npm. If it is not, unset \`${variable}\` for local work. If it is meant to be an npm token, check it ` +
+      'with `npm whoami` run OUTSIDE this workspace (the project .npmrc would send it to the public registry ' +
+      'from in here), or set it to a real npm token',
   }
 }
 
@@ -1293,6 +1299,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     checkDependencyRangesNotPreserved(nxJson),
     checkLockfileHasNoLocalRegistry(workspaceRoot),
     checkReleaseTagsResolve(workspaceRoot, nxJson),
+    checkReactAppOutput(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }
 
