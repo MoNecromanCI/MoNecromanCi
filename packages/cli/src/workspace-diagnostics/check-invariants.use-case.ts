@@ -1285,7 +1285,7 @@ function checkReleaseTagsResolve (workspaceRoot: string, nxJson: { release?: { r
     check:  "release tags resolve under each project's current name",
     ok:     stranded.length === 0,
     detail: `${stranded.map(entry => `${entry.project} has only ${entry.oldTag}`).join('; ')} - nx release finds no tag under the new name and would release from the disk version, a downgrade`,
-    remedy: `on the commit of each old tag run: ${stranded.map(entry => `git tag ${entry.newTag} ${entry.oldTag}^{commit}`).join(' ; ')} - then push the tags`,
+    remedy: `run \`mnci adopt --tags\` to create the baseline tag for each (${stranded.map(entry => entry.newTag).join(', ')}) on the commit of its old tag, then push the tags`,
   }
 }
 

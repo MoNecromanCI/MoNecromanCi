@@ -403,7 +403,7 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   const nxJson = readJson<{ release?: { releaseTag?: { pattern?: string } } }>(join(workspaceRoot, 'nx.json'))
   const stranded = locateStrandedReleaseTags(workspaceRoot, nxJson.release?.releaseTag?.pattern)
   for (const entry of stranded) {
-    logger.warn(`${entry.project} has release tags only under ${entry.oldTag}: nx release would restart it from its disk version. Run \`git tag ${entry.newTag} ${entry.oldTag}^{commit}\` before the next release (\`mnci doctor\` lists them all).`)
+    logger.warn(`${entry.project} has release tags only under ${entry.oldTag}: nx release would restart it from its disk version. Run \`mnci adopt --tags\` before the next release to create ${entry.newTag} locally (\`mnci doctor\` lists them all).`)
   }
 
   logger.success('Done. Review the changes with `git diff` before committing.')
