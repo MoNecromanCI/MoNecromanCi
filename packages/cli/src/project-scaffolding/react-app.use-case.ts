@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { reactAppExampleFiles } from './react-app-example.algorithm'
+import { separateDeclarationOutput } from './separate-declaration-output.use-case'
 import {
   addNxTargets,
   ensureAdmZip,
@@ -166,6 +167,8 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
   addNxTargets(join(reactAppRoot, 'package.json'), reactAppTargets(name))
   // src/app/*.tsx get the .component role and a barrel, so the slice rules accept them.
   reshapeReactAppScaffold(reactAppRoot)
+  // tsc and Vite must not share `dist`: Vite empties it while tsc emits there (#346).
+  separateDeclarationOutput(reactAppRoot)
   // Nx's 850-line welcome page is a demo, not a template. A greeting feature (contract,
   // use case, component, specs) composed by App replaces it.
   rmSync(join(reactAppRoot, 'src/app/nx-welcome.component.tsx'), { force: true })
