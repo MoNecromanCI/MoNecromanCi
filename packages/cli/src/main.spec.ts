@@ -171,9 +171,9 @@ jest.mock('./project-scaffolding', () => ({
 // so two jest.mock calls naming the same barrel would leave only the last one.
 jest.mock('./workspace-creation', () => ({
   ...jest.requireActual('./workspace-creation'),
-  runNew:         jest.fn(),
-  runInteractive: jest.fn(),
+  runNew: jest.fn(),
 }))
+jest.mock('./interactive-wizard', () => ({ runInteractive: jest.fn() }))
 jest.mock('./workspace-upgrade', () => ({ runUpgrade: jest.fn() }))
 // `runUp` imports @inquirer/prompts, which ships ESM only — without this mock
 // the real module is loaded through the handler and jest fails on `export` in
@@ -191,7 +191,7 @@ jest.mock('./cli-version', () => ({
 
 import { buildProgram, main } from './main'
 import { runAdd } from './project-scaffolding'
-import { runInteractive } from './workspace-creation'
+import { runInteractive } from './interactive-wizard'
 import { runNew } from './workspace-creation'
 import { runInstall } from './dependency-management'
 import { runSync } from './dependency-management'

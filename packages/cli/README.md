@@ -36,7 +36,9 @@ plays (`.use-case`, `.client`, `.repository`, `.algorithm`, `.validator`,
 src/
   main.ts                     the CLI transport — decodes argv, calls one use case
   workspace-overlay/          the config files mnci owns and rewrites
-  workspace-creation/         mnci new, and the interactive wizard
+  workspace-creation/         mnci new
+  interactive-wizard/         bare mnci: every command and option, asked from the command's own description
+  repository-adoption/        mnci adopt — bringing an existing repository under mnci, step by step
   workspace-upgrade/          mnci upgrade
   workspace-diagnostics/      mnci doctor
   project-scaffolding/        mnci add — one use case per kind, plus post-generation repairs
@@ -504,6 +506,18 @@ that would just fail felt worse than being upfront that it doesn't exist yet.
 from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
+
+## The interactive wizard (`mnci` with no arguments)
+
+Bare `mnci` lists **every command** (inside a workspace the Projects and Dependencies sections come first, outside
+one the Workspace section does), asks the command's arguments and then the options that apply, prints the command
+line it is about to run, and runs it through the same program the flags go through. It reads the commands from the
+program itself, so a command or option added to `main.ts` is offered without a wizard change. Two groupings are
+kept by hand and checked by a spec: `add` offers the flags of the kind just chosen, and `adopt` asks which step
+first (report, baseline tags, toolchain, project kinds, dependencies, overlay) and offers that step's own flags.
+`wizard-coverage.integration.spec.ts` fails when a command is missing from the menu, an `adopt` flag belongs to no
+step, an `add` flag is reachable for no kind, or the line the wizard builds for an option is not one the program
+accepts.
 
 ## `mnci adopt`: reading an existing repository before changing it
 
