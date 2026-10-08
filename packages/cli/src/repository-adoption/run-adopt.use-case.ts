@@ -1,5 +1,6 @@
 import { logger, printJson } from '../terminal'
 import type { UpgradeOptions } from '../workspace-upgrade'
+import { adoptKinds } from './adopt-kinds.use-case'
 import { adoptOverlay } from './adopt-overlay.use-case'
 import { adoptToolchain } from './adopt-toolchain.use-case'
 import { createBaselineTags } from './create-baseline-tags.use-case'
@@ -25,6 +26,10 @@ export interface AdoptOptions extends UpgradeOptions {
   nx?:        string
   /** Apply the mnci overlay (release config, pipeline, npmrc, commitlint) with the flags `mnci upgrade` takes. */
   overlay?:   boolean
+  /** Record each project's mnci kind as a `type:<kind>` tag; guesses are listed, not applied. */
+  kinds?:     boolean
+  /** Kinds chosen by the person, as `<dir>=<kind>`; repeatable. */
+  kind?:      string[]
 }
 
 /**
@@ -57,6 +62,11 @@ export function reportAdoption (repositoryRoot: string): AdoptionReport {
  */
 export function runAdopt (repositoryRoot: string, options: AdoptOptions = {}): void {
   const report = reportAdoption(repositoryRoot)
+  if (options.kinds === true) {
+    runKinds(repositoryRoot, options)
+
+    return
+  }
   if (options.overlay === true) {
     runOverlay(repositoryRoot, options)
 
@@ -187,6 +197,62 @@ function runOverlay (repositoryRoot: string, options: AdoptOptions): void {
     adoptOverlay(repositoryRoot, options)
     logger.info('Steps of your old pipeline that mnci does not recognise are in its slots (# mnci:slot); anything it could not carry over was listed above.')
     logger.info('Run `mnci doctor` to confirm the verify phase is active, then review with `git diff`.')
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  }
+}
+
+/**
+ * Parses the repeatable `--kind <dir>=<kind>` flag.
+ *
+ * @param choices - What was given.
+ * @returns The kinds by directory.
+ * @throws Error when a value is not written `<dir>=<kind>`.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function parseKindChoices (choices: readonly string[]): Record<string, string> {
+  const parsed: Record<string, string> = {}
+  for (const choice of choices) {
+    const [dir, kind] = choice.split('=', 2)
+    if (dir === '' || kind === undefined || kind === '') {
+      throw new Error(`--kind ${choice}: write it as <directory>=<kind>, for example --kind apps/api=node-app`)
+    }
+    parsed[dir] = kind
+  }
+
+  return parsed
+}
+
+/**
+ * Records the kinds and lists what still needs a decision.
+ *
+ * @param repositoryRoot - Absolute path to the repository.
+ * @param options - The command's flags.
+ * @returns Nothing.
+ * @throws Never - a refusal is printed and sets the exit code.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function runKinds (repositoryRoot: string, options: AdoptOptions): void {
+  try {
+    const outcomes = adoptKinds(repositoryRoot, parseKindChoices(options.kind ?? []))
+    for (const outcome of outcomes) {
+      const line = `${outcome.dir.padEnd(30)} ${outcome.kind}  (${outcome.reason})`
+      if (outcome.outcome === 'tagged') {
+        logger.success(`tagged   ${line}`)
+      } else if (outcome.outcome === 'already') {
+        logger.info(`kept     ${line}`)
+      } else {
+        logger.warn(`guessed  ${line}`)
+      }
+    }
+    const undecided = outcomes.filter(outcome => outcome.outcome === 'undecided')
+    if (undecided.length > 0) {
+      logger.error(`${undecided.length} project(s) need you to choose. Run again with ${undecided.map(outcome => `--kind ${outcome.dir}=${outcome.kind}`).join(' ')} to accept the guesses, or name another kind.`)
+      process.exitCode = 1
+    } else {
+      logger.success('Every project has a kind. Review with `git diff` and commit.')
+    }
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1

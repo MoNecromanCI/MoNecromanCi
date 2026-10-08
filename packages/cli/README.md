@@ -516,6 +516,7 @@ mnci adopt --json   # the same, as one document
 mnci adopt --tags   # step (#379): create the baseline release tags, locally
 mnci adopt --toolchain [--nx <version>]   # step (#380): retire old tooling, align Nx, pass the audit
 mnci adopt --overlay --scope @org --registry npm --agent ubuntu-latest   # step (#381): the overlay and pipeline
+mnci adopt --kinds [--kind apps/api=node-app]   # step (#378): record each project's kind
 ```
 
 It reads git and the filesystem (no Nx, no install, no network) and reports the package manager, the
@@ -539,6 +540,15 @@ retired formatter configs and dependencies (Prettier, oxfmt, oxlint), the root s
 default the newest published in the major already in use (`--nx <version>` overrides it); installs; and runs
 `npm audit fix` (never `--force`) until `mnci ci audit` passes, up to four passes. Run on a copy of a real
 hand-built workspace it moved Nx 23.1.1 to 23.3.0 and the audit gate passed after one pass.
+
+**`--kinds`** records each project's mnci kind as a `type:<kind>` tag, in its `project.json` or the `nx.tags` of
+its `package.json` (`mnci projects` shows it). The kind is read from the project itself: an `index.html` next to
+React, an `engines.vscode`, an `OutputType` of `Exe`, a `package main`, `lib/main.dart`. Where two kinds fit (a
+library that is internal or published, a script that is an app or a library) the project is listed with the
+guess and why, and **not** tagged; name it with `--kind <dir>=<kind>` (repeatable) to accept or change the
+guess, and the step exits non-zero until every project has a kind. A project that already has a `type:*` tag
+keeps it, even one that is not an mnci kind name. Nothing is regenerated and no target is written: Nx infers an
+npm project's targets from its scripts. Needs a clean git tree.
 
 **`--overlay`** applies the mnci overlay (release config, `.npmrc`, commitlint, the curated root scripts and the
 CI pipeline) to a repository that has an `nx.json`. It is `mnci upgrade` behind adoption's guard rails: it
