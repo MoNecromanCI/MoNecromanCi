@@ -23,6 +23,8 @@ export interface AdoptOptions extends UpgradeOptions {
   toolchain?: boolean
   /** The Nx version `toolchain` aligns to. */
   nx?:        string
+  /** Apply the mnci overlay (release config, pipeline, npmrc, commitlint) with the flags `mnci upgrade` takes. */
+  overlay?:   boolean
 }
 
 /**
