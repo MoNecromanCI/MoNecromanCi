@@ -124,13 +124,12 @@ describe('registerNxGoPlugin', () => {
     expect(readFileSync(join(workspaceRoot, 'nx.json'), 'utf8')).toBe(once)
   })
 
-  it('takes the prefix from a root go.mod, so nx.json and go.mod agree (#390)', () => {
+  it('leaves a prefix alone when a root go.mod names the module, so nx.json is never made to disagree (#390)', () => {
     writeFileSync(join(workspaceRoot, 'go.mod'), ['module lore-master', '', 'go 1.24', ''].join('\n'))
-    nxJson({ plugins: [{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'github.com/acme/other' } }] })
+    nxJson({ plugins: [{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'lore-master' } }] })
 
-    expect(registerNxGoPlugin(workspaceRoot)).toBe(true)
-    expect(readNxJson().plugins).toEqual([{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'lore-master' } }])
     expect(registerNxGoPlugin(workspaceRoot)).toBe(false)
+    expect(readNxJson().plugins).toEqual([{ plugin: NX_GO_PLUGIN, options: { modulePrefix: 'lore-master' } }])
   })
 
   it('leaves an entry that already has options alone', () => {
