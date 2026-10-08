@@ -237,6 +237,14 @@ export async function runAdd (
   if (options.empty === true && !EMPTY_KINDS.has(resolvedKind)) {
     throw new Error(`--empty applies to ${[...EMPTY_KINDS].join(', ')}, not ${resolvedKind}.`)
   }
+  if (options.esm === true) {
+    if (resolvedKind !== 'node-app' && resolvedKind !== 'node-function-app') {
+      throw new Error(`--esm applies to node-app and node-function-app, not ${resolvedKind}.`)
+    }
+    if (options.framework === 'fastify' || options.framework === 'nest') {
+      throw new Error(`--esm is not supported with --framework ${options.framework}: its layout (autoloaded routes, decorators) is mandated by the framework. Use express, koa or none.`)
+    }
+  }
   const resolvedName = name ?? (await promptText('Project name'))
   // Fails fast, before any install or generator call: the name becomes a
   // directory, an argv token and (for Python kinds) a module identifier — and
@@ -269,11 +277,11 @@ export async function runAdd (
       break
     }
     case 'node-app': {
-      addNodeApp(workspaceRoot, resolvedName, stack, options.framework)
+      addNodeApp(workspaceRoot, resolvedName, stack, options.framework, options.esm === true)
       break
     }
     case 'node-function-app': {
-      addNodeFunctionApp(workspaceRoot, resolvedName, stack, options.empty === true)
+      addNodeFunctionApp(workspaceRoot, resolvedName, stack, options.empty === true, options.esm === true)
       break
     }
     case 'npm-lib': {

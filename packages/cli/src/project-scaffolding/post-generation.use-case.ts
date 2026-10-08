@@ -52,6 +52,8 @@ export interface AddOptions {
   web?:       string
   /** TypeScript libraries only: scaffold the slice skeleton with no sample code (`mnci add --empty`). */
   empty?:     boolean
+  /** `node-app` and `node-function-app` only: ES module output (`mnci add --esm`). */
+  esm?:       boolean
 }
 
 /**
