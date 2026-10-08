@@ -11,9 +11,12 @@
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileExists, writeFileEnsured } from '../file-system'
+import { logger } from '../terminal'
 import {
   ROLLUP_CONFIG_PLACEHOLDER,
   ROLLUP_CONFIG_WITH_DTS_FIX,
+  hasDeclarationSpecifierPlugin,
+  withDeclarationSpecifierPlugin,
   withRollupSourceMaps,
   withUpgradedDeclarationSpecifierPlugin,
 } from './rollup-config.algorithm'
@@ -112,8 +115,9 @@ export function upgradeDeclarationSpecifierPlugins (workspaceRoot: string): stri
  * export nothing. Confirmed against a real packed tarball: zero exports
  * visible under `nodenext` before this, correct resolution after.
  *
- * Guarded on the exact placeholder the generators write, so a change to their
- * template makes this a no-op rather than corrupting the config.
+ * Two shapes are recognised: the empty placeholder `@nx/js:lib` writes, and the `plugins` array
+ * `@nx/react:library` writes. A config in neither shape is left alone rather than guessed at, so a
+ * change to a generator's template makes this a no-op rather than corrupting the config.
  *
  * @param projectRoot - Absolute path to the generated project's directory.
  * @returns Nothing.
@@ -127,6 +131,16 @@ export function repairDeclarationSpecifiers (projectRoot: string): void {
   }
   const config = readFileSync(configPath, 'utf8')
   if (!config.includes(ROLLUP_CONFIG_PLACEHOLDER)) {
+    // `@nx/react:library` fills the second argument with its own plugins, so there is no placeholder
+    // to splice into: the plugin joins that array and the source maps are added at the boundary.
+    const repaired = withRollupSourceMaps(withDeclarationSpecifierPlugin(config))
+    if (repaired !== config) {
+      writeFileEnsured(configPath, repaired)
+    } else if (!hasDeclarationSpecifierPlugin(config)) {
+      // Silence here is what hid #342: the generator's shape changed and nothing said so.
+      logger.warn(`${configPath} has a shape mnci does not recognise, so its source maps and declaration repairs were not applied; \`mnci doctor\` names what to add by hand`)
+    }
+
     return
   }
   // Declaration stub FIRST, source maps second, and the order is load-bearing:
@@ -136,4 +150,36 @@ export function repairDeclarationSpecifiers (projectRoot: string): void {
   // nothing and the dts plugin is never written.
   const withDtsFix = config.split(ROLLUP_CONFIG_PLACEHOLDER).join(ROLLUP_CONFIG_WITH_DTS_FIX)
   writeFileEnsured(configPath, withRollupSourceMaps(withDtsFix))
+}
+
+/**
+ * Sweeps every publishable project's rollup config, adding the declaration-specifier plugin where it is missing.
+ *
+ * @remarks
+ * Called by `mnci upgrade`. A React library `add`ed before the plugin could be added to its config
+ * has none, and `upgradeDeclarationSpecifierPlugins` only updates a plugin that is already there.
+ * Scoped to `packages/*` and `libs/*`, the only places mnci puts a rollup-built project.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative paths that changed.
+ * @throws Propagates any `fs` write error.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addMissingDeclarationSpecifierPlugins (workspaceRoot: string): string[] {
+  const changed: string[] = []
+  const configs = globSync(['packages/*/rollup.config.cjs', 'libs/*/rollup.config.cjs'], {
+    cwd: workspaceRoot,
+  })
+
+  for (const relativePath of configs) {
+    const configPath = join(workspaceRoot, relativePath)
+    const before = readFileSync(configPath, 'utf8')
+    const after = withDeclarationSpecifierPlugin(before)
+    if (after !== before) {
+      writeFileEnsured(configPath, after)
+      changed.push(relativePath.replaceAll('\\', '/'))
+    }
+  }
+
+  return changed
 }
