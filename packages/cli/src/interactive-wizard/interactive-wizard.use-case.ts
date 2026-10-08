@@ -1,57 +1,103 @@
 import { join } from 'node:path'
-import { select } from '@inquirer/prompts'
+import type { Command } from 'commander'
+import { describeCommands, type CommandDescription, type CommandGroup } from '../command-catalog'
 import { fileExists } from '../file-system'
-import { runAdd } from '../project-scaffolding'
-import { runNew } from '../workspace-creation'
-import { runUpgrade } from '../workspace-upgrade'
+import { logger } from '../terminal'
+import { askCommand } from './ask-command.use-case'
+import { buildArgv, formatCommandLine } from './build-argv.algorithm'
+import { createInquirerPrompter } from './inquirer-prompter.client'
+import type { Prompter, PromptChoice } from './prompter.contract'
 
-/** The three things the wizard can start: scaffold, add to, or upgrade a workspace. */
-type InteractiveAction = 'new' | 'add' | 'upgrade'
+/** What each group is called in the menu. */
+const GROUP_LABELS: Readonly<Record<CommandGroup, string>> = {
+  workspace:    'Workspace',
+  projects:     'Projects',
+  dependencies: 'Dependencies',
+  pipeline:     'Pipeline',
+  inspect:      'Inspect',
+}
+
+/**
+ * Commands listed under a different group in the wizard than in an editor.
+ *
+ * @remarks
+ * `adopt` is read-only to an editor, which keeps it in `inspect` so the extension does not offer it, but a person
+ * at a terminal looks for it under the workspace.
+ */
+export const WIZARD_GROUP_OVERRIDES: Readonly<Record<string, CommandGroup>> = { adopt: 'workspace' }
+
+/** The groups in the order the menu lists them inside a workspace, and outside one. */
+const ORDER_IN_WORKSPACE: readonly CommandGroup[] = ['projects', 'dependencies', 'workspace', 'pipeline', 'inspect']
+const ORDER_OUTSIDE: readonly CommandGroup[] = ['workspace', 'projects', 'dependencies', 'pipeline', 'inspect']
+
+/** The longest summary shown beside a command. */
+const SUMMARY_LENGTH = 110
+
+/**
+ * The first sentence of a command's description, short enough for a menu line.
+ *
+ * @param description - The command's description.
+ * @returns Up to the first full stop or dash, cut at {@link SUMMARY_LENGTH}.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function summarise (description: string): string {
+  const first = description.split(/\.\s| — /, 1)[0]
+
+  return first.length > SUMMARY_LENGTH ? `${first.slice(0, SUMMARY_LENGTH - 1)}…` : first
+}
+
+/**
+ * Lists every command as a choice, in sections.
+ *
+ * @remarks
+ * Built from the commands themselves, so a command added to the program is in the menu. Inside a workspace the
+ * projects and dependencies sections come first, since that is what is most often wanted there; outside one,
+ * the workspace section does.
+ *
+ * @param commands - The program's commands, described.
+ * @param inWorkspace - Whether the current directory is an Nx workspace.
+ * @returns The choices, each under its section heading.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function wizardMenu (commands: readonly CommandDescription[], inWorkspace: boolean): PromptChoice[] {
+  const groupOf = (command: CommandDescription): CommandGroup => WIZARD_GROUP_OVERRIDES[command.name] ?? command.group
+  const order = inWorkspace ? ORDER_IN_WORKSPACE : ORDER_OUTSIDE
+
+  return order.flatMap(group => commands
+    .filter(command => groupOf(command) === group)
+    .map(command => ({ name: `${command.name.padEnd(9)} ${summarise(command.description)}`, value: command.name, group: GROUP_LABELS[group] })))
+}
 
 /**
  * Runs the guided wizard shown when `mnci` is invoked with no arguments.
  *
  * @remarks
- * A thin dispatcher: it picks between the three commands, then hands off to
- * the existing flows — {@link runNew}, {@link runAdd} and {@link runUpgrade} —
- * which already handle every field they need (name/scope/registry/agent/
- * variable group for `new`; kind/name, and the npm-lib scope on this bare
- * path, for `add`; whatever `mnci new`/a previous upgrade persisted, for
- * `upgrade`). Nothing about the prompting or resolution lives here, so the
- * wizard and the flag-driven commands can never drift.
+ * Offers every command of the program, asks its arguments and the options that apply from the command's own
+ * description, shows the command line that results, and runs it through the same program the flags go through.
+ * Nothing about a command lives here, so the wizard and the flag form cannot drift: a command or option added
+ * to the program is asked about, and a spec fails when one of the few flags the wizard groups by hand
+ * (an `add` kind's, an `adopt` step's) is out of step with the command.
  *
- * The menu is ordered by context: inside a workspace (an `nx.json` in the cwd)
- * `add` is offered first, then `upgrade`, then `new` — so the default
- * highlight matches what the user most likely wants. All three are always
- * shown; picking `add` or `upgrade` outside a workspace surfaces that flow's
- * own clear "run from the workspace root" error.
- *
- * @param None - this function takes no parameters.
- * @returns A promise that resolves when the chosen flow completes.
- * @throws Propagates prompt errors and any failure from the dispatched flow.
+ * @param program - The program to describe and to run.
+ * @param prompter - How to ask; the terminal by default.
+ * @param workingDirectory - Where the person is; the current directory by default.
+ * @returns A promise that resolves when the chosen command completes, or at once if it was declined.
+ * @throws Propagates prompt errors and any failure from the dispatched command.
  * @typeParam None - this function has no generic type parameters.
  */
-export async function runInteractive (): Promise<void> {
-  const inWorkspace = fileExists(join(process.cwd(), 'nx.json'))
-  const choiceNew = { name: 'Create a new monorepo', value: 'new' as const }
-  const choiceAdd = { name: 'Add a project to this workspace', value: 'add' as const }
-  const choiceUpgrade = {
-    name:  'Upgrade this workspace (re-apply the latest overlay)',
-    value: 'upgrade' as const,
-  }
+export async function runInteractive (program: Command, prompter: Prompter = createInquirerPrompter(), workingDirectory: string = process.cwd()): Promise<void> {
+  const commands = describeCommands(program)
+  const inWorkspace = fileExists(join(workingDirectory, 'nx.json'))
+  const name = await prompter.select('What would you like to do?', wizardMenu(commands, inWorkspace))
+  const command = commands.find(candidate => candidate.name === name) as CommandDescription
 
-  const action = await select<InteractiveAction>({
-    message: 'What would you like to do?',
-    choices: inWorkspace
-      ? [choiceAdd, choiceUpgrade, choiceNew]
-      : [choiceNew, choiceAdd, choiceUpgrade],
-  })
-
-  if (action === 'new') {
-    await runNew(undefined, {})
-  } else if (action === 'upgrade') {
-    runUpgrade(process.cwd(), {})
+  const argv = buildArgv(command, await askCommand(command, prompter))
+  logger.info(`Running: ${formatCommandLine(argv)}`)
+  if (await prompter.confirm('Run it?', true)) {
+    await program.parseAsync(argv, { from: 'user' })
   } else {
-    await runAdd(undefined, undefined, {})
+    logger.info('Nothing was run.')
   }
 }

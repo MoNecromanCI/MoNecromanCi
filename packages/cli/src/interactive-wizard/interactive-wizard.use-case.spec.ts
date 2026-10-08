@@ -1,80 +1,103 @@
-jest.mock('@inquirer/prompts', () => ({ select: jest.fn() }))
-jest.mock('../workspace-creation', () => ({ runNew: jest.fn() }))
-jest.mock('../project-scaffolding', () => ({
-  ...jest.requireActual('../project-scaffolding'),
-  runAdd: jest.fn(),
-}))
-jest.mock('../workspace-upgrade', () => ({ runUpgrade: jest.fn() }))
-jest.mock('../file-system', () => ({ fileExists: jest.fn() }))
+// The real prompter imports @inquirer/prompts, which ships ESM only and which Jest cannot load.
+// These specs answer through the Prompter interface, so nothing here prompts.
+jest.mock('@inquirer/prompts', () => ({}))
 
-import { select } from '@inquirer/prompts'
+import { Command } from 'commander'
+import { describeCommands, type CommandDescription } from '../command-catalog'
 import { fileExists } from '../file-system'
-import { runAdd } from '../project-scaffolding'
-import { runInteractive } from './interactive-wizard.use-case'
-import { runNew } from '../workspace-creation'
-import { runUpgrade } from '../workspace-upgrade'
+import { runInteractive, wizardMenu } from './interactive-wizard.use-case'
+import type { Prompter } from './prompter.contract'
 
-const mockSelect = jest.mocked(select)
+jest.mock('../file-system', () => ({ fileExists: jest.fn() }))
+jest.mock('../terminal', () => ({ logger: { info: jest.fn() } }))
+
 const mockFileExists = jest.mocked(fileExists)
-const mockRunNew = jest.mocked(runNew)
-const mockRunAdd = jest.mocked(runAdd)
-const mockRunUpgrade = jest.mocked(runUpgrade)
+
+/** A small program with the commands the wizard's own behaviour needs. */
+function program (): { program: Command, ran: string[][] } {
+  const ran: string[][] = []
+  const root = new Command().exitOverride()
+  root.command('new').description('Create a new monorepo. More text.').argument('[name]', 'workspace name').option('--yes', 'accept defaults').action(() => undefined)
+  root.command('doctor').description('Check this workspace').option('--json', 'print json').action(() => undefined)
+  root.command('adopt').description('Read an existing repository').option('--tags', 'baseline tags').option('--json', 'print json').action(() => undefined)
+  jest.spyOn(root, 'parseAsync').mockImplementation(async (argv) => {
+    ran.push([...argv ?? []])
+
+    return root
+  })
+
+  return { program: root, ran }
+}
+
+/** A prompter that answers from a script, in order. */
+function scripted (answers: (string | string[] | boolean)[]): Prompter {
+  const next = (): string | string[] | boolean => answers.shift() as string | string[] | boolean
+
+  return {
+    select:   async () => next() as string,
+    checkbox: async () => next() as string[],
+    input:    async () => next() as string,
+    confirm:  async () => next() as boolean,
+  }
+}
 
 afterEach(() => {
   jest.clearAllMocks()
 })
 
+describe('wizardMenu', () => {
+  const commands = describeCommands(program().program)
+
+  it('lists every command, under sections, with adopt under Workspace', () => {
+    const menu = wizardMenu(commands, false)
+
+    expect(menu.map(choice => choice.value).toSorted((a, b) => a.localeCompare(b))).toEqual(['adopt', 'doctor', 'new'])
+    expect(menu.find(choice => choice.value === 'adopt')?.group).toBe('Workspace')
+  })
+
+  it('opens with Projects inside a workspace, and with Workspace outside one', () => {
+    const described = [
+      { name: 'new', group: 'workspace', description: 'Create a new monorepo' },
+      { name: 'add', group: 'projects', description: 'Add a project' },
+    ] as CommandDescription[]
+
+    expect(wizardMenu(described, true)[0].group).toBe('Projects')
+    expect(wizardMenu(described, false)[0].group).toBe('Workspace')
+  })
+
+  it('shows only the first sentence of a description', () => {
+    const entry = wizardMenu(commands, false).find(choice => choice.value === 'new')
+
+    expect(entry?.name).toContain('Create a new monorepo')
+    expect(entry?.name).not.toContain('More text')
+  })
+})
+
 describe('runInteractive', () => {
-  it('dispatches to runNew (prompting everything) when the user picks "new"', async () => {
+  it('asks the arguments and options of the chosen command, shows the line, and runs it through the program', async () => {
     mockFileExists.mockReturnValue(false)
-    mockSelect.mockResolvedValue('new')
+    const { program: root, ran } = program()
 
-    await runInteractive()
+    await runInteractive(root, scripted(['new', 'my-repo', ['yes'], true]), '/nowhere')
 
-    expect(mockRunNew).toHaveBeenCalledWith(undefined, {})
-    expect(mockRunAdd).not.toHaveBeenCalled()
-    expect(mockRunUpgrade).not.toHaveBeenCalled()
+    expect(ran).toEqual([['new', 'my-repo', '--yes']])
   })
 
-  it('dispatches to runAdd (prompting everything) when the user picks "add"', async () => {
+  it('asks which adopt step, sets its switch, and offers only that step\'s own options', async () => {
     mockFileExists.mockReturnValue(true)
-    mockSelect.mockResolvedValue('add')
+    const { program: root, ran } = program()
 
-    await runInteractive()
+    await runInteractive(root, scripted(['adopt', 'tags', [], true]), '/repo')
 
-    expect(mockRunAdd).toHaveBeenCalledWith(undefined, undefined, {})
-    expect(mockRunNew).not.toHaveBeenCalled()
-    expect(mockRunUpgrade).not.toHaveBeenCalled()
+    expect(ran).toEqual([['adopt', '--tags']])
   })
 
-  it('dispatches to runUpgrade against the current working directory when the user picks "upgrade"', async () => {
-    mockFileExists.mockReturnValue(true)
-    mockSelect.mockResolvedValue('upgrade')
-    jest.spyOn(process, 'cwd').mockReturnValue('/somewhere/demo')
-
-    await runInteractive()
-
-    expect(mockRunUpgrade).toHaveBeenCalledWith('/somewhere/demo', {})
-    expect(mockRunNew).not.toHaveBeenCalled()
-    expect(mockRunAdd).not.toHaveBeenCalled()
-  })
-
-  it('offers "add" then "upgrade" then "new" inside a workspace, "new" first otherwise', async () => {
-    mockSelect.mockResolvedValue('new')
-
-    mockFileExists.mockReturnValue(true)
-    await runInteractive()
-    const insideChoices = (
-      mockSelect.mock.calls[0][0] as unknown as { choices: Array<{ value: string }> }
-    ).choices
-    expect(insideChoices.map(choice => choice.value)).toEqual(['add', 'upgrade', 'new'])
-
-    mockSelect.mockClear()
+  it('runs nothing when the person declines the final question', async () => {
     mockFileExists.mockReturnValue(false)
-    await runInteractive()
-    const outsideChoices = (
-      mockSelect.mock.calls[0][0] as unknown as { choices: Array<{ value: string }> }
-    ).choices
-    expect(outsideChoices.map(choice => choice.value)).toEqual(['new', 'add', 'upgrade'])
+    const { program: root, ran } = program()
+
+    await runInteractive(root, scripted(['doctor', [], false]), '/nowhere')
+
+    expect(ran).toEqual([])
   })
 })

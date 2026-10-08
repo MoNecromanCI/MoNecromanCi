@@ -271,7 +271,7 @@ export function buildProgram (cliVersion: string): Command {
   // Bare `mnci` (no subcommand) launches the guided wizard; commander runs
   // this default action only when no subcommand is given (-v/--help still win).
   program.action(async () => {
-    await runInteractive()
+    await runInteractive(program)
   })
 
   return program
