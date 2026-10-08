@@ -154,6 +154,9 @@ function runBaselineTags (repositoryRoot: string, report: AdoptionReport): void 
 function runToolchain (repositoryRoot: string, options: AdoptOptions): void {
   try {
     const result = adoptToolchain(repositoryRoot, { nxVersion: options.nx }, { log: message => { logger.step(message) } })
+    if (result.bootstrapped.length > 0) {
+      logger.info(`Nx was not set up here, so it is now: ${result.bootstrapped.join(', ')} (nx.json and the plugins; review it with \`git diff\`).`)
+    }
     for (const line of result.removed) {
       logger.info(`removed ${line}`)
     }

@@ -33,7 +33,7 @@ export function judgeAdoption (facts: RepositoryFacts): AdoptionReport {
     warning('nx.json already carries an mnci block, so this is an mnci workspace', 'use `mnci upgrade`; adopt is for repositories mnci has not touched')
   }
   if (facts.nxVersion === undefined) {
-    warning('Nx is not installed', 'set Nx up first (`npx nx@latest init`); adopt does not install it yet, and the toolchain and overlay steps need an nx.json')
+    warning('Nx is not installed', 'run `mnci adopt --toolchain`, which sets Nx up through nx init and nx add before it does anything else; the overlay step needs the nx.json that makes')
   }
   if (facts.strandedTags.length > 0) {
     warning(

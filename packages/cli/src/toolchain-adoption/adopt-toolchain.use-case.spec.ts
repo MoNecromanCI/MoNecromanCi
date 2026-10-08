@@ -64,6 +64,24 @@ describe('adoptToolchain', () => {
     expect(commands.some(command => command.includes('--force'))).toBe(false)
   })
 
+  it('sets Nx up first, through nx init and nx add, when the repository has no nx.json', () => {
+    const { dependencies, commands } = fakes([0])
+
+    const result = adoptToolchain(root, {}, dependencies)
+
+    expect(result.bootstrapped).toEqual(['@nx/js'])
+    expect(commands[0]).toBe('npx --yes nx@latest init --interactive=false --nxCloud=skip --plugins=skip')
+    expect(commands[1]).toBe('npx nx add @nx/js')
+  })
+
+  it('does not set Nx up in a repository that already has it', () => {
+    writeFileSync(join(root, 'nx.json'), '{}')
+    const { dependencies, commands } = fakes([0])
+
+    expect(adoptToolchain(root, {}, dependencies).bootstrapped).toEqual([])
+    expect(commands.some(command => command.includes('nx init'))).toBe(false)
+  })
+
   it('stops after four passes and says the audit still fails', () => {
     const { dependencies } = fakes([1, 1, 1, 1, 1, 1])
 

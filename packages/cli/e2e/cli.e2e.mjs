@@ -3450,6 +3450,40 @@ section('web-api preset', [], () => {
   const vitest = tryRunCapture('npx nx run-many -t test --projects=api,web', vitestRoot)
   enforce('preset: the generated specs pass under Vitest too', vitest.ok, vitest.output.slice(-3000))
 })
+section('adoption without nx', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci adopt --toolchain` on a repository that has no Nx (#383's last gap): it
+   * delegates to Nx's own `nx init` and `nx add`, so the adopted repository gets
+   * an nx.json and the TypeScript plugin, and the overlay step that needs an
+   * nx.json then works on it.
+   * ------------------------------------------------------------------------- */
+  const bare = path.join(temporary, 'nonx')
+  const write = (file, content) => {
+    mkdirSync(path.dirname(path.join(bare, file)), { recursive: true })
+    writeFileSync(path.join(bare, file), typeof content === 'string' ? content : `${JSON.stringify(content, undefined, 2)}\n`)
+  }
+  const commit = message => run(`git add -A && git -c user.email=e2e@test -c user.name=e2e commit -q -m "${message}"`, bare)
+
+  write('package.json', { name: '@acme/source', private: true, workspaces: ['packages/*'], devDependencies: { typescript: '^5.6.0' } })
+  write('.gitignore', 'node_modules\n.nx\n')
+  write('packages/alpha/package.json', { name: '@acme/alpha', version: '1.0.0', main: './src/index.ts' })
+  write('packages/alpha/src/index.ts', 'export const alpha = 1\n')
+  run('git init -q -b main', bare)
+  commit('feat: a workspace with no nx')
+  enforce('adopt without nx: there really is no nx.json to start with', !existsSync(path.join(bare, 'nx.json')))
+
+  const toolchain = tryRunCapture(`node ${CLI} adopt --toolchain`, bare)
+  const adoptedManifest = JSON.parse(readFileSync(path.join(bare, 'package.json'), 'utf8'))
+  enforce('adopt without nx: the toolchain step sets Nx up (nx.json, nx in devDependencies)', existsSync(path.join(bare, 'nx.json')) && Boolean(adoptedManifest.devDependencies?.nx), toolchain.output.slice(-2500))
+  enforce('adopt without nx: it says Nx was not there and now is', toolchain.output.includes('Nx was not set up here, so it is now'), toolchain.output.slice(-1500))
+  const projects = tryRunCapture('npx nx show projects', bare)
+  enforce('adopt without nx: Nx now sees the package', projects.ok && projects.output.includes('@acme/alpha'), projects.output)
+  commit('chore: adopt the toolchain')
+
+  const overlay = tryRunCapture(`node ${CLI} adopt --overlay --scope @acme --registry npm --agent ubuntu-latest --test-runner jest --ci github`, bare)
+  const recorded = JSON.parse(readFileSync(path.join(bare, 'nx.json'), 'utf8'))
+  enforce('adopt without nx: the overlay step works on it now, and records the choices in nx.json', overlay.ok && recorded.mnci?.scope === '@acme', overlay.output.slice(-2500))
+})
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
    * C# — @nx/dotnet (the official Nx plugin, inference-only: build/test/restore/

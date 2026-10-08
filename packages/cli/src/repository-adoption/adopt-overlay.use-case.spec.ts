@@ -67,6 +67,6 @@ describe('adoptOverlay', () => {
   it('refuses a repository with no nx.json, and says Nx is not installed by adopt', () => {
     rmSync(join(root, 'nx.json'))
 
-    expect(() => adoptOverlay(root, {}, fakes().dependencies)).toThrow('adopt does not install Nx yet')
+    expect(() => adoptOverlay(root, {}, fakes().dependencies)).toThrow('Run `mnci adopt --toolchain` first')
   })
 })

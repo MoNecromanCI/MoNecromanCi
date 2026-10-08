@@ -5,6 +5,7 @@ import { pruneStaleLocalRegistry } from '../lockfile-pruning'
 import { runCapture, runShell } from '../nx-workspace'
 import { alignNxFamily, chooseNxVersion } from './align-nx-family.algorithm'
 import { requireCleanWorkingTree } from '../clean-working-tree'
+import { bootstrapNx } from './bootstrap-nx.use-case'
 import { retireTooling } from './retire-tooling.use-case'
 
 /** How many times `npm audit fix` is run before giving up: it needed three passes on a real workspace. */
@@ -48,14 +49,16 @@ export interface ToolchainOptions {
  * @typeParam None - this interface has no generic type parameters.
  */
 export interface ToolchainResult {
+  /** The Nx plugins set up because the repository had no Nx; empty when it already had. */
+  bootstrapped: string[]
   /** Retired tooling that was removed. */
-  removed:     string[]
+  removed:      string[]
   /** The Nx family members that moved, and the version they moved to. */
-  aligned:     { names: string[], version?: string }
+  aligned:      { names: string[], version?: string }
   /** How many `npm audit fix` passes ran. */
-  auditFixes:  number
+  auditFixes:   number
   /** Whether the audit gate passes now. */
-  auditPasses: boolean
+  auditPasses:  boolean
 }
 
 /**
@@ -106,6 +109,11 @@ export function adoptToolchain (repositoryRoot: string, options: ToolchainOption
     throw new Error('No package.json at the repository root.')
   }
 
+  const bootstrap = bootstrapNx(repositoryRoot, options.nxVersion, { run })
+  if (bootstrap.bootstrapped) {
+    log(`Set Nx up (nx init, then nx add ${bootstrap.plugins.join(' ')})`)
+  }
+
   log('Removing retired tooling')
   const removed = retireTooling(repositoryRoot)
 
@@ -138,5 +146,5 @@ export function adoptToolchain (repositoryRoot: string, options: ToolchainOption
     passes = audit(repositoryRoot) === 0
   }
 
-  return { removed, aligned: { names, version }, auditFixes, auditPasses: passes }
+  return { bootstrapped: bootstrap.plugins, removed, aligned: { names, version }, auditFixes, auditPasses: passes }
 }

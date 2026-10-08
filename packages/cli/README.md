@@ -678,6 +678,14 @@ default the newest published in the major already in use (`--nx <version>` overr
 `npm audit fix` (never `--force`) until `mnci ci audit` passes, up to four passes. Run on a copy of a real
 hand-built workspace it moved Nx 23.1.1 to 23.3.0 and the audit gate passed after one pass.
 
+When the repository has **no Nx at all** (no `nx.json`), the step sets it up first, through Nx's own commands rather
+than a template of mnci's: `nx init --plugins=skip` writes `nx.json` and installs `nx`, then `nx add @nx/js` and one
+plugin for each of ESLint, Jest and Vitest the root manifest already uses, so the projects get their targets
+inferred. Where a package has its own `lint` or `test` script Nx names the inferred target `eslint:lint` or
+`jest:test` instead, so the script keeps working under its own name. A repository that already has an `nx.json` is
+not touched by this part. The `adoption without nx` e2e section takes a plain npm workspace through it and then
+through `--overlay`.
+
 **`--kinds`** records each project's mnci kind as a `type:<kind>` tag, in its `project.json` or the `nx.tags` of
 its `package.json` (`mnci projects` shows it). The kind is read from the project itself: an `index.html` next to
 React, an `engines.vscode`, an `OutputType` of `Exe`, a `package main`, `lib/main.dart`. Where two kinds fit (a
@@ -704,8 +712,8 @@ refuses an unclean git tree, takes the same flags (`--scope`, `--registry`, `--o
 `--test-runner` from what the repository already has (its pipeline files, `jest` or `vitest` in the root
 manifest). The existing pipeline goes through the legacy migration: steps mnci does not recognise are kept in
 the three `# mnci:slot` blocks, the ones it does are replaced by `mnci ci <phase>`, and what cannot be carried
-over is listed. Scope, registry and agent have no safe guess, so they are asked for by flag. Adopt does not
-install Nx: a repository with no `nx.json` is told to run `npx nx@latest init` first.
+over is listed. Scope, registry and agent have no safe guess, so they are asked for by flag. A repository with no
+`nx.json` is told to run `mnci adopt --toolchain` first, which sets Nx up.
 
 ## `mnci upgrade`: re-applying the overlay to an existing workspace
 
