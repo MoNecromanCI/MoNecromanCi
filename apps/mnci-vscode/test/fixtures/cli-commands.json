@@ -645,6 +645,15 @@
         "negated": false
       },
       {
+        "name": "e2e",
+        "flags": "--e2e",
+        "description": "react-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
         "name": "esm",
         "flags": "--esm",
         "description": "node-app, node-function-app: ES module output (\"type\": \"module\", explicit .js import specifiers, Jest mapped to match); not with fastify or nest",

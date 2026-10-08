@@ -3248,6 +3248,38 @@ section('node esm apps', [], () => {
     skip('a CommonJS app loading an ESM-only library', `Node ${process.versions.node} has no unflagged require(esm); it arrives in 22.12`)
   }
 })
+section('react e2e project', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add react-app web --e2e` (#301): a paired Playwright project. What CI
+   * verifies (lint, typecheck) has to pass, and the test itself has to work against
+   * the built app: Nx's sample looks for an h1 saying "Welcome" that the greeting
+   * feature does not render, so it is replaced and the replacement has to run.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'reacte2e')
+  run(`node ${CLI} new reacte2e --yes --registry npm --scope @shop`, temporary)
+  run(`node ${CLI} add react-app web --e2e`, root)
+
+  enforce('react e2e: the paired project exists with the greeting test, and Nx\'s sample is gone', existsSync(path.join(root, 'apps/web-e2e/src/greeting.e2e.spec.ts')) && !existsSync(path.join(root, 'apps/web-e2e/src/example.spec.ts')))
+  enforce('react e2e: no per-project ESLint config re-fragments the lint setup', !existsSync(path.join(root, 'apps/web-e2e/eslint.config.mjs')) && !existsSync(path.join(root, 'apps/web-e2e/eslint.config.js')))
+  const scripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts
+  enforce('react e2e: <name>-e2e has a :qa and neither :build nor :start', scripts['web-e2e:qa'] !== undefined && scripts['web-e2e:build'] === undefined && scripts['web-e2e:start'] === undefined, JSON.stringify(Object.keys(scripts)))
+
+  const verify = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=web,web-e2e', root)
+  enforce('react e2e: lint, typecheck, test and build are green for the app and its e2e project (what CI verifies)', verify.ok, verify.output.slice(-2500))
+
+  const qa = tryRunCapture('npm run web-e2e:qa', root)
+  enforce('react e2e: npm run web-e2e:qa passes', qa.ok, qa.output.slice(-1500))
+
+  // The e2e target needs a browser, which CI's verify never installs. Here it is installed so the test is
+  // proven to run; where the download is impossible that is reported, not failed.
+  const browser = tryRunCapture('npx playwright install chromium', root)
+  if (browser.ok) {
+    const ran = tryRunCapture('npx nx run web-e2e:e2e -- --project=chromium', root, { CI: 'true' })
+    enforce('react e2e: the Playwright test passes against the built app', ran.ok, ran.output.slice(-3000))
+  } else {
+    skip('running the Playwright test', 'chromium could not be installed here')
+  }
+})
 section('csharp', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
    * C# — @nx/dotnet (the official Nx plugin, inference-only: build/test/restore/

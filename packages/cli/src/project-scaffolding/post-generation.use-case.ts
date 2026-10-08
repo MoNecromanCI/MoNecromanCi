@@ -54,6 +54,8 @@ export interface AddOptions {
   empty?:     boolean
   /** `node-app` and `node-function-app` only: ES module output (`mnci add --esm`). */
   esm?:       boolean
+  /** `react-app` only: also scaffold a Playwright end-to-end project, `<name>-e2e` (`mnci add --e2e`). */
+  e2e?:       boolean
 }
 
 /**
@@ -486,6 +488,11 @@ export function removeGeneratedEslintConfig (workspaceRoot: string, projectRoot:
 export interface ProjectCommands {
   /** Whether this kind has a `build` Nx target — adds `<name>:build` when true. */
   build:  boolean
+  /**
+   * The exact command for `<name>:qa`, for a project whose checks are not lint and test (an end-to-end
+   * project has no `test` target). Defaults to `nx run <name>:lint && nx run <name>:test`.
+   */
+  qa?:    string
   /**
    * The exact command for `<name>:start` (e.g. `nx run <name>:serve`,
    * `nx run <name>:start`) — omitted entirely when the kind has no local
@@ -943,7 +950,7 @@ export function registerProjectCommands (
   // Idempotent, and a no-op for a workspace that has none.
   ensurePythonArtefactsIgnored(workspaceRoot)
   const scripts: Record<string, string> = {
-    [`${name}:qa`]: `nx run ${name}:lint && nx run ${name}:test`,
+    [`${name}:qa`]: commands.qa ?? `nx run ${name}:lint && nx run ${name}:test`,
   }
   if (commands.build) {
     scripts[`${name}:build`] = `nx run ${name}:build`

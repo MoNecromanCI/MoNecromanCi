@@ -507,6 +507,24 @@ from File`), and the curated root scripts.
 4. Installs the chosen **stack** (see below), `husky` + `@commitlint/*` for
    real, so versions resolve at generation time.
 
+## A paired Playwright project (`mnci add react-app web --e2e`)
+
+`--e2e` scaffolds `apps/<name>-e2e` beside a React app with `@nx/react:app --e2eTestRunner=playwright`. It is
+opt-in, and for React apps only: it adds Playwright to the workspace, and a Node API has no page to drive.
+
+- **The test.** Nx's sample looks for an `h1` containing "Welcome", which mnci's greeting app does not render, so it
+  is replaced by `src/greeting.e2e.spec.ts`: open `/` and expect the app's own greeting.
+- **What CI verifies.** The project has `lint` and `typecheck` (both pass, and CI's `lint,typecheck,test,build` run
+  picks them up); it has no `test` or `build`. Its `e2e` target is **not** part of CI's verify, because it needs a
+  browser, and installing one on every agent would cost every run. Run it where a browser exists:
+  `npx playwright install chromium`, then `npx nx run <name>-e2e:e2e -- --project=chromium` (the `--` hands the
+  flag to Playwright, not to Nx).
+- **Commands.** `npm run <name>-e2e:qa` is lint and typecheck. There is no `:build` or `:start`.
+- **No per-project ESLint config.** None is generated (`--linter=none`), and the usual sweep covers the directory.
+
+The `react e2e project` e2e section generates one, checks CI's targets, installs Chromium and runs the test against
+the built app.
+
 ## ES module Node apps (`mnci add node-app|node-function-app --esm`)
 
 Generated Node apps are CommonJS by default, and `npm-lib` packages are ESM-only. `--esm` makes an app an ES module

@@ -207,6 +207,10 @@ export function buildProgram (cliVersion: string): Command {
       'npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec',
     )
     .option(
+      '--e2e',
+      'react-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify',
+    )
+    .option(
       '--esm',
       'node-app, node-function-app: ES module output ("type": "module", explicit .js import specifiers, Jest mapped to match); not with fastify or nest',
     )

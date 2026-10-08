@@ -91,3 +91,25 @@ describe('App', () => {
 `,
   }
 }
+
+/**
+ * The end-to-end test of a React app's paired Playwright project.
+ *
+ * @remarks
+ * Replaces the `example.spec.ts` Nx writes, which looks for an `h1` containing "Welcome" that the greeting
+ * feature does not render. This checks what the app does show: the greeting for its own name.
+ *
+ * @param name - The React app's project name, which is also the name it greets.
+ * @returns The text of `src/greeting.e2e.spec.ts`.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function reactAppE2eSpec (name: string): string {
+  return `import { expect, test } from '@playwright/test'
+
+test('shows the greeting', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('Hello, ${name}!')).toBeVisible()
+})
+`
+}

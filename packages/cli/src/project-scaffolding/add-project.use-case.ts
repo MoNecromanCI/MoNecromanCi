@@ -245,6 +245,9 @@ export async function runAdd (
       throw new Error(`--esm is not supported with --framework ${options.framework}: its layout (autoloaded routes, decorators) is mandated by the framework. Use express, koa or none.`)
     }
   }
+  if (resolvedKind !== 'react-app' && options.e2e === true) {
+    throw new Error(`--e2e applies to react-app, not ${resolvedKind}.`)
+  }
   const resolvedName = name ?? (await promptText('Project name'))
   // Fails fast, before any install or generator call: the name becomes a
   // directory, an argv token and (for Python kinds) a module identifier — and
@@ -265,7 +268,7 @@ export async function runAdd (
 
   switch (resolvedKind) {
     case 'react-app': {
-      addReactApp(workspaceRoot, resolvedName, stack)
+      addReactApp(workspaceRoot, resolvedName, stack, options.e2e === true)
       break
     }
     case 'react-lib': {
