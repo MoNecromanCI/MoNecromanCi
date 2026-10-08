@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { select } from '@inquirer/prompts'
 import { fileExists } from '../file-system'
 import { runAdd } from '../project-scaffolding'
-import { runNew } from './create-workspace.use-case'
+import { runNew } from '../workspace-creation'
 import { runUpgrade } from '../workspace-upgrade'
 
 /** The three things the wizard can start: scaffold, add to, or upgrade a workspace. */

@@ -8,4 +8,3 @@
 
 export * from './adopt-directory.use-case'
 export * from './create-workspace.use-case'
-export * from './interactive-wizard.use-case'

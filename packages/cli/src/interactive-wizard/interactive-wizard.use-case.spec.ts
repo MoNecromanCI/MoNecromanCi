@@ -1,5 +1,5 @@
 jest.mock('@inquirer/prompts', () => ({ select: jest.fn() }))
-jest.mock('./create-workspace.use-case', () => ({ runNew: jest.fn() }))
+jest.mock('../workspace-creation', () => ({ runNew: jest.fn() }))
 jest.mock('../project-scaffolding', () => ({
   ...jest.requireActual('../project-scaffolding'),
   runAdd: jest.fn(),
@@ -11,7 +11,7 @@ import { select } from '@inquirer/prompts'
 import { fileExists } from '../file-system'
 import { runAdd } from '../project-scaffolding'
 import { runInteractive } from './interactive-wizard.use-case'
-import { runNew } from './create-workspace.use-case'
+import { runNew } from '../workspace-creation'
 import { runUpgrade } from '../workspace-upgrade'
 
 const mockSelect = jest.mocked(select)
