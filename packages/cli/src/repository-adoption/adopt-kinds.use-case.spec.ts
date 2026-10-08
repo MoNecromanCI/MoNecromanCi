@@ -49,7 +49,7 @@ describe('adoptKinds', () => {
       { dir: 'packages/util', outcome: 'undecided', kind: 'npm-lib', reason: 'publishable, but no main, module or exports' },
       { dir: 'packages/web', outcome: 'tagged', kind: 'react-app', reason: 'React with an index.html entry' },
     ])
-    expect(read('packages/web/package.json').nx.tags).toEqual(['type:react-app'])
+    expect(read('packages/web/package.json').nx?.tags).toEqual(['type:react-app'])
     expect(read('packages/api/project.json')).toEqual({ name: 'api', tags: ['type:go-app'] })
     expect(read('packages/util/package.json').nx).toBeUndefined()
   })
@@ -71,7 +71,7 @@ describe('adoptKinds', () => {
     const again = adoptKinds(root, {}, clean)
 
     expect(again.every(outcome => outcome.outcome === 'already')).toBe(true)
-    expect(read('packages/web/package.json').nx.tags).toEqual(['type:react-app'])
+    expect(read('packages/web/package.json').nx?.tags).toEqual(['type:react-app'])
   })
 
   it('refuses a kind that does not exist and a project that does not exist, before writing anything', () => {
