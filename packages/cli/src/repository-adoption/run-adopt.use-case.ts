@@ -3,7 +3,7 @@ import type { UpgradeOptions } from '../workspace-upgrade'
 import { adoptDependencies } from './adopt-dependencies.use-case'
 import { adoptKinds } from './adopt-kinds.use-case'
 import { adoptOverlay } from './adopt-overlay.use-case'
-import { adoptToolchain } from './adopt-toolchain.use-case'
+import { adoptToolchain } from '../toolchain-adoption'
 import { createBaselineTags } from '../release-tag-lineage'
 import { reportAdoption, type AdoptionReport } from '../adoption-report'
 
