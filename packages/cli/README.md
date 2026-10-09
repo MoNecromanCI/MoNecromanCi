@@ -45,6 +45,7 @@ src/
   dependency-adoption/        adopt --dependencies: root runtime dependencies into the projects that import them
   clean-working-tree/         the git precondition every step that changes files shares
   release-tag-lineage/        release tags kept reachable across a rename; doctor, upgrade and adopt all use it
+  nx-agent-scaffolding/       Nx's AI-agent files removed entry by entry, never a team's own files beside them
   go-module-release/          a go-lib released by nested-module tag (<dir>/vX.Y.Z) from the release phase
   esm-conversion/             a generated Node app made an ES module (add --esm)
   dev-servers/                mnci dev: several projects started together

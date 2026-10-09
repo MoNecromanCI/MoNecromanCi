@@ -1,5 +1,5 @@
 import { existsSync, globSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import {
   fileExists,
   markExecutable,
@@ -10,6 +10,7 @@ import {
 } from '../file-system'
 import { DEFAULT_NATIVE_RUNNERS, readNativeBuildConfig } from '../native-build-config'
 import { mergePipeline, phaseEnd, phaseStart, slotMarkers } from '../pipeline-customization'
+import { removeNxAgentScaffolding } from '../nx-agent-scaffolding'
 
 /**
  * Where a generated monorepo publishes its npm packages.
@@ -3781,21 +3782,11 @@ const NX_SCAFFOLDING_TO_REMOVE = [
   // See LOCAL_REGISTRY_SCAFFOLDING: the config half of a publishing mechanism
   // this workspace does not use.
   '.verdaccio',
-  // The AI-agent set, in full. See the remarks above: a partial delete leaves
-  // every `nx` command printing an "outdated configuration" nag.
-  '.agents',
-  '.codex',
-  '.cursor',
-  '.gemini',
-  '.opencode',
-  '.github/agents',
-  '.github/prompts',
-  '.github/skills',
-  'opencode.json',
-  // `.claude`, `AGENTS.md` and `CLAUDE.md` are NOT here. See
-  // {@link NX_AUTHORED_AGENT_FILES} and {@link removeNxAuthoredAgentFiles}:
-  // all three are paths a user writes by hand, so they are removed by what
-  // they CONTAIN rather than by where they are.
+  // The AI-agent set is NOT here. Its folders (`.agents`, `.cursor`, `.github/agents`, ...) are where a team keeps
+  // its own agents, prompts and skills too, so `nx-agent-scaffolding/` removes it entry by entry: by Nx's names, and
+  // its config files only while they hold nothing but Nx's entries (#423). `AGENTS.md` and `CLAUDE.md` are the
+  // same kind of path and go by what they contain: see {@link NX_AUTHORED_AGENT_FILES} and
+  // {@link removeNxAuthoredAgentFiles}.
 ] as const
 
 /**
@@ -3819,9 +3810,6 @@ const NX_AGENT_RULES_MARKER = '<!-- nx configuration start-->'
 
 /** Where Nx's own agent rules live, alongside whatever the user wrote there. */
 const NX_AUTHORED_AGENT_FILES = ['AGENTS.md', 'CLAUDE.md'] as const
-
-/** The one file under `.claude` that Nx writes in full. */
-const NX_CLAUDE_SETTINGS = '.claude/settings.json'
 
 /**
  * One key removed from a record, without mutating the original.
@@ -3932,12 +3920,70 @@ export function removeLocalRegistryScaffolding (workspaceRoot: string): void {
  * @throws Propagates any Node.js `fs` error other than a missing path.
  * @typeParam None - this function has no generic type parameters.
  */
-export function removeNxScaffolding (workspaceRoot: string): void {
+export function removeNxScaffolding (workspaceRoot: string): ScaffoldingRemoval {
+  const removed: string[] = []
   for (const entry of NX_SCAFFOLDING_TO_REMOVE) {
+    if (!existsSync(join(workspaceRoot, entry))) {
+      continue
+    }
+
     rmSync(join(workspaceRoot, entry), { recursive: true, force: true })
+    removed.push(entry)
   }
-  removeNxAuthoredAgentFiles(workspaceRoot)
+  const agents = removeNxAgentScaffolding(workspaceRoot)
+  removed.push(...agents.removed, ...removeNxAuthoredAgentFiles(workspaceRoot))
   removeProjectEslintConfigs(workspaceRoot)
+
+  return { removed, kept: agents.kept }
+}
+
+/**
+ * What {@link removeNxScaffolding} did, so a run can say so.
+ *
+ * @remarks
+ * The removal used to be silent, so a user found out from `git status` that an upgrade had deleted files (#423).
+ *
+ * @typeParam None - this interface has no generic type parameters.
+ */
+export interface ScaffoldingRemoval {
+  /** Workspace-relative paths that were deleted or edited. */
+  readonly removed: string[]
+  /** Config files that were left because they hold more than Nx's entries. */
+  readonly kept:    string[]
+}
+
+/**
+ * Describes a scaffolding removal in the lines a run prints.
+ *
+ * @remarks
+ * Grouped by folder with a file count, because Nx writes dozens of files: `.agents (12 files)` is readable and a
+ * list of all twelve is not. Says how to bring the AI-agent files back, and names the config files that were kept.
+ *
+ * @param removal - What {@link removeNxScaffolding} returned.
+ * @returns Zero or more lines, none when nothing was removed or kept.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function describeScaffoldingRemoval (removal: ScaffoldingRemoval): string[] {
+  const lines: string[] = []
+  if (removal.removed.length > 0) {
+    const counts = new Map<string, number>()
+    for (const path of removal.removed) {
+      const segments = path.split('/')
+      const group = segments.length > 1 ? (path.startsWith('.github/') ? segments.slice(0, 2).join('/') : segments[0]) : path
+      counts.set(group, (counts.get(group) ?? 0) + 1)
+    }
+    const groups = [...counts].map(([group, count]) => (count > 1 ? `${group} (${count} files)` : group))
+    lines.push(
+      `removed what Nx scaffolds and mnci replaces or lints against: ${groups.join(', ')}`,
+      '  the AI-agent files come back with `nx configure-ai-agents`; anything of your own in those folders was left alone',
+    )
+  }
+  for (const path of removal.kept) {
+    lines.push(`kept ${path}: it holds more than Nx's entries`)
+  }
+
+  return lines
 }
 
 /**
@@ -3960,23 +4006,14 @@ export function removeNxScaffolding (workspaceRoot: string): void {
  * workspace with `nx show projects` and `nx run-many -t build`.
  *
  * @param workspaceRoot - Absolute path to the workspace.
- * @returns Nothing.
+ * @returns What it changed: a file it deleted, or one it edited with its name and what it took out.
  * @throws Propagates any Node.js `fs` error other than a missing path.
  * @typeParam None - this function has no generic type parameters.
  */
-function removeNxAuthoredAgentFiles (workspaceRoot: string): void {
-  // Nx writes this one in full, to register its plugin marketplace. The rest
-  // of `.claude` - agents, commands - is the user's and is left alone.
-  rmSync(join(workspaceRoot, NX_CLAUDE_SETTINGS), { force: true })
-  // ...but when settings.json was all there was, the directory goes too. An
-  // empty `.claude/` is still AI-agent scaffolding to every tool that probes
-  // for the directory, and the e2e's "no AI-agent scaffolding: .claude" check
-  // failed on every fresh workspace because of exactly this leftover.
-  const claudeDirectory = join(workspaceRoot, dirname(NX_CLAUDE_SETTINGS))
-  if (existsSync(claudeDirectory) && readdirSync(claudeDirectory).length === 0) {
-    rmSync(claudeDirectory, { recursive: true, force: true })
-  }
-
+function removeNxAuthoredAgentFiles (workspaceRoot: string): string[] {
+  // `.claude/settings.json` is not handled here any more: it is removed only while it holds nothing but Nx's
+  // entries, by `nx-agent-scaffolding/`, which also removes `.claude` once it is empty.
+  const changed: string[] = []
   for (const name of NX_AUTHORED_AGENT_FILES) {
     const path = join(workspaceRoot, name)
     if (!existsSync(path)) continue
@@ -3984,9 +4021,16 @@ function removeNxAuthoredAgentFiles (workspaceRoot: string): void {
     const kept = withoutNxAgentRules(readFileSync(path, 'utf8'))
     if (kept === undefined) continue
 
-    if (kept.trim() === '') rmSync(path, { force: true })
-    else writeFileEnsured(path, kept)
+    if (kept.trim() === '') {
+      rmSync(path, { force: true })
+      changed.push(name)
+    } else {
+      writeFileEnsured(path, kept)
+      changed.push(`${name} (Nx's rules block only)`)
+    }
   }
+
+  return changed
 }
 
 /**
@@ -4388,7 +4432,10 @@ export function applyOverlay (
     join(workspaceRoot, '.devcontainer/devcontainer.json'),
     devcontainerJson(options.workspaceName),
   )
-  removeNxScaffolding(workspaceRoot)
+  const scaffoldingLines = describeScaffoldingRemoval(removeNxScaffolding(workspaceRoot))
+  for (const line of scaffoldingLines) {
+    onProgress(line)
+  }
   // VS Code workspace file with folder structure, extensions, and settings. The
   // `tasks` array is read back first and carried through: it is per-project state
   // written by `mnci add`, not overlay-owned, so regenerating it wholesale would

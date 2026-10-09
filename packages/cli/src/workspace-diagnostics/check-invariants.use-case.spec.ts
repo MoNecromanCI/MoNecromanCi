@@ -1083,7 +1083,9 @@ describe('doctor: the credential bound for npmjs.org looks like an npm token', (
     // prefix. Shaped like the one that was actually found.
     const finding = findingFor('4b1Tdho8Ylufye7YnDaiUpmNq7RDVcVjfH9UV8blP9681GDuU03lJQQJ99CHAAAA')
 
-    expect(finding?.ok).toBe(false)
+    // A warning that never fails the run: it reads the machine's environment, not the workspace (#423).
+    expect(finding?.ok).toBe(true)
+    expect(finding?.warning).toBe(true)
     expect(finding?.detail).toContain('NODE_AUTH_TOKEN')
     expect(finding?.detail).toContain('PUBLIC registry')
   })
@@ -1097,7 +1099,7 @@ describe('doctor: the credential bound for npmjs.org looks like an npm token', (
     const secret = 'sooper-secret-azure-pat-value-that-must-not-appear'
     const finding = findingFor(secret)
 
-    expect(finding?.ok).toBe(false)
+    expect(finding?.warning).toBe(true)
     expect(JSON.stringify(finding)).not.toContain(secret)
     expect(finding?.detail).toContain(`${secret.length} characters`)
   })

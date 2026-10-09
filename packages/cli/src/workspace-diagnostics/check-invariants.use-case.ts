@@ -576,9 +576,13 @@ function npmjsCredentialShape (
     return undefined
   }
 
+  // A warning, not a failure (#423): this reads the machine's environment, not the workspace, and the same workspace is
+  // fine on a machine whose variable holds a real token. It is still worth a line, because the credential is sent
+  // to the public registry.
   return {
-    check: 'the credential bound for npmjs.org looks like an npm token',
-    ok:    false,
+    check:   'the credential bound for npmjs.org looks like an npm token',
+    ok:      true,
+    warning: true,
     detail:
       `\${${variable}} is set (${value.length} characters) but does not start with '${NPM_TOKEN_PREFIX}' ` +
       'and is not a legacy UUID token, so it is probably a credential for somewhere else — ' +

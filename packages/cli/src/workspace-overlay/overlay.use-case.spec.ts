@@ -3141,15 +3141,24 @@ describe('applyOverlay', () => {
     // outdated" when an agent has both an MCP config and rules present, so a
     // PARTIAL delete leaves every `nx` command printing it forever.
     // `.github/agents` and `.github/prompts` are the two easiest to miss.
+    // The real names and contents `create-nx-workspace` 23.3.0 writes (measured). Removal is per entry now, by
+    // Nx's names and, for the config files, by their holding nothing but Nx's entries (#423), so a made-up name
+    // would rightly read as a team's own file.
+    const nxContents: Record<string, string> = {
+      '.claude/settings.json': JSON.stringify({ extraKnownMarketplaces: { 'nx-claude-plugins': {} }, enabledPlugins: { 'nx@nx-claude-plugins': true }, sandbox: { network: { allowedDomains: ['www.google-analytics.com'] } } }),
+      '.codex/config.toml':    '[mcp_servers.nx-mcp]\ncommand = "npx"\n\n[features]\nmulti_agent = true\n',
+      '.gemini/settings.json': JSON.stringify({ mcpServers: { 'nx-mcp': {} }, contextFileName: 'AGENTS.md' }),
+      'opencode.json':         JSON.stringify({ mcp: { 'nx-mcp': {} } }),
+    }
     const scaffolding = [
       '.agents/skills/monitor-ci/scripts/ci-poll-decide.mjs',
       '.claude/settings.json',
       '.codex/config.toml',
-      '.cursor/rules.md',
+      '.cursor/skills/nx-workspace/SKILL.md',
       '.gemini/settings.json',
       '.opencode/skills/monitor-ci/scripts/ci-state-update.mjs',
-      '.github/agents/nx.md',
-      '.github/prompts/nx.md',
+      '.github/agents/ci-monitor-subagent.agent.md',
+      '.github/prompts/monitor-ci.prompt.md',
       '.github/skills/monitor-ci/scripts/ci-poll-decide.mjs',
       'AGENTS.md',
       'CLAUDE.md',
@@ -3161,7 +3170,7 @@ describe('applyOverlay', () => {
       // where they are, so the fixture has to be what Nx actually writes -
       // its rules wrapped in the marker comments. The tests below cover the
       // hand-written cases that distinction exists for.
-      writeFileSync(join(workspaceRoot, file), NX_AGENT_RULES_FIXTURE)
+      writeFileSync(join(workspaceRoot, file), nxContents[file] ?? NX_AGENT_RULES_FIXTURE)
     }
 
     overlayWith(DEFAULT_STACK)
@@ -3181,6 +3190,46 @@ describe('applyOverlay', () => {
     // one with the real files present.
     expect(existsSync(join(workspaceRoot, '.github'))).toBe(true)
     expect(existsSync(join(workspaceRoot, 'azure-pipelines.yml'))).toBe(true)
+  })
+
+  it('says what it removed and what it kept, and leaves a team\'s own agent files in place (#423)', () => {
+    // Found upgrading a real workspace: three files vanished and the upgrade named none of them.
+    const files: Record<string, string> = {
+      '.claude/settings.json':                       JSON.stringify({ extraKnownMarketplaces: { 'nx-claude-plugins': {} }, enabledPlugins: { 'nx@nx-claude-plugins': true }, permissions: { allow: ['Bash(npm run lint)'] } }),
+      '.github/agents/ci-monitor-subagent.agent.md': 'nx',
+      '.github/prompts/monitor-ci.prompt.md':        'nx',
+      '.github/prompts/review.prompt.md':            'ours',
+      '.github/agents/security-reviewer.agent.md':   'ours',
+    }
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(workspaceRoot, file)), { recursive: true })
+      writeFileSync(join(workspaceRoot, file), content)
+    }
+    const progress: string[] = []
+
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'azure',
+      stack:         DEFAULT_STACK,
+    }, (line) => { progress.push(line) })
+
+    const text = progress.join(' | ')
+
+    // Nx's two files are gone and named; the team's two are not touched.
+    expect(existsSync(join(workspaceRoot, '.github/agents/ci-monitor-subagent.agent.md'))).toBe(false)
+    expect(existsSync(join(workspaceRoot, '.github/prompts/monitor-ci.prompt.md'))).toBe(false)
+    expect(readFileSync(join(workspaceRoot, '.github/prompts/review.prompt.md'), 'utf8')).toBe('ours')
+    expect(readFileSync(join(workspaceRoot, '.github/agents/security-reviewer.agent.md'), 'utf8')).toBe('ours')
+    expect(text).toContain('removed what Nx scaffolds')
+    expect(text).toContain('.github/agents')
+    expect(text).toContain('nx configure-ai-agents')
+    // A settings file the team added to is kept, and the run says so.
+    expect(existsSync(join(workspaceRoot, '.claude/settings.json'))).toBe(true)
+    expect(text).toContain("kept .claude/settings.json: it holds more than Nx's entries")
   })
 
   it('keeps a CLAUDE.md the user wrote, which has no Nx block in it at all', () => {

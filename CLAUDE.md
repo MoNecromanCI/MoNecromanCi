@@ -52,15 +52,22 @@ Every file above is mnci-owned — written (and, on `mnci upgrade`, rewritten) b
 until recently: it used to come from `create-nx-workspace`, which is exactly why the rich
 config this repo had never reached a single generated workspace.
 
-**`mnci upgrade` removes Nx's AI-agent scaffolding by what a file CONTAINS, not by
-where it sits.** `nx configure-ai-agents` writes its rules into `AGENTS.md` and
-`CLAUDE.md` between marker comments, and both filenames are — by convention — where a
-person writes instructions for their own repository. So the marked block is excised and
-everything around it survives; the file goes only when the block was all there was, and
-a file with no marker is left completely alone. Likewise `.claude/settings.json` is
-Nx's and is removed, while `.claude/agents/` and the rest of that directory are the
-user's and are not. This was a by-path delete until recently, which means a
-`mnci upgrade` in **this** repo would have deleted the very file you are reading.
+**`mnci upgrade` removes Nx's AI-agent scaffolding entry by entry, by what a file is or
+CONTAINS, never by the folder it sits in, and says what it did.** The scaffolding fails
+`@mnci/eslint-config` (its CI-monitor scripts), but its folders (`.agents`, `.cursor`,
+`.github/agents`, `.github/prompts`, `.github/skills`, `.claude`, ...) are also where a team
+keeps its own agents, prompts and skills. The `nx-agent-scaffolding/` slice removes a file
+only when its name is one Nx writes (`ci-monitor-subagent`, `monitor-ci`,
+`link-workspace-packages`, the `nx-*` skills), and the four config files Nx writes in full
+(`.claude/settings.json`, `.codex/config.toml`, `.gemini/settings.json`, `opencode.json`)
+only while they hold nothing but Nx's entries; a config the team added to is kept and named
+in the output. Folders left empty go with them. `AGENTS.md` and `CLAUDE.md` are the same
+kind of path: `nx configure-ai-agents` writes its rules between marker comments, so the
+marked block is excised and everything around it survives, the file goes only when the block
+was all there was, and a file with no marker is left completely alone (a by-path delete once
+meant a `mnci upgrade` in **this** repo would have deleted the very file you are reading). The
+run prints one line naming what was removed, grouped by folder, and how to bring it back
+(`nx configure-ai-agents`); until #423 it was silent, and users learned of it from `git status`.
 
 `applyOverlay()` also **deletes** things `create-nx-workspace` (or a past mnci version)
 scaffolds: `create-nx-workspace`'s own `.prettierrc`, any retired formatter config
