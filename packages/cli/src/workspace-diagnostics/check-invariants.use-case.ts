@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN } from '../go-workspace'
+import { hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN, parseGoWorkUses } from '../go-workspace'
 import { runCapture } from '../nx-workspace'
 import { hasStaleLocalRegistry } from '../lockfile-pruning'
 import { readNativeBuildConfig } from '../native-build-config'
@@ -870,10 +870,7 @@ function checkGoWorkInSync (workspaceRoot: string): Finding | undefined {
   if (!fileExists(goWorkPath)) {
     return undefined
   }
-  const contents = existsSync(goWorkPath) ? readFileSync(goWorkPath, 'utf8') : ''
-  const blockEntries = Array.from(contents.matchAll(/(?:^|\n)\s*use\s+\(([^)]*)\)/g), match => match[1].split('\n')).flat()
-  const singleEntries = Array.from(contents.matchAll(/(?:^|\n)\s*use\s+(\.\S+)/g), match => match[1])
-  const uses = [...blockEntries, ...singleEntries].map(entry => entry.trim()).filter(Boolean)
+  const uses = parseGoWorkUses(readFileSync(goWorkPath, 'utf8'))
   const stale = uses.filter(entry => !existsSync(join(workspaceRoot, entry, 'go.mod')))
 
   return {

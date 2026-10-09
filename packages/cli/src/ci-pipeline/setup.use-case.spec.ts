@@ -187,6 +187,35 @@ describe('mnci ci setup: Go (#269)', () => {
     expect(ran(recorder)).toContain('go mod download')
   })
 
+  it('downloads each module a go.work lists, since a root go mod download fails with no root module (#405)', async () => {
+    seed('go.work', 'go 1.24\n\nuse (\n\t./apps/cli\n\t./libs/core\n)\n')
+    const recorder = harness({ captures: { 'golangci-lint --version': 0 } })
+
+    await setup(recorder)
+
+    expect(ran(recorder)).toEqual(expect.arrayContaining(['go -C ./apps/cli mod download', 'go -C ./libs/core mod download']))
+    expect(ran(recorder)).not.toContain('go mod download')
+  })
+
+  it('installs golangci-lint in a multi-module workspace, which has a go.work and no root go.mod (#405)', async () => {
+    seed('go.work', 'use ./apps/cli\n')
+    const recorder = harness()
+
+    await setup(recorder)
+
+    expect(recorder.fetched.length).toBeGreaterThan(0)
+    expect(recorder.logged).not.toContain('No Go projects - skipping.')
+  })
+
+  it('stops at the first module whose download fails', async () => {
+    seed('go.work', 'use (\n./a\n./b\n)\n')
+    const recorder = harness({ captures: { 'golangci-lint --version': 0 }, runStatuses: { 'go -C ./a mod download': 3 } })
+
+    await setup(recorder)
+
+    expect(ran(recorder)).not.toContain('go -C ./b mod download')
+  })
+
   it('leaves golangci-lint alone when it is already installed', async () => {
     seed('go.mod')
     const recorder = harness({ captures: { 'golangci-lint --version': 0 } })
