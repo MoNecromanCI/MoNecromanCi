@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import { runNx, runFormatter, runShell } from '../nx-workspace'
 import { promptText } from '../terminal'
 import { runAdd } from './add-project.use-case'
+import { addPythonDevTargets } from './python.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunFormatter = jest.mocked(runFormatter)
@@ -455,5 +456,37 @@ describe('the Python bytecode ignores reach a workspace that gained Python via a
     await runAdd('node-app', 'svc', {})
 
     expect(readFileSync(join(workspaceRoot, '.gitignore'), 'utf8')).not.toContain('__pycache__')
+  })
+})
+
+/** Writes an app folder the way the plugin leaves it. */
+function pythonApp (name: string, files: string[], targets: Record<string, unknown> = {}): void {
+  mkdirSync(join(workspaceRoot, 'apps', name), { recursive: true })
+  for (const file of files) {
+    writeFileSync(join(workspaceRoot, 'apps', name, file), file.endsWith('.json') ? JSON.stringify({ name, targets }) : '')
+  }
+}
+
+const targetsOf = (name: string): Record<string, unknown> => (JSON.parse(readFileSync(join(workspaceRoot, 'apps', name, 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets
+
+describe('addPythonDevTargets (#230)', () => {
+  it('adds dev and watchdog to an app that predates it, and only to apps', () => {
+    writeFileSync(join(workspaceRoot, 'requirements-dev.txt'), 'build\npytest\n')
+    pythonApp('svc', ['project.json', 'main.py', 'pyproject.toml'])
+    pythonApp('fn', ['project.json', 'function_app.py', 'main.py', 'pyproject.toml'])
+    pythonApp('mine', ['project.json', 'main.py', 'pyproject.toml'], { dev: { command: 'my own' } })
+
+    expect(addPythonDevTargets(workspaceRoot)).toEqual(['apps/svc/project.json', 'requirements-dev.txt'])
+    expect(targetsOf('svc').dev).toMatchObject({ continuous: true })
+    expect(targetsOf('fn').dev).toBeUndefined()
+    expect(targetsOf('mine').dev).toEqual({ command: 'my own' })
+    expect(readFileSync(join(workspaceRoot, 'requirements-dev.txt'), 'utf8')).toBe('build\npytest\nwatchdog\n')
+  })
+
+  it('does nothing in a workspace with no app to change', () => {
+    expect(addPythonDevTargets(workspaceRoot)).toEqual([])
+    pythonApp('svc', ['project.json', 'main.py', 'pyproject.toml'], { dev: {} })
+
+    expect(addPythonDevTargets(workspaceRoot)).toEqual([])
   })
 })

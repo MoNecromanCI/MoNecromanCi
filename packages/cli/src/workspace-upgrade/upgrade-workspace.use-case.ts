@@ -6,7 +6,9 @@ import { separateReactAppsOutput } from '../react-app-output'
 import { locateStrandedReleaseTags } from '../release-tag-lineage'
 import { runFormatter } from '../nx-workspace'
 import {
+  addCsharpDevTargets,
   addGoPlatformTargets,
+  addPythonDevTargets,
   GO_RELEASE_SCRIPT_PATH,
   pinVscodeExtensionProjectNames,
   refreshGoReleaseScript,
@@ -345,8 +347,16 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   // `package-all` (and a go-app its debug build, `build-dev`); nothing they already have is touched.
   const goApps = addGoPlatformTargets(workspaceRoot)
   if (goApps.length > 0) {
-    logger.step('Adding the six-platform and debug builds to Go apps (build-all, package-all, build-dev)')
+    logger.step('Adding the six-platform, debug and watch targets to Go apps (build-all, package-all, build-dev, dev)')
     for (const path of goApps) {
+      logger.detail(`updated ${path}`)
+    }
+  }
+  // Python and C# apps added before `dev` existed gain it (and `watchdog` for Python); a `dev` they have is kept.
+  const devApps = [...addPythonDevTargets(workspaceRoot), ...addCsharpDevTargets(workspaceRoot)]
+  if (devApps.length > 0) {
+    logger.step('Adding the watch-and-restart target (dev) to Python and C# apps')
+    for (const path of devApps) {
       logger.detail(`updated ${path}`)
     }
   }

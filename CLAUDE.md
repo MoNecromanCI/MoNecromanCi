@@ -436,8 +436,12 @@ workspace before it was written, and a kind appears only where it was:
 - `react-app`: `build:dev` = `nx run <name>:build-dev`, `dev` = `nx run <name>:serve` (Vite's dev server).
 - `go-app`: a `build-dev` target (`go build "-gcflags=all=-N -l"` into `dist/dev/apps/<name>`, the flag quoted INSIDE the
   command string because `nx:run-commands` hands it to a shell, which would split the space; `go version -m` on the result
-  shows it) and its `build:dev` script. No `dev`: it needs `air`, which mnci does not install. `mnci upgrade` adds the target to an existing
+  shows it) and its `build:dev` script. `mnci upgrade` adds the target to an existing
   go-app (cgo included, never over one the team wrote); the root `<name>:build:dev` script is only written by `mnci add`.
+- `go-app`: `dev` = `go run github.com/air-verse/air@<AIR_VERSION> --build.cmd "go build ./..." --build.bin "go run ." --build.exclude_dir tmp`
+  (`go.use-case.ts`; pinned, fetched by `go run`, nothing installed). Measured on Windows: an edit rebuilt and the new process ran with
+  the old one gone (its port free). `build.bin` goes through the shell, so a path like `tmp/app` fails under cmd and `go run .` does not;
+  air warns it is not an `.exe` and runs it anyway. Not measured on Linux or macOS.
 
 - `python-app`: `dev` only. `python3 -m watchdog.watchmedo auto-restart --directory . --pattern "*.py" --recursive
   --no-restart-on-command-exit -- python3 main.py` (without that flag `watchmedo` restarts the command every time it exits;
@@ -446,8 +450,9 @@ workspace before it was written, and a kind appears only where it was:
 - `csharp-app`: `dev` only, `dotnet watch run` (measured: an edit rebuilt and re-ran it). No `build:dev`: `dotnet build` and
   `dotnet run` already build `Debug`, so `build` is the debug build, and moving it to `-c Release` would change what is packaged.
 
-Not covered: the function-app kinds (no measured watcher for the Functions host), and `mnci upgrade` adding `dev` to an existing
-Python or C# app. `mnci dev` runs each project's `start`.
+`mnci upgrade` adds `dev` to existing Python and C# apps too (`addPythonDevTargets`, with `watchdog` in `requirements-dev.txt`; `addCsharpDevTargets`), by what the folder holds (a `main.py` and `pyproject.toml` with no `function_app.py`; a `.csproj` with no `host.json`), never over a `dev` the team has, and without the root `<name>:dev` script, which only `mnci add` writes.
+
+Not covered: the function-app kinds (no measured watcher for the Functions host). `mnci dev` runs each project's `start`.
 
 A future `cli-lib` kind (publishable package that is also invoked like an app) would need the app treatment;
 deferred, since the kind doesn't exist yet.
