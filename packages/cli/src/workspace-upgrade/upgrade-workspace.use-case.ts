@@ -114,6 +114,9 @@ function resolveRegistry (
   if (options.registry === 'npm') {
     return { kind: 'npm' }
   }
+  if (options.registry === 'none') {
+    return { kind: 'none' }
+  }
   if (persisted) {
     return persisted
   }

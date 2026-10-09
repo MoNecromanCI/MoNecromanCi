@@ -35,14 +35,15 @@
       {
         "name": "registry",
         "flags": "--registry <kind>",
-        "description": "package registry",
+        "description": "package registry: azure-artifacts | npm | none (publishes no packages)",
         "takesValue": "required",
         "variadic": false,
         "repeatable": false,
         "negated": false,
         "choices": [
           "azure-artifacts",
-          "npm"
+          "npm",
+          "none"
         ]
       },
       {
@@ -173,7 +174,7 @@
       {
         "name": "registry",
         "flags": "--registry <kind>",
-        "description": "azure-artifacts | npm (overrides the persisted value)",
+        "description": "azure-artifacts | npm | none (overrides the persisted value)",
         "takesValue": "required",
         "variadic": false,
         "repeatable": false,
@@ -405,7 +406,7 @@
       {
         "name": "registry",
         "flags": "--registry <kind>",
-        "description": "azure-artifacts | npm (--overlay)",
+        "description": "azure-artifacts | npm | none (--overlay)",
         "takesValue": "required",
         "variadic": false,
         "repeatable": false,

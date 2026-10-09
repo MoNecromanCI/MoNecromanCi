@@ -596,7 +596,11 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
     return close(pypi)
   }
 
-  const released = await runReleaseCommand(workspaceRoot, registry, releasableCounts(workspaceRoot), environment, processes, log, processes.tee)
+  const counts = releasableCounts(workspaceRoot)
+  // A workspace with no registry (--registry none) releases only what is tagged for it: the packages/* globs are not in
+  // release.projects, so they are not counted here either (#228).
+  const releasable = registry.kind === 'none' ? { ...counts, npm: 0, python: 0, csharp: 0, dart: 0 } : counts
+  const released = await runReleaseCommand(workspaceRoot, registry, releasable, environment, processes, log, processes.tee)
   if (released.status !== 0) {
     // Per package, not all or nothing: what published keeps its tag, so a retry does not republish it.
     pushSurvivingTags(released.output, processes, log)

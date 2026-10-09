@@ -899,6 +899,15 @@ commands that write the lockfile: `mnci new`, `add`, `upgrade`, `install` and `u
 PRs), which still needs `npx npm@12 install --package-lock-only` by hand. Lockfiles written by npm 11.21 and npm 12 are
 interchangeable in both directions (measured when the pin moved to 12).
 
+### A workspace with no registry (#228)
+
+`--registry none` (`mnci new`, `mnci upgrade`, `mnci adopt --overlay`, and a prompt choice) is for a workspace that publishes nothing to a package registry (an extension to the
+Marketplace, Go apps by GitHub Release). `RegistryConfig` gains `{ kind: 'none' }`, persisted in the `mnci` block so `upgrade` reproduces it. Effects: `.npmrc` keeps only a comment
+(no auth line, no scope routing); `release.projects` and the pre-version build drop `packages/*` and `python-packages/*` (`releaseConfig(ci, registryKind)`), leaving the tag-matched
+projects; the pipelines pass `NODE_AUTH_TOKEN: ''` instead of a secret; the release phase zeroes the npm, Python, C# and Dart counts, so the npm and PyPI preflights skip; `mnci doctor`
+does not check `.npmrc` auth; `--npm-auth build-identity` is refused. `mnci add` of a library kind warns that it will not be released. Not covered: running `nx release` with a release set
+that matches nothing (the phase says "Nothing to release" first, so Nx is not asked), and a workspace that has packages but chose `none`: they are simply never released.
+
 ### A release that fails part way keeps the tags of what published (#429)
 
 `nx release` tags every project and then publishes; one package refused by the registry (a deleted version, a rate limit) fails
