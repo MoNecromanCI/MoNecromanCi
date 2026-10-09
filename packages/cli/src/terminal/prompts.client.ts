@@ -43,10 +43,11 @@ export async function promptRegistry (fallbackOrganization?: string): Promise<Re
     choices: [
       { name: 'Azure Artifacts', value: 'azure-artifacts' },
       { name: 'Public npm', value: 'npm' },
+      { name: 'Nothing - this workspace publishes no packages', value: 'none' },
     ],
   })
 
-  if (kind === 'npm') {
+  if (kind === 'npm' || kind === 'none') {
     return { kind }
   }
 

@@ -22,6 +22,7 @@ import { addReactApp } from './react-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
 import { addVscodeExtension } from './vscode-extension.use-case'
 import { syncProjectReferences } from '../dependency-management'
+import { readMnciConfig } from '../workspace-overlay'
 import { completeLockfile } from '../lockfile-completion'
 import {
   ensureNxPeerOverrides,
@@ -184,6 +185,9 @@ export const PROJECT_KINDS: ProjectKind[] = [
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
 const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app'])
 
+/** The kinds a registry publishes: a workspace with no registry releases none of them. */
+const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
+
 /**
  * Adds a project to the workspace by delegating to the matching Nx generator.
  *
@@ -264,6 +268,11 @@ export async function runAdd (
     throw new Error(`--e2e applies to react-app, not ${resolvedKind}.`)
   }
   const resolvedName = name ?? (await promptText('Project name'))
+  // A workspace generated with --registry none releases only what is tagged for it, so a library added to it is never
+  // published: say so rather than let it look like one is (#228).
+  if (PUBLISHABLE_KINDS.has(resolvedKind) && readMnciConfig(workspaceRoot).registry?.kind === 'none') {
+    logger.warn(`This workspace has no package registry (--registry none), so ${resolvedName} will not be released. Run \`mnci upgrade --registry npm\` (or azure-artifacts) to publish it.`)
+  }
   // Fails fast, before any install or generator call: the name becomes a
   // directory, an argv token and (for Python kinds) a module identifier — and
   // an explicitly empty `name` argument bypasses promptText's own non-empty

@@ -24,7 +24,8 @@ import { VERSION_DIRECTIVE_TYPES } from '../version-directives'
  */
 export type RegistryConfig =
   | { kind: 'azure-artifacts'; organization: string; project: string; artifactsFeed: string } |
-  { kind: 'npm' }
+  { kind: 'npm' } |
+  { kind: 'none' }
 
 /**
  * Which CI provider(s) {@link applyOverlay} writes a pipeline file for.
@@ -172,6 +173,9 @@ export function resolveNpmAuth (
   if (mode !== 'build-identity') {
     return mode
   }
+  if (registry.kind === 'none') {
+    throw new Error('--npm-auth build-identity needs an Azure Artifacts feed, and this workspace has no registry (--registry none).')
+  }
   if (registry.kind !== 'azure-artifacts') {
     throw new Error(
       '--npm-auth build-identity needs an Azure Artifacts feed: public npm has no build identity to borrow. Use --registry azure-artifacts, or drop the flag.',
@@ -266,6 +270,15 @@ export function npmrcContent (
   scope: string,
   npmAuth: NpmAuthMode = 'pat',
 ): string {
+  if (registry.kind === 'none') {
+    return `; This workspace publishes no packages to a registry (--registry none), so there is
+; nothing to authenticate: no token line and no scope routing. Installing,
+; building and testing never authenticate against anything.
+;
+; If a package ever needs publishing, regenerate or upgrade with --registry npm or
+; --registry azure-artifacts, which writes the auth this file leaves out.
+`
+  }
   if (registry.kind === 'npm') {
     return `; Publish authentication for the public npm registry.
 ;
@@ -539,12 +552,15 @@ export function hasNativeGoApp (workspaceRoot: string): boolean {
  * @throws Never - builds a plain object with no I/O.
  * @typeParam None - this function has no generic type parameters.
  */
-export function releaseConfig (ci: CiProvider): Record<string, unknown> {
+export function releaseConfig (ci: CiProvider, registryKind: RegistryConfig['kind'] = 'npm'): Record<string, unknown> {
   const githubReleases = ci === 'github'
+  // A workspace that publishes to no registry releases only what is tagged for it (an extension, a Go app): no
+  // `packages/*` glob, which would also be empty, and nothing for the pre-version build to build under it (#228).
+  const publishesPackages = registryKind !== 'none'
 
   return {
     projectsRelationship: 'independent',
-    projects:             ['packages/*', 'python-packages/*', `tag:${VSCODE_EXTENSION_TAG}`, `tag:${GO_RELEASE_TAG}`, '!tag:type:go-lib'],
+    projects:             [...(publishesPackages ? ['packages/*', 'python-packages/*'] : []), `tag:${VSCODE_EXTENSION_TAG}`, `tag:${GO_RELEASE_TAG}`, '!tag:type:go-lib'],
     releaseTag:           { pattern: '{projectName}@{version}' },
     git:                  { commit: false, tag: true, push: githubReleases },
     version:              {
@@ -556,7 +572,7 @@ export function releaseConfig (ci: CiProvider): Record<string, unknown> {
       // Set here at `new` time it wins: the generator only fills this in when
       // absent (it spreads the existing release.version over its default). Both
       // globs are listed; `nx run-many` no-ops cleanly when one matches nothing.
-      preVersionCommand:                `npx nx run-many -t build --projects=packages/*,python-packages/*,tag:${VSCODE_EXTENSION_TAG}`,
+      preVersionCommand:                `npx nx run-many -t build --projects=${publishesPackages ? 'packages/*,python-packages/*,' : ''}tag:${VSCODE_EXTENSION_TAG}`,
       // The lock file resync is OFF, and the reason is that it cannot succeed
       // on the one release where it would matter.
       //
@@ -907,11 +923,12 @@ function preservingUnknownKeys (
 export function withReleaseConfig (
   nxJson: Record<string, unknown>,
   ci: CiProvider,
+  registryKind: RegistryConfig['kind'] = 'npm',
 ): Record<string, unknown> {
   return {
     ...nxJson,
     defaultBase: 'main',
-    release:     preservingUnknownKeys(nxJson.release, releaseConfig(ci)),
+    release:     preservingUnknownKeys(nxJson.release, releaseConfig(ci, registryKind)),
   }
 }
 
@@ -2402,7 +2419,7 @@ export const NUGET_AZURE_SOURCE = 'AzureArtifacts'
  * @typeParam None - this function has no generic type parameters.
  */
 export function nugetConfigContent (registry: RegistryConfig, scope: string): string {
-  if (registry.kind === 'npm') {
+  if (registry.kind !== 'azure-artifacts') {
     return `<?xml version="1.0" encoding="utf-8"?>
 <!-- Publish authentication for NuGet is deliberately UNCONFIGURED for the
      public npm registry choice: publishing to public nuget.org needs a
@@ -2939,6 +2956,11 @@ function npmAuthEnvVariable (
   registryKind: RegistryConfig['kind'],
   variableReference: (name: string) => string,
 ): [string, string] {
+  if (registryKind === 'none') {
+    // No registry, so no credential to hand npm: an explicitly empty token keeps the step's env block well formed.
+    return ['NODE_AUTH_TOKEN', "''"]
+  }
+
   return registryKind === 'npm'
     ? ['NODE_AUTH_TOKEN', variableReference('NPM_TOKEN')]
     : [AZURE_PAT_VARIABLE, variableReference(AZURE_PAT_VARIABLE)]
@@ -4356,7 +4378,7 @@ export function applyOverlay (
   const hasPythonPlugin =
     (rootManifest.devDependencies ?? {})['@mnci/nx-python-pip'] !== undefined ||
     (rootManifest.dependencies ?? {})['@mnci/nx-python-pip'] !== undefined
-  const withRelease = withReleaseConfig(nxJson, options.ci)
+  const withRelease = withReleaseConfig(nxJson, options.ci, options.registry.kind)
   const patched = withPythonGraphPlugin(
     withSharedGlobals(withEslintPlugin(withRelease)),
     hasPythonPlugin,
@@ -4432,9 +4454,7 @@ export function applyOverlay (
 
   onProgress(
     `.npmrc — ${
-      options.registry.kind === 'azure-artifacts'
-        ? 'Azure Artifacts feed routing and credentials'
-        : 'public npm registry auth'
+      { 'azure-artifacts': 'Azure Artifacts feed routing and credentials', 'npm': 'public npm registry auth', 'none': 'no registry, so no auth' }[options.registry.kind]
     }`,
   )
   writeFileEnsured(

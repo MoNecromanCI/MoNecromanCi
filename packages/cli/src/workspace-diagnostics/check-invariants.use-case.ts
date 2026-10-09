@@ -322,7 +322,7 @@ function checkNpmrc (
   scope: string | undefined,
 ): Finding | undefined {
   const npmrcPath = join(workspaceRoot, '.npmrc')
-  if (!registry || !fileExists(npmrcPath)) {
+  if (!registry || registry.kind === 'none' || !fileExists(npmrcPath)) {
     return undefined
   }
   const npmrc = readFileSync(npmrcPath, 'utf8')

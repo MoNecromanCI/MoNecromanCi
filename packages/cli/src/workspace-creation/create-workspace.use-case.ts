@@ -157,13 +157,13 @@ async function resolveCi (options: NewOptions): Promise<CiProvider> {
  * @throws Propagates prompt errors (e.g. when stdin is not a TTY).
  * @typeParam None - this function has no generic type parameters.
  */
-const REGISTRY_KINDS: ReadonlySet<RegistryConfig['kind']> = new Set(['azure-artifacts', 'npm'])
+const REGISTRY_KINDS: ReadonlySet<RegistryConfig['kind']> = new Set(['azure-artifacts', 'npm', 'none'])
 
 async function resolveRegistry (options: NewOptions): Promise<RegistryConfig> {
   // Same loud failure as resolveCi: an invalid --registry under --yes used to default to npm
   // silently (#231). Checked before the branches below so an unknown value never slips through.
   if (options.registry !== undefined && !REGISTRY_KINDS.has(options.registry)) {
-    throw new Error(`Invalid --registry '${options.registry}'. Valid values: azure-artifacts, npm.`)
+    throw new Error(`Invalid --registry '${options.registry}'. Valid values: azure-artifacts, npm, none.`)
   }
   if (options.registry === 'azure-artifacts' || (options.organization && options.artifactsFeed)) {
     return {
@@ -172,6 +172,9 @@ async function resolveRegistry (options: NewOptions): Promise<RegistryConfig> {
       project:       options.project ?? (await promptText('Azure DevOps project')),
       artifactsFeed: options.artifactsFeed ?? (await promptText('Artifacts feed name')),
     }
+  }
+  if (options.registry === 'none') {
+    return { kind: 'none' }
   }
   if (options.registry === 'npm' || options.yes) {
     return { kind: 'npm' }
