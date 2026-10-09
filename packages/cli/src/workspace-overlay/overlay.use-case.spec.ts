@@ -2065,6 +2065,9 @@ describe('applyOverlay', () => {
     expect(readFileSync(join(workspaceRoot, 'commitlint.config.mjs'), 'utf8')).toContain(
       '@commitlint/config-conventional',
     )
+    expect(readFileSync(join(workspaceRoot, 'commitlint.config.mjs'), 'utf8')).toContain(
+      "'mnci-version', 'mnci-ver', 'mnci-force', 'mnci-v', 'version', 'ver', 'force', 'v'",
+    )
     expect(readFileSync(join(workspaceRoot, '.husky/commit-msg'), 'utf8')).toContain(
       'commitlint --edit',
     )

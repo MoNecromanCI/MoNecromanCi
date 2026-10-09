@@ -13,6 +13,7 @@ import { detectCiHost, groupEnd, groupStart } from './ci-environment.client'
 import type { CiDependencies, CiProcesses } from './phase.contract'
 import { listGoLibraryDirectories, releaseGoLibraries } from '../go-module-release'
 import { pushSurvivingTags } from '../partial-release'
+import { locateVersionDirectives, type VersionDirective } from '../version-directives'
 
 /** How many releasable projects of each ecosystem the workspace has. */
 interface ReleasableCounts {
@@ -298,8 +299,8 @@ function applyPublishCredentials (
  * scope). A bump keyword (`minor`) against more than one releasable package is
  * rejected: nx computes the dependency-bump pass from a stale cached version, so
  * a keyword under-bumps interdependent packages — an exact version is required
- * there. #283 is the per-commit override within the otherwise-automatic,
- * conventional-commit versioning.
+ * there. A commit `version(<project>)[<version>]: <message>` (#283) forces that project's
+ * version: it is released first with an exact specifier, and the rest follows as usual.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param registry - The resolved registry config.
@@ -348,12 +349,69 @@ async function runReleaseCommand (
   if (credentials !== 0) {
     return { status: credentials, output: '' }
   }
-  const command = ['nx', 'release', ...extra, '--yes']
-  if (tee === undefined) {
-    return { status: processes.run('npx', command), output: '' }
+  const forced = specifier === '' ? knownDirectives(locateVersionDirectives(processes.capture), processes, log) : []
+  const commands = [
+    ...forced.map(({ project, version }) => ['nx', 'release', version, `--projects=${project}`, '--yes']),
+    ['nx', 'release', ...extra, ...(forced.length > 0 ? [`--projects=${forced.map(({ project }) => `!${project}`).join(',')}`] : []), '--yes'],
+  ]
+  let output = ''
+  for (const command of commands) {
+    if (tee === undefined) {
+      const status = processes.run('npx', command)
+      if (status !== 0) {
+        return { status, output }
+      }
+    } else {
+      const result = await tee('npx', command)
+      output += result.output
+      if (result.status !== 0) {
+        return { status: result.status, output }
+      }
+    }
   }
 
-  return await tee('npx', command)
+  return { status: 0, output }
+}
+
+/**
+ * Keeps the version directives whose project Nx knows, saying what each one forces (#283).
+ *
+ * @remarks
+ * A directive naming a project Nx has never heard of (a typo) would otherwise fail every release for good, since the
+ * commit stays unreleased. It is reported and skipped instead. When the project list cannot be read, every directive is
+ * kept and Nx reports the bad name.
+ *
+ * @param directives - The directives not yet released.
+ * @param processes - The process runner.
+ * @param log - The logger.
+ * @returns The directives to apply.
+ * @throws Never - an unreadable project list keeps every directive.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function knownDirectives (directives: VersionDirective[], processes: CiProcesses, log: (message: string) => void): VersionDirective[] {
+  if (directives.length === 0) {
+    return directives
+  }
+  let known: Set<string> | undefined
+  const listed = processes.capture('npx', ['nx', 'show', 'projects', '--json'])
+  if (listed.status === 0) {
+    try {
+      known = new Set(JSON.parse(listed.stdout) as string[])
+    } catch {
+      known = undefined
+    }
+  }
+
+  return directives.filter(({ project, version }) => {
+    if (known !== undefined && !known.has(project)) {
+      log(`A commit asks for ${project} ${version}, but no project has that name - ignored.`)
+
+      return false
+    }
+    log(`A commit forces ${project} to ${version}, over what the conventional commits would give.`)
+
+    return true
+  })
 }
 
 /**
