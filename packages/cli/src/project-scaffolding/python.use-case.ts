@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { PYTHON_GRAPH_PLUGIN, withPythonGraphPlugin } from '../workspace-overlay'
@@ -134,6 +134,7 @@ ruff
 mypy
 pytest
 pip-audit
+watchdog
 `
 
 /**
@@ -143,7 +144,8 @@ pip-audit
  * Lazy, like {@link ensureAdmZip}: written on the first Python `add` of any
  * kind, not unconditionally by `mnci new` — a pure-JS/TS workspace never
  * gains this file. Only written when absent, so a user's own edits (extra
- * dev tools) survive repeat `add` calls.
+ * dev tools) survive repeat `add` calls. `watchdog` (the `dev` target's file watcher) is added to a file
+ * written before it was listed.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @returns Nothing.
@@ -154,6 +156,26 @@ function ensureRequirementsDev (workspaceRoot: string): void {
   const requirementsDevPath = join(workspaceRoot, 'requirements-dev.txt')
   if (!fileExists(requirementsDevPath)) {
     writeFileEnsured(requirementsDevPath, PYTHON_REQUIREMENTS_DEV)
+  }
+}
+
+/**
+ * Makes sure `requirements-dev.txt` lists `watchdog`, which a Python app's `dev` target runs.
+ *
+ * @remarks
+ * A file written before `dev` existed does not list it. Appends one line and touches nothing else; a
+ * workspace with no Python app never gains the package.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns Nothing.
+ * @throws Propagates any Node.js `fs` error raised while writing.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function ensureWatchdog (workspaceRoot: string): void {
+  const requirementsDevPath = join(workspaceRoot, 'requirements-dev.txt')
+  const existing = readFileSync(requirementsDevPath, 'utf8')
+  if (!/^watchdog\b/m.test(existing)) {
+    writeFileSync(requirementsDevPath, `${existing}${existing.endsWith('\n') ? '' : '\n'}watchdog\n`)
   }
 }
 
@@ -221,6 +243,32 @@ function pythonAppStartTarget (name: string): Record<string, unknown> {
     executor:   'nx:run-commands',
     continuous: true,
     options:    { command: 'python3 main.py', cwd: `apps/${name}` },
+  }
+}
+
+/**
+ * The `dev` target for a Python app: `main.py`, restarted whenever a `.py` file under the project changes.
+ *
+ * @remarks
+ * Through `watchdog`'s `watchmedo auto-restart`. `--no-restart-on-command-exit` is required: without it
+ * `watchmedo` restarts the command every time it exits, so an app whose `main.py` simply finishes would
+ * loop for ever (measured). Run as `python3 -m watchdog.watchmedo`, like every other tool here, so no
+ * script directory needs to be on `PATH`. There is no `build:dev` for Python: nothing is compiled, and
+ * the `build` target makes the wheel.
+ *
+ * @param name - The Python app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function pythonAppDevTarget (name: string): Record<string, unknown> {
+  return {
+    executor:   'nx:run-commands',
+    continuous: true,
+    options:    {
+      command: 'python3 -m watchdog.watchmedo auto-restart --directory . --pattern "*.py" --recursive --no-restart-on-command-exit -- python3 main.py',
+      cwd:     `apps/${name}`,
+    },
   }
 }
 
@@ -327,6 +375,7 @@ export function addPythonApp (workspaceRoot: string, name: string): void {
   ensurePython(workspaceRoot)
   ensurePythonPipPlugin(workspaceRoot)
   ensureRequirementsDev(workspaceRoot)
+  ensureWatchdog(workspaceRoot)
   ensureAdmZip(workspaceRoot)
 
   runNx(
@@ -337,8 +386,9 @@ export function addPythonApp (workspaceRoot: string, name: string): void {
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     package: pythonAppPackageTarget(name),
     start:   pythonAppStartTarget(name),
+    dev:     pythonAppDevTarget(name),
   })
-  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
+  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start`, dev: `nx run ${name}:dev` })
 }
 
 /**

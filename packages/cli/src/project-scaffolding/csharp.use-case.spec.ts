@@ -169,6 +169,9 @@ describe('runAdd csharp-app', () => {
     expect(rootManifest.scripts['api:build']).toBe('nx run api:build')
     expect(rootManifest.scripts['api:qa']).toBe('nx run api:lint && nx run api:test')
     expect(rootManifest.scripts['api:start']).toBe('nx run api:start')
+    expect(targets.dev).toMatchObject({ continuous: true, options: { command: 'dotnet watch run', cwd: 'apps/api' } })
+    expect(rootManifest.scripts['api:dev']).toBe('nx run api:dev')
+    expect(rootManifest.scripts['api:build:dev']).toBeUndefined()
   })
 })
 

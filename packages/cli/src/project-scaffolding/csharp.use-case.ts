@@ -277,6 +277,27 @@ function csharpAppStartTarget (projectRoot: string): Record<string, unknown> {
 }
 
 /**
+ * The `dev` target for a C# app: `dotnet watch run`, which rebuilds and restarts on a source change.
+ *
+ * @remarks
+ * Measured on a generated console app: an edit to `Program.cs` rebuilt and re-ran it ("Hello again!").
+ * There is no `build:dev` for C#: `dotnet build` and `dotnet run` already build `Debug`, with symbols,
+ * so the `build` target IS the debug build, and moving it to `Release` would change what is packaged.
+ *
+ * @param projectRoot - Workspace-relative project directory.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function csharpAppDevTarget (projectRoot: string): Record<string, unknown> {
+  return {
+    executor:   'nx:run-commands',
+    continuous: true,
+    options:    { command: 'dotnet watch run', cwd: projectRoot },
+  }
+}
+
+/**
  * Adds a C# app under `apps/`, scaffolded with the real `dotnet new` CLI.
  *
  * @remarks
@@ -311,8 +332,9 @@ export function addCsharpApp (
   addProjectJsonTargets(join(workspaceRoot, projectRoot, 'project.json'), {
     package: csharpAppPackageTarget('csharp-app', projectRoot, name),
     start:   csharpAppStartTarget(projectRoot),
+    dev:     csharpAppDevTarget(projectRoot),
   })
-  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
+  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start`, dev: `nx run ${name}:dev` })
 }
 
 /**
