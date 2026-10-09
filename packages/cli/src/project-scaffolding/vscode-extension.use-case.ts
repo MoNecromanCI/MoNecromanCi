@@ -2,6 +2,15 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
+import {
+  VSCODE_INTEGRATION_DIRECTORY,
+  VSCODE_INTEGRATION_OUTPUT,
+  VSCODE_INTEGRATION_PACKAGES,
+  vscodeIntegrationSample,
+  vscodeIntegrationTarget,
+  vscodeIntegrationTsconfig,
+  vscodeTestConfig,
+} from './vscode-integration.algorithm'
 import { logger } from '../terminal'
 import { VSCODE_EXTENSION_TAG } from '../workspace-overlay'
 import { runNodeApp } from './node.use-case'
@@ -128,6 +137,7 @@ export const VSCODE_EXTENSION_SCRIPT = String.raw`#!/usr/bin/env node
 // Packages and publishes a VS Code extension project. Its Nx targets call it:
 //   node tools/vscode-extension.cjs package apps/<name> [--sidecar <go-app>]
 //   node tools/vscode-extension.cjs publish apps/<name> [--sidecar <go-app>]
+//   node tools/vscode-extension.cjs integration apps/<name>   the tests in a real VS Code
 // Without --sidecar: one universal dist/drop/<project>.vsix.
 // With --sidecar: one dist/drop/<project>-<target>.vsix per Marketplace target, each
 // carrying that platform's binary from the Go app's build-all in bin/.
@@ -146,9 +156,18 @@ function fail (message) {
 }
 
 function bin (packageName, command) {
-  const manifestPath = require.resolve(packageName + '/package.json', { paths: [process.cwd()] })
+  // Walks up from the working directory to the installed package. require.resolve cannot: a package whose exports omit
+  // ./package.json (@vscode/test-cli) refuses it.
+  let directory = process.cwd()
+  let manifestPath = join(directory, 'node_modules', packageName, 'package.json')
+  while (!existsSync(manifestPath) && dirname(directory) !== directory) {
+    directory = dirname(directory)
+    manifestPath = join(directory, 'node_modules', packageName, 'package.json')
+  }
+  if (!existsSync(manifestPath)) fail(packageName + ' is not installed. Run npm install.')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  const entry = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin[command]
+  // In a mnci workspace the typescript package is the TS 6 compiler, whose bin is tsc6 (tsc there is TS 7's, from another package).
+  const entry = typeof manifest.bin === 'string' ? manifest.bin : (manifest.bin[command] ?? manifest.bin[command + '6'])
 
   return join(dirname(manifestPath), entry)
 }
@@ -186,6 +205,15 @@ function packageExtension (projectRoot, manifest, sidecar) {
   }
 }
 
+function integrationTests (projectRoot) {
+  // Electron aborts with a crash dump when there is no display; say what to do instead.
+  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    fail('VS Code needs a display to run its integration tests and this machine has none. On headless Linux run it under a virtual one: xvfb-run -a npx nx run ' + project + ':test:integration')
+  }
+  run('typescript', 'tsc', ['-p', join(projectRoot, 'integration', 'tsconfig.json')])
+  run('@vscode/test-cli', 'vscode-test', [], { cwd: projectRoot })
+}
+
 function publishExtension (manifest, sidecar, dryRun) {
   if (dryRun) {
     console.log('Dry run - would publish ' + vsixFiles(project, sidecar).join(', ') + ' to the Marketplace.')
@@ -208,7 +236,7 @@ function publishExtension (manifest, sidecar, dryRun) {
 const [command, projectRoot, ...rest] = process.argv.slice(2)
 const sidecarIndex = rest.indexOf('--sidecar')
 const sidecar = sidecarIndex === -1 ? undefined : rest[sidecarIndex + 1]
-if (!projectRoot || !existsSync(join(projectRoot, 'package.json'))) fail('Usage: node tools/vscode-extension.cjs package|publish <project root> [--sidecar <go-app>]')
+if (!projectRoot || !existsSync(join(projectRoot, 'package.json'))) fail('Usage: node tools/vscode-extension.cjs package|publish|integration <project root> [--sidecar <go-app>]')
 const manifest = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
 // Packages are named after the project folder, never the manifest name, which is
 // free to change (the Marketplace id need not match the folder).
@@ -216,9 +244,23 @@ const project = basename(resolve(projectRoot))
 // nx release --dry-run hands the publish target --dryRun=true and sets NX_DRY_RUN
 // (measured on Nx 23), so a dry run never reaches the Marketplace, token or not.
 const dryRun = rest.some(argument => /^--dry-?run(?:=true)?$/i.test(argument)) || process.env.NX_DRY_RUN === 'true'
-if (command === 'package') packageExtension(projectRoot, manifest, sidecar)
-else if (command === 'publish') publishExtension(manifest, sidecar, dryRun)
-else fail('Unknown command ' + command + ' - expected package or publish.')
+switch (command) {
+  case 'package': {
+    packageExtension(projectRoot, manifest, sidecar)
+    break
+  }
+  case 'publish': {
+    publishExtension(manifest, sidecar, dryRun)
+    break
+  }
+  case 'integration': {
+    integrationTests(projectRoot)
+    break
+  }
+  default: {
+    fail('Unknown command ' + command + ' - expected package, publish or integration.')
+  }
+}
 `
 
 /**
@@ -233,6 +275,10 @@ else fail('Unknown command ' + command + ' - expected package or publish.')
  */
 export const VSCODE_IGNORE = `src/**
 test/**
+integration/**
+out-integration/**
+.vscode-test/**
+.vscode-test.mjs
 out-tsc/**
 test-output/**
 **/*.map
@@ -392,8 +438,10 @@ function ensureVscodeToolchain (workspaceRoot: string): void {
   // floating version — npm no-ops when it is already at the floor. @vscode/vsce has no such
   // trap, so it is installed only when missing.
   const toInstall = [`@types/vscode@~${VSCODE_ENGINE_FLOOR}`]
-  if (!hasPlugin(workspaceRoot, '@vscode/vsce')) {
-    toInstall.push('@vscode/vsce')
+  for (const tool of ['@vscode/vsce', ...VSCODE_INTEGRATION_PACKAGES]) {
+    if (!hasPlugin(workspaceRoot, tool)) {
+      toInstall.push(tool)
+    }
   }
   logger.step(`Installing the VS Code extension toolchain (${toInstall.join(', ')})`)
   if (runShell('npm', ['install', '--save-dev', ...toInstall, '--no-audit', '--no-fund'], workspaceRoot) !== 0) {
@@ -777,7 +825,12 @@ export function addVscodeExtension (
   mapVscodeToStub(projectRoot, stack.testRunner)
   writeFileEnsured(join(projectRoot, '.vscodeignore'), VSCODE_IGNORE)
   writeFileEnsured(join(workspaceRoot, VSCODE_EXTENSION_SCRIPT_PATH), VSCODE_EXTENSION_SCRIPT)
+  writeFileEnsured(join(projectRoot, VSCODE_INTEGRATION_DIRECTORY, 'extension.integration.ts'), vscodeIntegrationSample(name))
+  writeFileEnsured(join(projectRoot, VSCODE_INTEGRATION_DIRECTORY, 'tsconfig.json'), vscodeIntegrationTsconfig())
+  writeFileEnsured(join(projectRoot, '.vscode-test.mjs'), vscodeTestConfig())
+  writeFileEnsured(join(projectRoot, '.gitignore'), `/.vscode-test/\n/${VSCODE_INTEGRATION_OUTPUT}/\n`)
   addNxTargets(join(projectRoot, 'package.json'), {
+    'test:integration':   vscodeIntegrationTarget(name),
     'package':            vscodeExtensionPackageTarget(name, sidecar),
     'nx-release-publish': vscodeExtensionPublishTarget(name, sidecar),
   })

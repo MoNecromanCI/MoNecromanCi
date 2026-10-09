@@ -190,7 +190,13 @@ committing an upgrade.
 - **Released from `apps/` by tag** (#229): `release.projects` and `preVersionCommand`
   carry `tag:type:vscode-extension`, and the CI release guard counts tagged `apps/*`
   manifests, or an extension-only workspace would log "Nothing to release" for ever.
-- Integration tests through `@vscode/test-cli` are #244.
+- **Integration tests (#244)**: `mnci add vscode-extension` writes `integration/extension.integration.ts` (outside `src`, which the slice lint rejects), its own
+  `integration/tsconfig.json` (CommonJS, into `out-integration/`), `.vscode-test.mjs` and a `test:integration` target (`dependsOn: build`, not cached, **not in the verify
+  list**, so a PR never downloads VS Code). `node tools/vscode-extension.cjs integration apps/<name>` compiles the tests and runs `vscode-test`, which downloads a real VS Code
+  into `.vscode-test/` on first use (~100 MB) and runs mocha (tdd) inside it. Measured on Windows: the window opens and the sample test passes. Without a display on Linux it
+  fails naming `xvfb-run -a npx nx run <name>:test:integration` (checked before Electron starts). `@vscode/test-cli`, `@vscode/test-electron`, `mocha` and `@types/mocha` are root
+  dev tools. The script finds `@vscode/test-cli` by walking `node_modules`, because that package's `exports` hides `package.json` from `require.resolve`. Not covered: giving an
+  extension made before this the files (`mnci upgrade` refreshes the script only).
 
 ### C# (third-party plugin, inference-only)
 
@@ -489,6 +495,15 @@ reach the same logic without going through scaffolding) and re-applied on `mnci 
   with a passing `echo`, which is otherwise invisible to CI. Absences must be
   recorded in `ABSENT_BY_DESIGN` with a reason.
 
+### Vertical slices are on by default, in every language (#232)
+
+`@mnci/eslint-config` enables `mnci/vertical-slices` unless `verticalSlices: false` is passed (`index.js`), so a workspace is checked from its first commit and an
+existing one meets the rules on its next `@mnci/eslint-config` update: **deliberately screaming**, not gated. The block is in `ESLINT_BLOCK_INVENTORY`. Go has the counterpart
+as a `slice-check` target (`go-slice-check/`, script `tools/go-slice-check.cjs`, rewritten by `mnci upgrade`) that every Go project's `lint` depends on: a file is
+`<snake>_<role>.go` (tests `_test`, optional GOOS/GOARCH suffixes), only `doc.go` and `main.go` sit at a module's root, and no folder is `util`/`helper`/`common`/`shared`/
+`manager`/`processor`/`data`/`misc`. `mnci upgrade` (`addGoSliceChecks`) adds the target to existing Go projects. `--web` apps keep their embed in a `webui/` slice
+(`web_handler.go`) so the root holds `main.go` alone. Not covered: C#, Flutter and Python, which still have no slice lint.
+
 ### Opinionated scaffolds: the generator's `src/` becomes a slice (#290)
 
 mnci replaces the Nx generator's default `src/` shape with the vertical-slice one, so
@@ -517,7 +532,7 @@ barrel, re-exported by `lib/<pkg>.dart`, with its test mirrored under `test/src/
 Flutter app keeps `flutter create`'s own counter sample. The Go kinds (`go-example.algorithm.ts`) get a `Greeting` struct and `Greet` in a
 library's starter slice (the use case keeps its `<stem>_use_case.go` name, which the e2e's
 `affected` checks use) and, for apps, a `hello` package behind a `main.go` that only wires
-(skipped under `--web`, which replaces `main.go`). No slice lint covers C#, Flutter or Go (#232), so their layout is
+(skipped under `--web`, which replaces `main.go`). No slice lint covers C# or Flutter (#232; Go has `slice-check`), so their layout is
 not enforced anywhere. Still open on
 #290 (see #330): `--empty` for the kinds other than the
 TypeScript libraries and `node-function-app`, and e2e assertions for the skeletons.
