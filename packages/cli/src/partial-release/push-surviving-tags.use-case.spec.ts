@@ -26,6 +26,7 @@ describe('pushSurvivingTags', () => {
     expect(pushSurvivingTags(FAILED, processes, message => { logged.push(message) })).toBe(1)
 
     expect(ran).toEqual(['git push origin refs/tags/@auto/a@1.0.1'])
+    expect(logged.join('\n')).toContain('Failed to publish 1 project(s): @auto/mysql.')
     expect(logged.join('\n')).toContain('Held back 1 tag(s) - @auto/mysql@0.0.6')
   })
 

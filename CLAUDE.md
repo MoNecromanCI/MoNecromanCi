@@ -436,8 +436,8 @@ workspace before it was written, and a kind appears only where it was:
 - `react-app`: `build:dev` = `nx run <name>:build-dev`, `dev` = `nx run <name>:serve` (Vite's dev server).
 - `go-app`: a `build-dev` target (`go build "-gcflags=all=-N -l"` into `dist/dev/apps/<name>`, the flag quoted INSIDE the
   command string because `nx:run-commands` hands it to a shell, which would split the space; `go version -m` on the result
-  shows it) and its `build:dev` script. No `dev`: it needs `air`, which mnci does not install. `mnci upgrade` does not yet add
-  the target to an existing Go app.
+  shows it) and its `build:dev` script. No `dev`: it needs `air`, which mnci does not install. `mnci upgrade` adds the target to an existing
+  go-app (cgo included, never over one the team wrote); the root `<name>:build:dev` script is only written by `mnci add`.
 
 Still unbuilt: Python (`watchmedo auto-restart` restarts on every subprocess exit unless given `--no-restart-on-command-exit`,
 and needs `watchdog`), and C# (`dotnet build`/`run` already default to `Debug`, the opposite of the JS convention, so changing

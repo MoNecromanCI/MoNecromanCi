@@ -36,6 +36,7 @@ export function pushSurvivingTags (output: string, processes: TagPushProcesses, 
   if (failed.length === 0) {
     return 0
   }
+  log(`Failed to publish ${failed.length} project(s): ${failed.join(', ')}.`)
   const listed = processes.capture('git', ['tag', '--points-at', 'HEAD'])
   const tags = listed.stdout.split(/\r?\n/).map(tag => tag.trim()).filter(tag => tag !== '')
   if (listed.status !== 0 || tags.length === 0) {
