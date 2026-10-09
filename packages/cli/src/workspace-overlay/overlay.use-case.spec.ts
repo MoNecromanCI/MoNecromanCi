@@ -2956,6 +2956,23 @@ describe('applyOverlay', () => {
     expect(builds[0].stale).toBeUndefined()
   })
 
+  it('merges launch configs by exact name, so a per-project entry mnci add wrote survives an upgrade (#230)', () => {
+    // The old prefix match deleted every `mnci: ` entry, which is exactly what the per-project ones are called.
+    const perProject = { type: 'node-terminal', request: 'launch', name: 'mnci: web start', command: 'npm run web:start' }
+    const workspace = JSON.parse(
+      vscodeWorkspace('demo', undefined, {
+        version:        '0.2.0',
+        configurations: [perProject, { name: 'mnci: lint', stale: true }],
+      }),
+    ) as { launch: { configurations: Record<string, unknown>[] } }
+
+    expect(workspace.launch.configurations).toContainEqual(perProject)
+    expect(workspace.launch.configurations.filter(configuration => configuration.name === 'mnci: lint')).toHaveLength(1)
+    expect(workspace.launch.configurations.map(configuration => configuration.name)).toEqual(
+      expect.arrayContaining(['mnci: build', 'mnci: test', 'mnci: lint', 'mnci: typecheck']),
+    )
+  })
+
   it('deletes every formatter config a past mnci version could have written', () => {
     // Load-bearing, not tidying, and the reason is that these files are INERT
     // from the command line — nothing runs Prettier or oxfmt any more. That is

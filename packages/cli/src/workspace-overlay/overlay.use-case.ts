@@ -1866,10 +1866,10 @@ export function vscodeSettings (): Record<string, unknown> {
  * Prefix marking a launch configuration as mnci-owned.
  *
  * @remarks
- * `vscodeWorkspace` replaces every configuration carrying this prefix and carries
- * every other one through untouched, so a hand-written debug config survives
- * `mnci upgrade`. Renaming it would orphan the previous generation's entries,
- * leaving a workspace with two of each.
+ * Every configuration mnci writes carries it, so a person can tell them from their own at a glance. It is NOT
+ * what `vscodeWorkspace` merges on: that replaces mnci's workspace-level entries by their exact name and carries
+ * every other configuration through, including the per-project `mnci: <project> start` entries
+ * `registerProjectCommands` writes. A prefix match deleted those on every `mnci upgrade` (#230).
  */
 export const LAUNCH_CONFIG_PREFIX = 'mnci: '
 
@@ -1928,6 +1928,32 @@ export function launchConfigurations (workspaceName: string): Record<string, unk
 }
 
 /**
+ * The launch configuration for one project's `start` script.
+ *
+ * @remarks
+ * Written by `registerProjectCommands` for every kind that has a `start`, and merged by its exact name
+ * (`mnci: <project> start`) so adding a second project, or an upgrade, replaces only this entry. It drives the
+ * workspace's own `<project>:start` npm script, like the workspace-level entries, and uses `node-terminal` for the
+ * same reason: `start` runs through `nx run`, which spawns the program as a child process.
+ *
+ * @param workspaceName - The VS Code folder name, used to scope `${workspaceFolder}`.
+ * @param projectName - The Nx project name.
+ * @returns One launch configuration.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function projectLaunchConfiguration (workspaceName: string, projectName: string): Record<string, unknown> {
+  return {
+    type:         'node-terminal',
+    request:      'launch',
+    name:         `${LAUNCH_CONFIG_PREFIX}${projectName} start`,
+    command:      `npm run ${projectName}:start`,
+    cwd:          `\${workspaceFolder:${workspaceName}}`,
+    presentation: { group: 'mnci projects' },
+  }
+}
+
+/**
  * VS Code workspace file template for generated monorepos.
  *
  * @remarks
@@ -1969,12 +1995,13 @@ export function vscodeWorkspace (
   existingLaunch?: { version?: string; configurations?: Record<string, unknown>[] },
   existingSettings?: Record<string, unknown>,
 ): string {
-  // Additive, like nx.json's sharedGlobals: mnci replaces only the configurations it
-  // owns (named `mnci: *`) and carries every other one through, so a hand-written
-  // debug config survives `mnci upgrade`. Tasks are carried through wholesale
-  // instead, because `mnci add` — not the overlay — is what writes them.
+  // Additive, like nx.json's sharedGlobals: mnci replaces only the configurations it owns, by EXACT name, and
+  // carries every other one through. That keeps a hand-written debug config AND the per-project entries `mnci add`
+  // wrote (`mnci: <project> start`), which the old prefix match deleted on every upgrade (#230). Tasks are carried
+  // through wholesale instead, because `mnci add` — not the overlay — is what writes them.
+  const ownedNames = new Set(launchConfigurations(workspaceName).map(configuration => configuration.name))
   const userConfigurations = (existingLaunch?.configurations ?? []).filter(
-    (configuration) => !String(configuration.name ?? '').startsWith(LAUNCH_CONFIG_PREFIX),
+    (configuration) => !ownedNames.has(configuration.name),
   )
   // Settings are MERGED, with mnci winning on the keys it owns. Replacing them
   // wholesale destroyed every setting a workspace had added for itself — measured on

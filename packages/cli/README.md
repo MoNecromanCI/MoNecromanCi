@@ -455,6 +455,10 @@ also gets four launch configurations, one per verify target:
 | `mnci: lint` | `npm run lint` |
 | `mnci: typecheck` | `npm run typecheck` |
 
+Every project that has a `start` script (`mnci add` of an app kind) also gets its own configuration,
+`mnci: <project> start`, which runs `npm run <project>:start`. These sit in a separate `mnci projects` group
+in the dropdown.
+
 Three details are load-bearing rather than incidental:
 
 - **`type: node-terminal`, not `node`.** `nx run-many` executes every target in a
@@ -739,11 +743,13 @@ back and carried through unchanged**. Those tasks are per-project state written 
 `mnci add`, not overlay-owned, so regenerating them wholesale would wipe every
 project's build/qa/start entry on upgrade.
 
-The `launch` array is handled differently again — **merged, not carried through**.
-mnci owns the four `mnci: *` configurations and replaces them, while any
-configuration you added yourself survives. The asymmetry is deliberate: tasks are
-written by `mnci add` and the overlay has no idea which projects exist, whereas the
-launch entries are entirely overlay-authored and should track an upgrade.
+The `launch` array is handled differently again — **merged by exact name, not carried through**.
+The overlay replaces only the four workspace-level configurations it owns (`mnci: build`, `test`, `lint`,
+`typecheck`); `mnci add` replaces only its own project's `mnci: <project> start`. Everything else survives an
+upgrade: configurations you wrote, and the entries of every other project. (Matching on the `mnci: ` prefix
+instead deleted the per-project entries on every upgrade.) The asymmetry with tasks is that the four
+workspace-level entries are entirely overlay-authored and should track an upgrade, whereas per-project state is
+written by `mnci add`, which the overlay cannot see.
 
 `upgrade` also **deletes** things, which is stronger than the overwriting it
 has always done — one more reason to run `git diff` first, as the command's own

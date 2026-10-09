@@ -287,6 +287,15 @@ describe('reshapeReactAppScaffold', () => {
   })
 })
 
+/** The names of the launch configurations in the demo workspace file. */
+function launchNames (): string[] {
+  const file = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as {
+    launch: { configurations: { name: string }[] }
+  }
+
+  return file.launch.configurations.map(configuration => configuration.name)
+}
+
 describe('registerProjectCommands', () => {
   it('always writes <name>:qa, and <name>:build/:start only when the kind has them', () => {
     registerProjectCommands(workspaceRoot, 'lib', { build: true })
@@ -328,6 +337,49 @@ describe('registerProjectCommands', () => {
     expect(Object.keys(scripts()).filter(key => key.startsWith('web:'))).toHaveLength(3)
     expect(scripts()['web:build']).toBe('nx run web:build')
     expect(scripts()['web:start']).toBe('nx run web:serve')
+  })
+
+  describe('the per-project launch entry (#230)', () => {
+    beforeEach(() => {
+      writeFileSync(join(workspaceRoot, 'demo.code-workspace'), JSON.stringify({ folders: [{ path: '.', name: 'demo' }], tasks: { version: '2.0.0', tasks: [] } }))
+    })
+
+    it('adds one for a project with a start script, driving that script from the workspace folder', () => {
+      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
+
+      const file = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as { launch: { version: string, configurations: unknown[] } }
+
+      expect(file.launch.version).toBe('0.2.0')
+      expect(file.launch.configurations).toEqual([
+        expect.objectContaining({ type: 'node-terminal', request: 'launch', name: 'mnci: web start', command: 'npm run web:start', cwd: '${workspaceFolder:demo}' }),
+      ])
+    })
+
+    it('adds none for a library or any project without a start script', () => {
+      registerProjectCommands(workspaceRoot, 'lib', { build: true })
+
+      expect(launchNames()).toEqual([])
+    })
+
+    it("replaces a project's own entry by name on a repeat call, and leaves the others and hand-written ones alone", () => {
+      const mine = { type: 'node', request: 'launch', name: 'debug my thing' }
+      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
+      registerProjectCommands(workspaceRoot, 'api', { build: true, start: 'nx run api:start' })
+      const file = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as { launch: { configurations: unknown[] } }
+      file.launch.configurations.push(mine)
+      writeFileSync(join(workspaceRoot, 'demo.code-workspace'), JSON.stringify(file))
+
+      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
+
+      expect(launchNames().toSorted((a, b) => a.localeCompare(b))).toEqual(['debug my thing', 'mnci: api start', 'mnci: web start'])
+    })
+
+    it('removes the entry when a project no longer has a start script', () => {
+      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
+      registerProjectCommands(workspaceRoot, 'web', { build: true })
+
+      expect(launchNames()).toEqual([])
+    })
   })
 
   it('skips the VS Code half entirely when no .code-workspace file exists', () => {
@@ -472,7 +524,12 @@ describe('registerProjectCommands', () => {
     expect(after.folders).toEqual(before.folders)
     expect(after.settings).toEqual(before.settings)
     expect(after.extensions).toEqual(before.extensions)
-    expect(after.launch).toEqual(before.launch)
+    // The launch array is `add`'s only in one entry, the new project's own (#230): every configuration that was
+    // there, the hand-written one included, is still there unchanged and in order.
+    expect(after.launch).toEqual({
+      ...before.launch,
+      configurations: [...before.launch.configurations, expect.objectContaining({ name: 'mnci: web start' })],
+    })
     // The one key `add` does own: the existing project's tasks survive, and
     // the new project's are appended, not substituted for them.
     expect(after.tasks.tasks.map(t => t.label)).toEqual([

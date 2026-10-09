@@ -395,36 +395,36 @@ Nx plugin where none does:
   guards, which key on the job's own working directory and would never fire against
   the e2e's temp-directory workspaces.
 
-### Uniform `build` / `build:dev` / `start` / `dev` scripts, plus per-project launch configs
+### Per-project scripts and launch configs (#230)
 
-Every app kind (never a plain library) carries all four npm scripts and a matching
-VS Code `launch` entry, written by `registerProjectCommands`
-(`project-scaffolding/post-generation.use-case.ts`) at the end of every `mnci add`:
+`registerProjectCommands` (`project-scaffolding/post-generation.use-case.ts`) runs at the end of every
+`mnci add` and writes, per project:
 
-- **`build`** — production.
-- **`build:dev`** — carries whatever debug info the toolchain distinguishes (source
-  maps, unoptimized codegen, debug symbols); omitted where a language has nothing to
-  distinguish (e.g. Flutter's `build-dev` still exists because of an upstream bug
-  workaround, but Flutter ships no `start` — no static file server for a built web
-  bundle).
-- **`start`** — runs what `build` already produced. No rebuild, no watch.
-- **`dev`** — builds a debug version and watches, rebuilding/restarting on change.
-- Each toolchain needed a different underlying mechanism: Node's `@nx/js:node`
-  `buildTarget` needs the manifest's real scoped name (found by running it, not by
-  reading the executor's schema); Go and `air` shell out via `execSync`, so
-  `-gcflags=all=-N -l` needs the space quoted **inside** the flag string to survive
-  the shell join; Python's `watchmedo auto-restart` restarts on every subprocess
-  exit by default, so `--no-restart-on-command-exit` is load-bearing; C#'s
-  `dotnet build`/`run` default to `Debug` (opposite of the JS convention here), so
-  `build`/`build:dev` are explicit `-c Release`/`-c Debug`.
-- `.code-workspace` launch configs use `node-terminal` (not `node`) so breakpoints
-  bind inside `nx run-many`'s child processes, drive `npm run <script>` (never a
-  path into `node_modules`, which is version-dependent), and scope `cwd` by folder
-  **name** (`${workspaceFolder:<name>}`). The launch array is merged on upgrade by
-  exact name match (`mnci: <name> dev`, not a `startsWith` prefix, which would
-  delete every per-project entry on the next `mnci upgrade`).
-- A future `cli-lib` kind (publishable package that is also invoked like an app)
-  would need the app treatment; deferred, since the kind doesn't exist yet.
+- **`<name>:qa`** (lint and test), **`<name>:build`** (a kind with a `build` target) and **`<name>:start`**
+  (a kind with a local run story: what `nx run <name>:start` or `:serve` does) as root npm scripts, plus a VS Code
+  task for each.
+- **A launch configuration `mnci: <name> start`** for every project that has a `start`: `node-terminal`
+  (not `node`, so breakpoints bind inside `nx run`'s child processes), driving `npm run <name>:start` (never a
+  path into `node_modules`, which is version-dependent), with `cwd` scoped by folder **name**
+  (`${workspaceFolder:<name>}`).
+- **The launch array is merged by exact name**, both ways: `registerProjectCommands` replaces only its own
+  project's entry, and `vscodeWorkspace` (the overlay, on `mnci upgrade`) replaces only the four workspace-level
+  entries (`mnci: build|test|lint|typecheck`). Every other entry survives: a hand-written one, and every other
+  project's. The old `startsWith('mnci: ')` match deleted the per-project entries on each upgrade.
+- What `start` is differs by kind, and nothing yet makes it uniform: React and Node apps map it to `serve` (a
+  dev server that rebuilds), Go, Python and C# map it to running what `build` produced, and Flutter has none.
+
+**Not built yet (tracked in #230): `<name>:build:dev` and `<name>:dev`** for the app kinds. The intended meaning is
+`build:dev` = a build that carries whatever debug info the toolchain distinguishes (source maps, unoptimised
+codegen, debug symbols), and `dev` = build that and watch, rebuilding or restarting on change. The mechanics
+differ per toolchain and each needs measuring before it is written: Node's `@nx/js:node` `buildTarget` needs the
+manifest's real scoped name; Go's `air` shells out via `execSync`, so `-gcflags=all=-N -l` needs its space quoted
+**inside** the flag string; Python's `watchmedo auto-restart` restarts on every subprocess exit unless given
+`--no-restart-on-command-exit`; C#'s `dotnet build`/`run` default to `Debug` (opposite of the JS convention), so
+`build`/`build:dev` would be explicit `-c Release`/`-c Debug`. Until then `mnci dev` runs each project's `start`.
+
+A future `cli-lib` kind (publishable package that is also invoked like an app) would need the app treatment;
+deferred, since the kind doesn't exist yet.
 
 ### Rollup npm libraries: source maps and declaration files
 
