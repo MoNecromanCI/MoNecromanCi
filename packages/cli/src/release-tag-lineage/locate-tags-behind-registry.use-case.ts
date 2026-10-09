@@ -37,5 +37,7 @@ export function locateTagsBehindRegistry (
     return []
   }
 
-  return versionsBehindRegistry(tagged, lookup(workspaceRoot, tagged.keys().toArray()))
+  const names = projects.filter(project => tagged.has(project))
+
+  return versionsBehindRegistry(tagged, lookup(workspaceRoot, names))
 }
