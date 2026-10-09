@@ -198,6 +198,43 @@ function reactScaffold (): void {
   writeFileSync(join(library(), 'src/index.ts'), lines("export * from './lib/utils'"))
 }
 
+describe('renameScaffoldPlaceholder in an ES module package (#410)', () => {
+  // On Nx 23.3.0 a library's exports carry the workspace's source condition, so an app resolves the library's
+  // TypeScript SOURCE and compiles it under its own `nodenext` rules, which require explicit extensions in an ES
+  // module (TS2834). The rollup scaffold writes none, so the package being "type": "module" is what decides.
+  it('writes .js specifiers when the package is "type": "module", though the scaffold wrote none', () => {
+    scaffold('')
+    writeFileSync(join(library(), 'package.json'), JSON.stringify({ name: '@demo/utils', type: 'module' }))
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    expect(read('src/utils/index.ts')).toBe("export * from './utils.contract.js'\nexport * from './utils.use-case.js'\n")
+    expect(read('src/utils/utils.use-case.ts')).toContain("from './utils.contract.js'")
+    expect(read('src/utils/utils.use-case.spec.ts')).toContain("from './utils.use-case.js'")
+    expect(read('src/index.ts')).toBe("export * from './utils/index.js'\n")
+  })
+
+  it('stays extensionless when the package is not an ES module, or has no manifest', () => {
+    scaffold('')
+    writeFileSync(join(library(), 'package.json'), JSON.stringify({ name: '@demo/utils' }))
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    expect(read('src/index.ts')).toBe("export * from './utils'\n")
+    expect(read('src/utils/index.ts')).toBe("export * from './utils.contract'\nexport * from './utils.use-case'\n")
+  })
+
+  it('writes explicit .js specifiers that all resolve to files that exist', () => {
+    scaffold('')
+    writeFileSync(join(library(), 'package.json'), JSON.stringify({ type: 'module' }))
+
+    renameScaffoldPlaceholder(library(), 'utils')
+
+    expect(resolves('src/index.ts', specifierIn('src/index.ts'))).toBe(true)
+    expect(resolves('src/utils/utils.use-case.ts', specifierIn('src/utils/utils.use-case.ts'))).toBe(true)
+  })
+})
+
 describe('renameScaffoldPlaceholder --empty', () => {
   it('leaves the slice folder with only a barrel, and the package barrel pointing at it', () => {
     scaffold('')

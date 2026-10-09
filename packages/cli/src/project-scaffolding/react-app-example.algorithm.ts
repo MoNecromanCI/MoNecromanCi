@@ -113,3 +113,28 @@ test('shows the greeting', async ({ page }) => {
 })
 `
 }
+
+/**
+ * Adds the Node types to a Playwright project's `tsconfig.json`.
+ *
+ * @remarks
+ * `playwright.config.mts` reads `process` and `import.meta.dirname`, which only `@types/node` declares. TypeScript 6
+ * and 7 include no `@types` package unless `types` names it, and Nx 23.3.0's base config no longer sets
+ * `types: ["*"]` for every project, so the project's typecheck failed with TS2591 (#410). Existing `types` are kept.
+ *
+ * @param tsconfig - The text of the project's `tsconfig.json`.
+ * @returns The same configuration with `node` among `compilerOptions.types`, as formatted JSON; the text itself
+ * when it is not plain JSON, since a file that cannot be read is better left alone than overwritten.
+ * @throws Never - unreadable text comes back unchanged.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function withNodeTypes (tsconfig: string): string {
+  try {
+    const parsed = JSON.parse(tsconfig) as { compilerOptions?: { types?: string[] } } & Record<string, unknown>
+    const types = [...new Set([...(parsed.compilerOptions?.types ?? []), 'node'])]
+
+    return `${JSON.stringify({ ...parsed, compilerOptions: { ...parsed.compilerOptions, types } }, undefined, 2)}\n`
+  } catch {
+    return tsconfig
+  }
+}
