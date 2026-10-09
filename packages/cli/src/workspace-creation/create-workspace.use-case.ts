@@ -16,6 +16,7 @@ import { assertValidProjectName } from '../project-name'
 import { PROJECT_KINDS } from '../project-scaffolding'
 import { applyPreset, findPreset } from '../workspace-presets'
 import { adoptGeneratedWorkspace, assertAdoptableDirectory } from './adopt-directory.use-case'
+import { removeGeneratedPipelines } from './remove-generated-pipelines.use-case'
 
 /**
  * Options accepted by {@link runNew}.
@@ -267,6 +268,9 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
       ],
       stagingParent,
     )
+    // mnci writes the pipeline itself. Nx's own would be merged as a legacy file: its steps kept as the team's, and
+    // pack and release switched off for good.
+    removeGeneratedPipelines(workspaceRoot)
 
     if (adoptTarget !== undefined) {
       logger.step(`Adopting ${adoptTarget} (keeping its .git)`)
