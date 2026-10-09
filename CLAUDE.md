@@ -887,6 +887,14 @@ projects, so a retry does not re-propose, and fail on, every version that did pu
 named. A tag that does not name its project (a shared `v1.2.3`) cannot be attributed, so then nothing is pushed. The run still
 fails. The output names the failed projects. `mnci adopt --tags` asks the registry (`npm view`, so the workspace's `.npmrc` decides where) for each baselined project and warns, with the `git tag` that fixes it, when the feed already holds a version above the baseline: a feed never takes a version twice. `mnci doctor` makes the same comparison for every tagged publishable package (`checkTagsMatchRegistry`, the one check that calls out; an unreachable registry or unknown package is not a finding, and an untagged package is not looked up). Not covered: the GitHub Release for those packages, a registry that refuses a version it was told to skip.
 
+### Release asset names (#317)
+
+`tools/go-app-release.cjs assets` renames each zip as it attaches it, from the app's `project.json` `release.asset` (`name` template with
+`{product}`/`{version}`/`{os}`/`{arch}`/`{ext}`, `product`, `osAlias`, `archAlias`, and `extra: [{ target, files }]` for files an app's own
+target builds, such as a `.dmg`). It copies to `dist/release-assets/<app>/` and uploads from there, so `package-all`/`package-native` and their
+cache keys are untouched. Measured with a fake `gh` in a scratch workspace. Not covered: validating the config in `mnci doctor`, and the
+`mnci` pipelines' own steps (they only call the script).
+
 ### A commit can force a version (#283)
 
 `version(<project>)[<version>]: <message>` (aliases in `version-directives/`) is read by `mnci ci release`: `locateVersionDirectives`
