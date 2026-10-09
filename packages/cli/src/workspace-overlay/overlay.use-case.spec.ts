@@ -33,6 +33,7 @@ import {
   githubActionsYaml,
   hasNativeGoApp,
   isUnmodifiedMnciEslintConfig,
+  mergeOverrides,
   mnciConfig,
   NODE_VERSION,
   NPM_VERSION,
@@ -2449,6 +2450,26 @@ describe('applyOverlay', () => {
     expect(manifest.devDependencies.nx).toBe('23.0.0')
   })
 
+  it('keeps a key the workspace added inside an override mnci also writes, and refreshes the ones mnci owns (#421)', () => {
+    // Found upgrading a real workspace: its `overrides.nx` carried an extra `undici` pin. A spread replaced the whole
+    // `nx` object with mnci's, so the pin vanished and a high advisory came back.
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: 'x', overrides: { nx: { 'brace-expansion': '^5.0.1', 'undici': '^7.29.1' } } }),
+    )
+    overlayWith(DEFAULT_STACK)
+
+    const { overrides } = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+      overrides: Record<string, Record<string, string>>
+    }
+
+    expect(overrides.nx.undici).toBe('^7.29.1')
+    // mnci's own pins win on conflict, so the upgrade still brings them up to date.
+    expect(overrides.nx['brace-expansion']).toBe('^5.0.9')
+    expect(overrides.nx['smol-toml']).toBe('^1.7.1')
+    expect(overrides.nx.axios).toBe('^1.20.0')
+  })
+
   it("merges overrides rather than replacing a workspace's own", () => {
     // A user's `overrides` block is theirs; `mnci upgrade` must not delete it.
     writeFileSync(
@@ -2564,6 +2585,46 @@ describe('applyOverlay', () => {
     for (const [name, text] of [['devcontainer', devcontainer], ['github', github], ['azure', azure]]) {
       expect({ file: name, latest: /@latest|"latest"|: latest\b|version:\s*'latest'/.test(text) }).toEqual({ file: name, latest: false })
     }
+  })
+
+  it('keeps an ESLint entry point that imports the package directly, and says how to use the generated file (#422)', () => {
+    const config = "import mnci from '@mnci/eslint-config'\nexport default [...mnci({ workspaceRoot: import.meta.dirname, verticalSlices: [] })]\n"
+    writeFileSync(join(workspaceRoot, 'eslint.config.mjs'), config)
+    const progress: string[] = []
+
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'azure',
+      stack:         DEFAULT_STACK,
+    }, (line) => { progress.push(line) })
+
+    expect(readFileSync(join(workspaceRoot, 'eslint.config.mjs'), 'utf8')).toBe(config)
+    const text = progress.join(' | ')
+
+    expect(text).toContain('eslint.config.mjs — kept as it is')
+    expect(text).toContain('imports @mnci/eslint-config directly, which still works')
+    expect(text).toContain("change that import's specifier to './eslint.config.mnci.mjs'")
+  })
+
+  it('says nothing extra for an entry point that already imports the generated file', () => {
+    writeFileSync(join(workspaceRoot, 'eslint.config.mjs'), "import mnci from './eslint.config.mnci.mjs'\nexport default [...mnci()]\n")
+    const progress: string[] = []
+
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'azure',
+      stack:         DEFAULT_STACK,
+    }, (line) => { progress.push(line) })
+
+    expect(progress.join(' | ')).not.toContain('directly')
   })
 
   it('writes .devcontainer/devcontainer.json, so a local environment can match CI', () => {
@@ -3080,15 +3141,24 @@ describe('applyOverlay', () => {
     // outdated" when an agent has both an MCP config and rules present, so a
     // PARTIAL delete leaves every `nx` command printing it forever.
     // `.github/agents` and `.github/prompts` are the two easiest to miss.
+    // The real names and contents `create-nx-workspace` 23.3.0 writes (measured). Removal is per entry now, by
+    // Nx's names and, for the config files, by their holding nothing but Nx's entries (#423), so a made-up name
+    // would rightly read as a team's own file.
+    const nxContents: Record<string, string> = {
+      '.claude/settings.json': JSON.stringify({ extraKnownMarketplaces: { 'nx-claude-plugins': {} }, enabledPlugins: { 'nx@nx-claude-plugins': true }, sandbox: { network: { allowedDomains: ['www.google-analytics.com'] } } }),
+      '.codex/config.toml':    '[mcp_servers.nx-mcp]\ncommand = "npx"\n\n[features]\nmulti_agent = true\n',
+      '.gemini/settings.json': JSON.stringify({ mcpServers: { 'nx-mcp': {} }, contextFileName: 'AGENTS.md' }),
+      'opencode.json':         JSON.stringify({ mcp: { 'nx-mcp': {} } }),
+    }
     const scaffolding = [
       '.agents/skills/monitor-ci/scripts/ci-poll-decide.mjs',
       '.claude/settings.json',
       '.codex/config.toml',
-      '.cursor/rules.md',
+      '.cursor/skills/nx-workspace/SKILL.md',
       '.gemini/settings.json',
       '.opencode/skills/monitor-ci/scripts/ci-state-update.mjs',
-      '.github/agents/nx.md',
-      '.github/prompts/nx.md',
+      '.github/agents/ci-monitor-subagent.agent.md',
+      '.github/prompts/monitor-ci.prompt.md',
       '.github/skills/monitor-ci/scripts/ci-poll-decide.mjs',
       'AGENTS.md',
       'CLAUDE.md',
@@ -3100,7 +3170,7 @@ describe('applyOverlay', () => {
       // where they are, so the fixture has to be what Nx actually writes -
       // its rules wrapped in the marker comments. The tests below cover the
       // hand-written cases that distinction exists for.
-      writeFileSync(join(workspaceRoot, file), NX_AGENT_RULES_FIXTURE)
+      writeFileSync(join(workspaceRoot, file), nxContents[file] ?? NX_AGENT_RULES_FIXTURE)
     }
 
     overlayWith(DEFAULT_STACK)
@@ -3120,6 +3190,46 @@ describe('applyOverlay', () => {
     // one with the real files present.
     expect(existsSync(join(workspaceRoot, '.github'))).toBe(true)
     expect(existsSync(join(workspaceRoot, 'azure-pipelines.yml'))).toBe(true)
+  })
+
+  it('says what it removed and what it kept, and leaves a team\'s own agent files in place (#423)', () => {
+    // Found upgrading a real workspace: three files vanished and the upgrade named none of them.
+    const files: Record<string, string> = {
+      '.claude/settings.json':                       JSON.stringify({ extraKnownMarketplaces: { 'nx-claude-plugins': {} }, enabledPlugins: { 'nx@nx-claude-plugins': true }, permissions: { allow: ['Bash(npm run lint)'] } }),
+      '.github/agents/ci-monitor-subagent.agent.md': 'nx',
+      '.github/prompts/monitor-ci.prompt.md':        'nx',
+      '.github/prompts/review.prompt.md':            'ours',
+      '.github/agents/security-reviewer.agent.md':   'ours',
+    }
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(workspaceRoot, file)), { recursive: true })
+      writeFileSync(join(workspaceRoot, file), content)
+    }
+    const progress: string[] = []
+
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'azure',
+      stack:         DEFAULT_STACK,
+    }, (line) => { progress.push(line) })
+
+    const text = progress.join(' | ')
+
+    // Nx's two files are gone and named; the team's two are not touched.
+    expect(existsSync(join(workspaceRoot, '.github/agents/ci-monitor-subagent.agent.md'))).toBe(false)
+    expect(existsSync(join(workspaceRoot, '.github/prompts/monitor-ci.prompt.md'))).toBe(false)
+    expect(readFileSync(join(workspaceRoot, '.github/prompts/review.prompt.md'), 'utf8')).toBe('ours')
+    expect(readFileSync(join(workspaceRoot, '.github/agents/security-reviewer.agent.md'), 'utf8')).toBe('ours')
+    expect(text).toContain('removed what Nx scaffolds')
+    expect(text).toContain('.github/agents')
+    expect(text).toContain('nx configure-ai-agents')
+    // A settings file the team added to is kept, and the run says so.
+    expect(existsSync(join(workspaceRoot, '.claude/settings.json'))).toBe(true)
+    expect(text).toContain("kept .claude/settings.json: it holds more than Nx's entries")
   })
 
   it('keeps a CLAUDE.md the user wrote, which has no Nx block in it at all', () => {
@@ -3618,5 +3728,24 @@ describe('what `mnci upgrade` keeps in a pipeline', () => {
 
     expect(read('.github/workflows/ci.yml')).toContain('# mnci:slot after-install')
     expect(lines.some(line => line.includes('written before mnci kept user slots'))).toBe(true)
+  })
+})
+
+describe('mergeOverrides', () => {
+  it('merges one level into an entry both sides have, mnci winning the keys it owns', () => {
+    expect(mergeOverrides({ nx: { a: '1', mine: '9' } }, { nx: { a: '2', b: '3' } })).toEqual({ nx: { a: '2', b: '3', mine: '9' } })
+  })
+
+  it('keeps entries only the workspace has, and adds entries only mnci has', () => {
+    expect(mergeOverrides({ 'left-pad': '1.0.0' }, { 'eslint-plugin-x': { eslint: '$eslint' } })).toEqual({
+      'left-pad':        '1.0.0',
+      'eslint-plugin-x': { eslint: '$eslint' },
+    })
+  })
+
+  it('replaces a value that is not an object on both sides, and works with no existing overrides', () => {
+    expect(mergeOverrides({ a: '1' }, { a: { nested: '2' } })).toEqual({ a: { nested: '2' } })
+    expect(mergeOverrides({ a: { nested: '2' } }, { a: '1' })).toEqual({ a: '1' })
+    expect(mergeOverrides(undefined, { a: '1' })).toEqual({ a: '1' })
   })
 })
