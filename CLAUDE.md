@@ -854,6 +854,17 @@ the pin's precision (a Node major, a Go minor, a full golangci-lint version), in
 sources are `go list` (the linter), `nodejs.org` (newest LTS), `go.dev/dl`, the .NET release index, the Flutter tags and `npm view`;
 an unreachable one is skipped, and `--ecosystem` leaves the section out.
 
+### A lockfile is completed by the npm CI installs (#295)
+
+A lockfile written by an OLDER npm than the one CI pins can be rejected by CI's `npm ci` with `Missing: @emnapi/core@... from
+lock file`. Measured: a lockfile from npm 11.6.2 (bundled with Node 24.12) installed under 11.6.2 and failed under 11.21.0, which is
+why a Windows-written lockfile or a Dependabot one failed on Linux. `npm install --package-lock-only` by the newer npm adds exactly the
+missing entries and moves no version. So `lockfile-completion/` (`completeLockfile`) runs that through `npx npm@<NPM_VERSION>` after the
+commands that write the lockfile: `mnci new`, `add`, `upgrade`, `install` and `up`. It is idempotent, skipped without a
+`package-lock.json`, and a failure only warns. Not covered: a lockfile edited by something else after the fact (Dependabot's own
+PRs), which still needs `npx npm@12 install --package-lock-only` by hand. Lockfiles written by npm 11.21 and npm 12 are
+interchangeable in both directions (measured when the pin moved to 12).
+
 ### Tag-Only Git
 
 - `nx release` never commits, only tags

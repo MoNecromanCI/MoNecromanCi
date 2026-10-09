@@ -17,6 +17,7 @@ import { PROJECT_KINDS } from '../project-scaffolding'
 import { applyPreset, findPreset } from '../workspace-presets'
 import { adoptGeneratedWorkspace, assertAdoptableDirectory } from './adopt-directory.use-case'
 import { removeGeneratedPipelines } from './remove-generated-pipelines.use-case'
+import { completeLockfile } from '../lockfile-completion'
 
 /**
  * Options accepted by {@link runNew}.
@@ -339,6 +340,9 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
   // `create-nx-workspace` wrote its scaffold in its own style, which is not
   // mnci's. Normalise it now so the workspace passes its own `lint` from the
   // very first commit.
+  // The lockfile was written by whatever npm this machine has; have the one CI installs complete it (#295).
+  completeLockfile(workspaceRoot)
+
   logger.step('Formatting the workspace (eslint --fix, JavaScript Standard Style)')
   runFormatter(workspaceRoot)
 
