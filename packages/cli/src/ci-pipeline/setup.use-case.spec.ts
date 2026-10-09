@@ -25,9 +25,11 @@ interface Harness {
 
 /** Options for a harness: what commands answer, and what the downloader serves. */
 interface HarnessOptions {
-  runStatuses?: Record<string, number>
-  captures?:    Record<string, number>
-  downloads?:   Record<string, Buffer | Error>
+  runStatuses?:  Record<string, number>
+  captures?:     Record<string, number>
+  downloads?:    Record<string, Buffer | Error>
+  /** What an installed `golangci-lint --version` prints; defaults to the pinned version. */
+  linterOutput?: string
 }
 
 /**
@@ -56,7 +58,12 @@ function harness (options: HarnessOptions = {}): Harness {
         return { status: options.captures?.[line] ?? 0, stdout: `${gopath}\n` }
       }
 
-      return { status: options.captures?.[line] ?? 1, stdout: '' }
+      const status = options.captures?.[line] ?? 1
+      if (line === 'golangci-lint --version' && status === 0) {
+        return { status, stdout: options.linterOutput ?? `golangci-lint has version ${VERSION} built with go1.24.0 from abc1234 on 2026-01-01T00:00:00Z` }
+      }
+
+      return { status, stdout: '' }
     },
   }
 
@@ -223,7 +230,27 @@ describe('mnci ci setup: Go (#269)', () => {
     await setup(recorder)
 
     expect(recorder.fetched).toEqual([])
-    expect(recorder.logged).toContain('golangci-lint already installed - skipping.')
+    expect(recorder.logged).toContain(`golangci-lint ${VERSION} already installed - skipping.`)
+  })
+
+  it('installs the pin when a different golangci-lint is already on PATH, as a devcontainer feature or runner image leaves one (#241)', async () => {
+    seed('go.mod')
+    const recorder = harness({ captures: { 'golangci-lint --version': 0 }, linterOutput: 'golangci-lint has version 1.64.8 built with go1.24.0 from abc on 2026-01-01' })
+
+    await setup(recorder)
+
+    expect(recorder.logged.join(' ')).toContain(`golangci-lint 1.64.8 is on PATH, not the pinned ${VERSION}`)
+    expect(recorder.fetched.length).toBeGreaterThan(0)
+  })
+
+  it('installs the pin when the installed version cannot be read at all', async () => {
+    seed('go.mod')
+    const recorder = harness({ captures: { 'golangci-lint --version': 0 }, linterOutput: 'something unexpected' })
+
+    await setup(recorder)
+
+    expect(recorder.logged.join(' ')).toContain('of an unknown version')
+    expect(recorder.fetched.length).toBeGreaterThan(0)
   })
 
   it('installs the prebuilt release after verifying its checksum, into GOPATH/bin', async () => {

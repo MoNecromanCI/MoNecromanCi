@@ -21,6 +21,8 @@ import {
   ensurePythonArtefactsIgnored,
   ESLINT_BLOCK_INVENTORY,
   DOTNET_SDK_VERSION,
+  GO_VERSION,
+  GOLANGCI_LINT_VERSION,
   CLI_VERSION,
   ESLINT_CONFIG_VERSION,
   ESLINT_PEER_OVERRIDES,
@@ -1486,6 +1488,15 @@ describe('devcontainerJson', () => {
     expect(DOTNET_SDK_VERSION).toBe(`${dotnetFeature.version}.x`)
   })
 
+  it('pins the Go feature and its linter to mnci-controlled values, never latest (#241)', () => {
+    // The feature installs golangci-lint at `latest` unless told, and it runs before postCreateCommand, so the
+    // guard there used to find that one on PATH and skip the pin.
+    expect(parsed().features['ghcr.io/devcontainers/features/go:1']).toEqual({
+      version:             GO_VERSION,
+      golangciLintVersion: GOLANGCI_LINT_VERSION,
+    })
+  })
+
   it("provisions the toolchains with the pipeline's own command instead of a third copy", () => {
     // `npx mnci ci setup` is the command CI runs: idempotent, and a no-op for each language the
     // workspace has no project in, so a JS-only workspace pays almost nothing. Reimplementing it
@@ -2517,6 +2528,42 @@ describe('applyOverlay', () => {
 
     expect(nx.targets['ship-it']).toEqual({ executor: 'x' })
     expect(nx.targets.lint).toEqual(ROOT_LINT_TARGET)
+  })
+
+  it('gives every tool one version, shared by the devcontainer and both CI providers, and installs none at latest (#241)', () => {
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'both',
+      stack:         DEFAULT_STACK,
+    })
+    const devcontainer = readFileSync(join(workspaceRoot, '.devcontainer/devcontainer.json'), 'utf8')
+    const github = readFileSync(join(workspaceRoot, '.github/workflows/ci.yml'), 'utf8')
+    const azure = readFileSync(join(workspaceRoot, 'azure-pipelines.yml'), 'utf8')
+    const container = JSON.parse(devcontainer) as { image: string, features: Record<string, { version?: string }> }
+
+    // Node: the container image's major, and both providers' setup step.
+    expect(container.image).toContain(`typescript-node:${NODE_VERSION}-`)
+    expect(github).toContain(`node-version: ${NODE_VERSION}`)
+    expect(azure).toContain(`version: ${NODE_VERSION}.x`)
+    // .NET: the feature takes X.Y, the providers X.Y.x, from one constant.
+    expect(`${container.features['ghcr.io/devcontainers/features/dotnet:2'].version}.x`).toBe(DOTNET_SDK_VERSION)
+    expect(github).toContain(`dotnet-version: ${DOTNET_SDK_VERSION}`)
+    expect(azure).toContain(`version: ${DOTNET_SDK_VERSION}`)
+    // golangci-lint and Flutter are installed by `mnci ci setup`, which reads the one constant, in the
+    // container and in both providers; the container's Go feature names the same linter version.
+    expect(container.features['ghcr.io/devcontainers/features/go:1']).toEqual({ version: GO_VERSION, golangciLintVersion: GOLANGCI_LINT_VERSION })
+    for (const file of [github, azure]) {
+      expect(file).toContain('npx mnci ci setup')
+    }
+    expect(devcontainer).toContain('npx mnci ci setup')
+    // And nothing mnci generates asks for a tool at latest.
+    for (const [name, text] of [['devcontainer', devcontainer], ['github', github], ['azure', azure]]) {
+      expect({ file: name, latest: /@latest|"latest"|: latest\b|version:\s*'latest'/.test(text) }).toEqual({ file: name, latest: false })
+    }
   })
 
   it('writes .devcontainer/devcontainer.json, so a local environment can match CI', () => {

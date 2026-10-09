@@ -1073,7 +1073,9 @@ export function devcontainerJson (workspaceName: string): string {
     image:    `mcr.microsoft.com/devcontainers/typescript-node:${NODE_VERSION}-bookworm`,
     features: {
       'ghcr.io/devcontainers/features/python:1': { version: '3.12' },
-      'ghcr.io/devcontainers/features/go:1':     { version: 'latest' },
+      // Both pinned (#241). The feature installs golangci-lint at `latest` unless told otherwise, and it runs
+      // BEFORE postCreateCommand, so the guard there found a linter on PATH and never installed the pin.
+      'ghcr.io/devcontainers/features/go:1':     { version: GO_VERSION, golangciLintVersion: GOLANGCI_LINT_VERSION },
       'ghcr.io/devcontainers/features/dotnet:2': { version: DOTNET_SDK_VERSION.replace(/\.x$/, '') },
     },
     // `npm ci` first: every guard after it runs through the workspace's own
@@ -2450,6 +2452,17 @@ const PYTHON_WORKSPACE_INSTALL_GUARD = 'node -e "const fs=require(\'node:fs\'),p
 export const GOLANGCI_LINT_VERSION = '2.14.0'
 
 /**
+ * The Go toolchain version mnci provisions where it provisions Go itself: the devcontainer.
+ *
+ * @remarks
+ * A minor (`1.27`), which the devcontainer Go feature resolves to the newest patch of it. Pinned for the same reason
+ * as {@link GOLANGCI_LINT_VERSION}: a tool version appears in exactly one mnci-owned place, and nothing installs
+ * `latest` (#241). The hosted CI agents bring their own Go and mnci does not install one there, so a workspace's
+ * `go.mod` directive, not this constant, is what keeps CI and the container compatible.
+ */
+export const GO_VERSION = '1.27'
+
+/**
  * The Flutter SDK version the generated pipeline installs.
  *
  * @remarks
@@ -3077,7 +3090,7 @@ steps:
 
   - task: UseNode@1
     inputs:
-      version: 24.x
+      version: ${NODE_VERSION}.x
 
   # The Azure counterpart of \`cache: npm\` on actions/setup-node: restores npm's
   # download cache so \`npm ci\` does not re-fetch every tarball on every run.
@@ -3206,7 +3219,7 @@ ${slotMarkers('after-release', '  ')}
 
   - task: UseNode@1
     inputs:
-      version: 24.x
+      version: ${NODE_VERSION}.x
 
   - task: Cache@2
     displayName: Cache npm packages
