@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runShell } from '../nx-workspace'
-import { fileExists, writeFileEnsured } from '../file-system'
+import { writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 import {
   type Ecosystem,
@@ -273,7 +273,7 @@ function installEverything (
     if (only !== undefined && !only.includes(ecosystem)) {
       continue
     }
-    if (!ecosystemPresent(workspaceRoot, ecosystem)) {
+    if (!hasEcosystem(workspaceRoot, ecosystem)) {
       continue
     }
     logger.step(`Installing ${ecosystem} dependencies (${command} ${arguments_.join(' ')})`)
@@ -281,29 +281,6 @@ function installEverything (
       logger.warn(`${command} ${arguments_.join(' ')} failed — re-run it once the cause is fixed`)
     }
   }
-}
-
-/**
- * Whether an ecosystem is present, reading Go the multi-module way.
- *
- * @remarks
- * Defers to {@link hasEcosystem} for everything but Go, whose check there is a
- * root `go.mod` — absent under multi-module (MoNecromanCI/MoNecromanCi#289), where the
- * `go.work` file is the workspace marker. Without this special case a bare
- * `mnci install` would silently skip `go work sync`.
- *
- * @param workspaceRoot - Absolute path to the workspace.
- * @param ecosystem - The ecosystem to test for.
- * @returns `true` when the ecosystem is present.
- * @throws Never - only reads the filesystem.
- * @typeParam None - this function has no generic type parameters.
- */
-function ecosystemPresent (workspaceRoot: string, ecosystem: Ecosystem): boolean {
-  if (ecosystem === 'go') {
-    return fileExists(join(workspaceRoot, 'go.work')) || fileExists(join(workspaceRoot, 'go.mod'))
-  }
-
-  return hasEcosystem(workspaceRoot, ecosystem)
 }
 
 /**

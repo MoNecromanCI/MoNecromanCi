@@ -2,6 +2,7 @@ import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runCapture } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
+import { listGoModuleDirectories } from '../go-workspace'
 
 /**
  * The five dependency ecosystems a generated workspace can contain.
@@ -165,9 +166,10 @@ function projectOf (manifestRelativePath: string): string {
  * @typeParam None - this function has no generic type parameters.
  */
 export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): boolean {
-  // Go is the only one with no per-project manifest to fall back on.
+  // Go has two layouts: a multi-module workspace (a root go.work and no root go.mod) and an adopted flat
+  // repository (a root go.mod and no go.work). Either is Go.
   if (ecosystem === 'go') {
-    return fileExists(join(workspaceRoot, 'go.mod'))
+    return listGoModuleDirectories(workspaceRoot) !== undefined
   }
   // NuGet has no root-level marker at all, unlike the other three: nuget.config
   // is publish auth, not a dependency declaration, and mnci writes it only once
@@ -649,45 +651,47 @@ export function csprojPackageReferences (
 }
 
 /**
- * Reads the root `go.mod`'s require block.
+ * Reads the require block of every Go module in the workspace.
  *
  * @remarks
- * Read-only, and there is exactly one manifest by design: mnci's Go layout is a
- * single root module, so a package cannot have two versions in the workspace
- * and there is nothing for `mnci sync` to reconcile. Collected anyway so
- * `mnci up` can report Go modules alongside everything else.
+ * Read-only. A multi-module workspace (what `mnci add go-*` creates) has one `go.mod` per project, listed in the
+ * root `go.work`; an adopted flat repository has a single root `go.mod`. Both are read, each site labelled with
+ * its module's directory (the root module with the root label). Two modules may require different versions of
+ * one package, but under a `go.work` the workspace builds with the highest of them (minimal version selection),
+ * so `mnci sync` does not converge Go; `mnci up` reports and upgrades each declaration through `go get`.
  *
  * Indirect requirements are labelled rather than dropped — `go mod tidy` owns
  * them, so offering one for a direct upgrade would be misleading.
  *
  * @param workspaceRoot - Absolute path to the workspace.
- * @returns Every module the root `go.mod` requires.
- * @throws Never - an absent or unreadable `go.mod` yields an empty list.
+ * @returns Every module requirement of every module.
+ * @throws Never - an absent or unreadable `go.mod` is skipped.
  * @typeParam None - this function has no generic type parameters.
  */
 function collectGo (workspaceRoot: string): DependencySite[] {
-  const manifestPath = join(workspaceRoot, 'go.mod')
-  if (!fileExists(manifestPath)) {
-    return []
+  const sites: DependencySite[] = []
+  const directories = listGoModuleDirectories(workspaceRoot) ?? []
+  for (const directory of directories) {
+    const manifestPath = join(workspaceRoot, directory, 'go.mod')
+    let content: string
+    try {
+      content = readFileSync(manifestPath, 'utf8')
+    } catch {
+      continue
+    }
+    const project = directory === '.' ? ROOT_LABEL : directory.replace(/^\.\//, '')
+    for (const match of content.matchAll(/^\s*(?:require\s+)?([\w.~-]+(?:\/[\w.~-]+)+)\s+(v\S+)(\s*\/\/\s*indirect)?/gm)) {
+      sites.push({
+        name:       match[1],
+        ecosystem:  'go',
+        project,
+        manifestPath,
+        section:    match[3] ? 'indirect' : 'module',
+        spec:       match[2],
+        rewritable: false,
+      })
+    }
   }
-  let content: string
-  try {
-    content = readFileSync(manifestPath, 'utf8')
-  } catch {
-    return []
-  }
-
-  const sites: DependencySite[] = Array.from(content.matchAll(
-    /^\s*(?:require\s+)?([\w.~-]+(?:\/[\w.~-]+)+)\s+(v\S+)(\s*\/\/\s*indirect)?/gm,
-  ), match => ({
-    name:       match[1],
-    ecosystem:  'go',
-    project:    ROOT_LABEL,
-    manifestPath,
-    section:    match[3] ? 'indirect' : 'module',
-    spec:       match[2],
-    rewritable: false,
-  }))
 
   return sites
 }
@@ -1167,7 +1171,7 @@ export function resolvedVersion (
   }
 
   // nuget: no single workspace-wide resolved state to read (see the remarks
-  // above). go: the root go.mod IS the resolved state — one module, one
-  // version — so there is nothing further to resolve either.
+  // above). go: each module's go.mod declares its own minimum and the toolchain picks the build list, so there
+  // is no single resolved version to report either.
   return undefined
 }

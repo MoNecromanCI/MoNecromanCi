@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { Separator, checkbox } from '@inquirer/prompts'
 import {
   PEER_SECTION,
@@ -448,7 +448,8 @@ function reinstall (workspaceRoot: string, ecosystems: ReadonlySet<Ecosystem>): 
     ['pip', 'npm', ['run', 'python:install']],
     ['pub', 'flutter', ['pub', 'get']],
     ['nuget', 'npx', ['nx', 'run-many', '-t', 'restore']],
-    ['go', 'go', ['mod', 'tidy']],
+    // A multi-module workspace syncs its build list across modules; an adopted flat repository has one module to tidy.
+    ['go', 'go', fileExists(join(workspaceRoot, 'go.work')) ? ['work', 'sync'] : ['mod', 'tidy']],
   ]
 
   for (const [ecosystem, command, arguments_] of commands) {
@@ -493,6 +494,9 @@ function hasPythonInstallScript (workspaceRoot: string): boolean {
 /**
  * Upgrades Go modules through the toolchain rather than by editing `go.mod`.
  *
+ * @remarks
+ * Runs `go get` inside each module that declares the package, since a multi-module workspace has no root module.
+ *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param entries - The selected Go modules.
  * @returns Nothing.
@@ -501,9 +505,13 @@ function hasPythonInstallScript (workspaceRoot: string): boolean {
  */
 function applyGoUpdates (workspaceRoot: string, entries: readonly Outdated[]): void {
   for (const entry of entries) {
-    logger.step(`go get ${entry.name}@${entry.latest}`)
-    if (runShell('go', ['get', `${entry.name}@${entry.latest}`], workspaceRoot) !== 0) {
-      logger.warn(`go get ${entry.name}@${entry.latest} failed — left at ${entry.current}.`)
+    // In every module that declares it: a multi-module workspace has no root module to run `go get` in.
+    const directories = new Set(entry.sites.map(site => dirname(site.manifestPath)))
+    for (const directory of directories) {
+      logger.step(`go get ${entry.name}@${entry.latest} (in ${relative(workspaceRoot, directory) || '.'})`)
+      if (runShell('go', ['get', `${entry.name}@${entry.latest}`], directory) !== 0) {
+        logger.warn(`go get ${entry.name}@${entry.latest} failed in ${relative(workspaceRoot, directory) || '.'} — left at ${entry.current}.`)
+      }
     }
   }
 }
