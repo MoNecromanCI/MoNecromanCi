@@ -1754,7 +1754,10 @@ section('js stack', [], () => {
   )
   let sdkPackedFiles = []
   try {
-    sdkPackedFiles = JSON.parse(sdkPackDryRun.output)[0]?.files?.map(file => file.path) ?? []
+    // npm 11 prints an array of packages; npm 12 prints an object keyed by package name.
+    const sdkPackReport = JSON.parse(sdkPackDryRun.output)
+    const sdkPacked = Array.isArray(sdkPackReport) ? sdkPackReport[0] : Object.values(sdkPackReport)[0]
+    sdkPackedFiles = sdkPacked?.files?.map(file => file.path) ?? []
   } catch {
     /* leaves sdkPackedFiles empty -> the check below fails and surfaces the raw output */
   }
