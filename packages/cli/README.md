@@ -54,6 +54,7 @@ src/
   project-scaffolding/        mnci add — one use case per kind, plus post-generation repairs
   rollup-library/             what a rollup-bundled library needs repaired to build, type and publish
   dependency-management/      mnci sync / mnci up, and the manifest + registry + semver machinery
+  tool-versions/              which tools mnci pins have a newer release, for the tooling section of mnci up
   nx-workspace/               runs the Nx and npm CLIs, always via an argv array
   terminal/                   prompts in, coloured status out
   file-system/                JSON, JSONC workspace files, ensured writes
@@ -350,6 +351,13 @@ The alias case is not hypothetical — mnci's own root manifest pins the dual
 TypeScript compiler as `typescript: npm:@typescript/typescript6@^6.0.2`, and the
 first run of this command offered "typescript 6.0.2 › 7.0.2", which is real
 TypeScript's version, about a package the workspace does not have.
+
+`mnci up` also opens with a short **tooling** section for the tools mnci itself pins and installs (the
+`golangci-lint` linter, Node, npm, and the Go, .NET and Flutter SDKs). They are not requirements of any manifest, so
+they are asked of their own release sources and shown only when a newer release exists, compared at the pin's
+precision: pinned Node `24` is behind only by a higher major, never by a patch of 24. It is informational. Each version
+is one constant in mnci's source, so the remedy is an mnci release, not a change to your workspace. A source that cannot
+be reached is skipped, and `--ecosystem` leaves the section out.
 
 A selected Go module is upgraded with `go get <module>@<version>`, never by
 editing `go.mod` — that file is the toolchain's to write. It runs inside each module that declares the
