@@ -10,6 +10,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      sections:
+        description: 'Run only these e2e sections on Windows (comma-separated labels, e.g. "node esm apps,dev up"). Empty runs all of them.'
+        required: false
+        default: ''
   # Nightly, purely so the e2e suite cannot rot unnoticed. It had been red since
   # #92 — eight PRs — because a manual trigger is the only thing that ever ran it,
   # and nobody thinks to run it. This caps the blind window at one day.
@@ -258,6 +263,9 @@ jobs:
 
       - run: node packages/cli/e2e/cli.e2e.mjs
         name: Run the real e2e suite (mnci new/add, real npm/pip installs and zip packaging)
+        env:
+          # Set only by a manual dispatch that names sections; empty means every section.
+          MNCI_E2E_ONLY: ${{ github.event.inputs.sections }}
 
   # The container images, on Linux. They are Linux images: a Windows runner cannot run them, and a developer
   # machine may have no Docker engine running, so this is where `mnci add container` is proven for real. It runs

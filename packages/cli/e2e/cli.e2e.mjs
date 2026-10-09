@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -202,8 +203,9 @@ const failedSections = new Set()
  */
 function section (label, needs, body) {
   // `MNCI_E2E_ONLY=label[,label]` runs just those sections, to iterate on one without the 25 minutes.
-  const only = process.env.MNCI_E2E_ONLY
-  if (only !== undefined && !only.split(',').includes(label)) {
+  // Empty means every section: a workflow that passes the variable on without a value sets it to ''.
+  const only = process.env.MNCI_E2E_ONLY?.trim()
+  if (only && !only.split(',').map(name => name.trim()).includes(label)) {
     return
   }
   const blockedBy = needs.find(name => failedSections.has(name))
@@ -475,7 +477,14 @@ function hasDotnet () {
   }
 }
 
-const temporary = mkdtempSync(path.join(tmpdir(), 'mnci-e2e-'))
+// The REAL path, not the one the OS hands out. On a Windows runner `os.tmpdir()` is the 8.3 short name
+// `C:\Users\RUNNER~1\...` while symlinks, git and Node's resolver answer with `C:\Users\runneradmin\...`. A tool
+// that compares the two as strings sees two places: Vite refused its own index.html as "outside of the serving
+// allow list", TypeScript read one library file under two names, and `nx release` found no commit touching a
+// package because git's top level and the workspace root did not match. Nobody works under a `~1` path, so
+// the suite does not either.
+const createdTemporary = mkdtempSync(path.join(tmpdir(), 'mnci-e2e-'))
+const temporary = realpathSync.native(createdTemporary)
 const workspace = path.join(temporary, 'demo')
 // Hoisted out of the `alt stack` section on purpose: `python` and `go` are
 // separate sections that both drive this workspace, so it is the one binding
@@ -3335,8 +3344,16 @@ section('container images', [], () => {
    * paths fall back to index.html, and a Go app's static binary on distroless.
    * Needs a Docker engine that runs Linux images; says so and skips when it has none.
    * ------------------------------------------------------------------------- */
-  if (!tryRunCapture('docker info', temporary).ok) {
+  // A Windows runner has Docker, but in Windows-container mode, where `node:24-alpine` has no matching manifest.
+  // The Linux CI job proves these images; here the section is skipped, loudly, unless the engine runs Linux.
+  const engine = tryRunCapture('docker info --format "{{.OSType}}"', temporary)
+  if (!engine.ok) {
     skip('the entire container images section', 'no Docker engine is running here')
+
+    return
+  }
+  if (engine.output.trim() !== 'linux') {
+    skip('the entire container images section', `the Docker engine runs ${engine.output.trim()} containers, and these are Linux images`)
 
     return
   }
