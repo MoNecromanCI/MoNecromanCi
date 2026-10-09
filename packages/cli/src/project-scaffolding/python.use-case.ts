@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { PYTHON_GRAPH_PLUGIN, withPythonGraphPlugin } from '../workspace-overlay'
@@ -270,6 +270,44 @@ function pythonAppDevTarget (name: string): Record<string, unknown> {
       cwd:     `apps/${name}`,
     },
   }
+}
+
+/**
+ * Gives the Python apps of an existing workspace the `dev` target, and `watchdog` to run it.
+ *
+ * @remarks
+ * `mnci upgrade` brings a workspace made before `dev` existed up to date (#230). An app is a folder under `apps/` with a
+ * `project.json`, a `main.py` and a `pyproject.toml` and no `function_app.py` (the function apps have no `dev`). A `dev`
+ * target the team already has is never touched, and `watchdog` is added to `requirements-dev.txt` only when an app was
+ * changed and the file exists. The root `<name>:dev` script is written by `mnci add` only.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative files it changed.
+ * @throws Error when a Python app's `project.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addPythonDevTargets (workspaceRoot: string): string[] {
+  const changed: string[] = []
+  const apps = join(workspaceRoot, 'apps')
+  if (!fileExists(apps)) {
+    return changed
+  }
+  for (const name of readdirSync(apps)) {
+    const root = join(apps, name)
+    const projectJsonPath = join(root, 'project.json')
+    const isApp = ['project.json', 'main.py', 'pyproject.toml'].every(file => fileExists(join(root, file))) && !fileExists(join(root, 'function_app.py'))
+    if (!isApp || readJson<{ targets?: Record<string, unknown> }>(projectJsonPath).targets?.dev !== undefined) {
+      continue
+    }
+    addProjectJsonTargets(projectJsonPath, { dev: pythonAppDevTarget(name) })
+    changed.push(`apps/${name}/project.json`)
+  }
+  if (changed.length > 0 && fileExists(join(workspaceRoot, 'requirements-dev.txt'))) {
+    ensureWatchdog(workspaceRoot)
+    changed.push('requirements-dev.txt')
+  }
+
+  return changed
 }
 
 /**

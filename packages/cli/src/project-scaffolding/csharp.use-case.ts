@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { DOTNET_SDK_VERSION, NUGET_AZURE_SOURCE, nugetConfigContent, readMnciConfig } from '../workspace-overlay'
@@ -295,6 +295,39 @@ function csharpAppDevTarget (projectRoot: string): Record<string, unknown> {
     continuous: true,
     options:    { command: 'dotnet watch run', cwd: projectRoot },
   }
+}
+
+/**
+ * Gives the C# apps of an existing workspace the `dev` target.
+ *
+ * @remarks
+ * `mnci upgrade` brings a workspace made before `dev` existed up to date (#230). An app is a folder under `apps/` with a
+ * `project.json` and a `.csproj` and no `host.json` (the function app has no `dev`). A `dev` target the team already has is
+ * never touched. The root `<name>:dev` script is written by `mnci add` only.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative `project.json` files it changed.
+ * @throws Error when a C# app's `project.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addCsharpDevTargets (workspaceRoot: string): string[] {
+  const changed: string[] = []
+  const apps = join(workspaceRoot, 'apps')
+  if (!fileExists(apps)) {
+    return changed
+  }
+  for (const name of readdirSync(apps)) {
+    const root = join(apps, name)
+    const projectJsonPath = join(root, 'project.json')
+    const isApp = fileExists(projectJsonPath) && !fileExists(join(root, 'host.json')) && readdirSync(root).some(file => file.endsWith('.csproj'))
+    if (!isApp || readJson<{ targets?: Record<string, unknown> }>(projectJsonPath).targets?.dev !== undefined) {
+      continue
+    }
+    addProjectJsonTargets(projectJsonPath, { dev: csharpAppDevTarget(`apps/${name}`) })
+    changed.push(`apps/${name}/project.json`)
+  }
+
+  return changed
 }
 
 /**

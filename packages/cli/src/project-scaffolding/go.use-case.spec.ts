@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runCapture, runNx, runShell } from '../nx-workspace'
 import { runAdd } from './add-project.use-case'
-import { addGoPlatformTargets, GO_PLATFORMS, goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
+import { addGoPlatformTargets, AIR_VERSION, GO_PLATFORMS, goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
@@ -114,6 +114,19 @@ describe('runAdd go', () => {
     expect(existsSync(join(root, 'hello/greet_use_case_test.go'))).toBe(true)
     const modulePath = /^module\s+(\S+)/m.exec(readFileSync(join(root, 'go.mod'), 'utf8'))?.[1] ?? ''
     expect(readFileSync(join(root, 'main.go'), 'utf8')).toContain(`"${modulePath}/hello"`)
+  })
+
+  it('gives a go-app a dev target that watches and restarts through a pinned air, and a root script for it (#230)', async () => {
+    seedProjectJson('apps/api', 'api')
+
+    await runAdd('go-app', 'api', {})
+
+    const targets = readProjectJson('apps/api').targets as Record<string, { continuous?: boolean, options?: { command: string, cwd: string } }>
+    expect(targets.dev.continuous).toBe(true)
+    expect(targets.dev.options?.command).toContain(`go run github.com/air-verse/air@${AIR_VERSION} `)
+    expect(targets.dev.options?.cwd).toBe('apps/api')
+    const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
+    expect(manifest.scripts['api:dev']).toBe('nx run api:dev')
   })
 
   it('bootstraps a go.work workspace via init, without convert-to-one-mod, on the first add', async () => {
@@ -516,7 +529,7 @@ describe('runAdd go', () => {
       writeFileSync(join(workspaceRoot, 'apps/plain/project.json'), JSON.stringify({ name: 'plain', tags: ['type:go-app'], targets: {} }))
 
       expect(addGoPlatformTargets(workspaceRoot)).toEqual(['apps/plain/project.json', 'apps/tray/project.json'])
-      expect(Object.keys(readProjectJson('apps/tray').targets as object)).toEqual(['build-dev'])
+      expect(Object.keys(readProjectJson('apps/tray').targets as object)).toEqual(['build-dev', 'dev'])
     })
   })
 
@@ -828,7 +841,7 @@ describe('addGoPlatformTargets', () => {
     expect(addGoPlatformTargets(root)).toEqual(['apps/engine/project.json', 'apps/handler/project.json'])
 
     const engine = targetsOf('engine')
-    expect(Object.keys(engine).sort((a, b) => a.localeCompare(b))).toEqual(['build', 'build-all', 'build-dev', 'package-all'])
+    expect(Object.keys(engine).sort((a, b) => a.localeCompare(b))).toEqual(['build', 'build-all', 'build-dev', 'dev', 'package-all'])
     expect(JSON.stringify(engine['build-dev'])).toContain('-gcflags=all=-N -l')
     expect(JSON.stringify(engine['package-all'])).toContain('go-app-engine-*.zip')
     const handler = targetsOf('handler')
@@ -841,12 +854,14 @@ describe('addGoPlatformTargets', () => {
 
   it('adds build-dev to a go-app (cgo included) without overwriting one, and not to a function app', () => {
     app('native', ['type:go-app', 'build:cgo'], {})
-    app('mine', ['type:go-app'], { 'build-all': {}, 'package-all': {}, 'build-dev': { command: 'my own' } })
+    app('mine', ['type:go-app'], { 'build-all': {}, 'package-all': {}, 'build-dev': { command: 'my own' }, 'dev': { command: 'my watcher' } })
     app('fn', ['type:go-function-app'], { 'build-all': {}, 'package-all': {} })
 
     expect(addGoPlatformTargets(root)).toEqual(['apps/native/project.json'])
-    expect(Object.keys(targetsOf('native'))).toEqual(['build-dev'])
+    expect(Object.keys(targetsOf('native'))).toEqual(['build-dev', 'dev'])
+    expect(JSON.stringify(targetsOf('native').dev)).toContain('air-verse/air@')
     expect(targetsOf('mine')['build-dev']).toEqual({ command: 'my own' })
+    expect(targetsOf('mine').dev).toEqual({ command: 'my watcher' })
     expect(targetsOf('fn')['build-dev']).toBeUndefined()
   })
 

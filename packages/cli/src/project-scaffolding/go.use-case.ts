@@ -384,6 +384,40 @@ function goBuildDevTarget (name: string): Record<string, unknown> {
 }
 
 /**
+ * The version of `air` the Go `dev` target runs, through `go run`, so nothing is installed.
+ *
+ * @remarks
+ * Pinned, like every external tool mnci runs: `go run` fetches it once into the module cache. Bump it deliberately.
+ */
+export const AIR_VERSION = 'v1.61.7'
+
+/**
+ * The `dev` target for a Go app: rebuild and restart on every change, through `air`.
+ *
+ * @remarks
+ * Measured (#230) on a scratch module under Go 1.27 on Windows: an edit rebuilt and the new process ran with the old
+ * one gone (its port free). `air` runs `build.bin` through the shell, so `go run .` is the same on every OS where a
+ * path like `tmp/app` is not (cmd rejects the slash); `build.cmd` compiles first, so a broken edit stops there. On Windows
+ * air warns that `go run .` is not an `.exe`, and still runs it. `tmp` is excluded from the watch. It needs Go on the
+ * `PATH` and nothing else installed.
+ *
+ * @param name - The Go app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goDevTarget (name: string): Record<string, unknown> {
+  return {
+    executor:   'nx:run-commands',
+    continuous: true,
+    options:    {
+      command: `go run github.com/air-verse/air@${AIR_VERSION} --build.cmd "go build ./..." --build.bin "go run ." --build.exclude_dir tmp`,
+      cwd:     `apps/${name}`,
+    },
+  }
+}
+
+/**
  * The `package` target for a Go app: zip its built binary into the drop.
  *
  * @remarks
@@ -581,6 +615,9 @@ export function addGoPlatformTargets (workspaceRoot: string): string[] {
     const missing: Record<string, unknown> = {}
     if (tag === 'go-app' && project.targets?.['build-dev'] === undefined) {
       missing['build-dev'] = goBuildDevTarget(name)
+    }
+    if (tag === 'go-app' && project.targets?.dev === undefined) {
+      missing.dev = goDevTarget(name)
     }
     if ((project.tags ?? []).includes(GO_CGO_TAG)) {
       if (Object.keys(missing).length > 0) {
@@ -825,6 +862,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
           'package-all': goPackageAllTarget('go-app', name),
         }),
     'build-dev': goBuildDevTarget(name),
+    'dev':       goDevTarget(name),
     'start':     goStartTarget(name),
   })
   if (options.release === true) {
@@ -837,6 +875,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     build:    true,
     start:    `nx run ${name}:start`,
     buildDev: `nx run ${name}:build-dev`,
+    dev:      `nx run ${name}:dev`,
   })
   if (cgo) {
     logger.warn(

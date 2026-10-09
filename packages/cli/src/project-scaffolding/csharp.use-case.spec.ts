@@ -17,6 +17,7 @@ import { delimiter, join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { promptText } from '../terminal'
 import { runAdd } from './add-project.use-case'
+import { addCsharpDevTargets } from './csharp.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
@@ -593,5 +594,34 @@ describeOnPosix("the generated csharp-lib nx-release-publish target's dry-run ha
     expect(run.status).toBe(0)
     // Reaches the real `dotnet pack`; no push follows only because the stub emits no .nupkg.
     expect(run.dotnetLog).toContain('pack')
+  })
+})
+
+/** Writes an app folder the way `dotnet new` and mnci leave it. */
+function csharpApp (name: string, files: string[], targets: Record<string, unknown> = {}): void {
+  mkdirSync(join(workspaceRoot, 'apps', name), { recursive: true })
+  for (const file of files) {
+    writeFileSync(join(workspaceRoot, 'apps', name, file), file === 'project.json' ? JSON.stringify({ name, targets }) : '')
+  }
+}
+
+const targetsOf = (name: string): Record<string, unknown> => (JSON.parse(readFileSync(join(workspaceRoot, 'apps', name, 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets
+
+describe('addCsharpDevTargets (#230)', () => {
+  it('adds dev to an app that predates it, but not to a function app or one with its own', () => {
+    csharpApp('svc', ['project.json', 'Svc.csproj'])
+    csharpApp('fn', ['project.json', 'Fn.csproj', 'host.json'])
+    csharpApp('mine', ['project.json', 'Mine.csproj'], { dev: { command: 'my own' } })
+    csharpApp('notdotnet', ['project.json'])
+
+    expect(addCsharpDevTargets(workspaceRoot)).toEqual(['apps/svc/project.json'])
+    expect(targetsOf('svc').dev).toEqual({ executor: 'nx:run-commands', continuous: true, options: { command: 'dotnet watch run', cwd: 'apps/svc' } })
+    expect(targetsOf('fn').dev).toBeUndefined()
+    expect(targetsOf('mine').dev).toEqual({ command: 'my own' })
+    expect(targetsOf('notdotnet').dev).toBeUndefined()
+  })
+
+  it('does nothing without an apps folder', () => {
+    expect(addCsharpDevTargets(workspaceRoot)).toEqual([])
   })
 })
