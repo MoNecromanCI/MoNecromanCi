@@ -99,7 +99,7 @@ describe('ignore list', () => {
       encoding: 'utf8',
     })
     const ignores = JSON.parse(result.stdout.trim()) as string[]
-    for (const artifact of ['**/tmp', '**/dist', '**/out-tsc', '**/coverage', '**/node_modules']) {
+    for (const artifact of ['**/tmp', '**/dist', '**/out-tsc', '**/coverage', '**/node_modules', '**/.vscode-test', '**/out-integration']) {
       expect(ignores).toContain(artifact)
     }
   })

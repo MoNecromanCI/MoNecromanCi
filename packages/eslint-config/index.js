@@ -66,6 +66,12 @@ export const ignores = [
   '**/.venv',
   '**/__pycache__',
   '**/.dart_tool',
+  // A VS Code extension's integration tests (#244): `@vscode/test-cli` downloads a whole VS Code
+  // into `.vscode-test/` (thousands of bundled JS files), and `tsc` writes the compiled tests to
+  // `out-integration/`. Linting them hung `mnci upgrade`'s `eslint --fix` for minutes in a 6 GB
+  // process, found when the e2e first ran an extension's integration tests for real.
+  '**/.vscode-test',
+  '**/out-integration',
 ]
 
 /**
