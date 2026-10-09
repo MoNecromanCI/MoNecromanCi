@@ -182,6 +182,36 @@ export function canRepairRollupConfig (config: string): boolean {
 }
 
 /**
+ * The collapsing path transform that earlier versions wrote (it turned the whole run of leading `../` into one), in the
+ * shape mnci generates and the shape `eslint --fix` leaves: the whole `sourcemapPathTransform` property.
+ */
+const COLLAPSING_PATH_TRANSFORM = new RegExp(
+  String.raw`sourcemapPathTransform:\s*relativeSourcePath\s*=>\s*relativeSourcePath\s*\.replaceAll\(String\.fromCodePoint\(92\),\s*'/'\)\s*\.replace\(/\^(?:\(\[\.\]\[\.\]\[/\]\)|\(\\\.\\\.\\/\))\+/,\s*'\.\./'\)`,
+)
+
+/**
+ * Replaces the collapsing path transform with the one that keeps a path that exists (#311).
+ *
+ * @remarks
+ * The first version collapsed the leading `../` run to one, which is right for a source inside the project
+ * (`../../src/x.ts` becomes `../src/x.ts`) and wrong for one in another library, bundled from its build output
+ * (`../../../libs/utils/dist/x.js` became `../libs/utils/dist/x.js`, a file that does not exist). Measured on a
+ * generated workspace by reading the map back: the project's own sources arrive with one segment too many, the
+ * other library's arrive right. The replacement asks whether the file is there.
+ *
+ * @param original - The config file's text.
+ * @returns The config with the new transform, or unchanged when it has no collapsing one.
+ * @throws Never - performs a regular-expression replace.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function withExactSourcemapDepth (original: string): string {
+  return original.replace(
+    COLLAPSING_PATH_TRANSFORM,
+    () => SOURCEMAP_PATH_TRANSFORM_PROPERTY,
+  )
+}
+
+/**
  * Switches source maps on in a rollup config, whatever shape it is in.
  *
  * @remarks
@@ -199,12 +229,13 @@ export function canRepairRollupConfig (config: string): boolean {
  * and disagreeing here means inserting a second `sourceMap: true` into a
  * config `eslint --fix` had only reformatted, not left off.
  *
- * @param original - The config file's text.
+ * @param source - The config file's text.
  * @returns The config with source maps enabled, or unchanged when already so.
  * @throws Never - an unrecognised config is returned unchanged.
  * @typeParam None - this function has no generic type parameters.
  */
-export function withRollupSourceMaps (original: string): string {
+export function withRollupSourceMaps (source: string): string {
+  const original = withExactSourcemapDepth(source)
   if (hasRollupSourceMaps(original) || !canRepairRollupConfig(original)) {
     return original
   }
@@ -225,17 +256,34 @@ export function withRollupSourceMaps (original: string): string {
       )
 }
 
+/** The `sourcemapPathTransform` property alone, as {@link withExactSourcemapDepth} puts it into a config that has the old one. */
+const SOURCEMAP_PATH_TRANSFORM_PROPERTY = [
+  'sourcemapPathTransform: (relativeSourcePath, sourcemapPath) => {',
+  "  const { existsSync } = require('node:fs')",
+  "  const { dirname, resolve } = require('node:path')",
+  "  const url = relativeSourcePath.replaceAll(String.fromCodePoint(92), '/')",
+  '',
+  "  return existsSync(resolve(dirname(sourcemapPath), url)) ? url : url.replace(/^[.][.][/]/, '')",
+  '}',
+].join('\n')
+
 /** The `output` block that repairs rollup's wrong sourcemap source paths. */
 const SOURCEMAP_PATH_TRANSFORM = [
   '    // Added by MoNecromanCI. rollup hands sourcemapPathTransform an OS-NATIVE',
-  '    // path with one parent segment too many, so `sources` resolve to nothing',
-  '    // and no breakpoint can bind. Separators are normalised too: a sources',
-  '    // entry is URL-style, so a backslash is wrong on every platform.',
+  '    // path, and for a source it loaded itself (the project\'s own .ts) with one',
+  '    // parent segment too many, so `sources` resolve to nothing and no breakpoint',
+  '    // can bind. A source another library already mapped (its build output) arrives',
+  '    // correct, so the path is kept when the file is there and shortened by one',
+  '    // segment when it is not. Separators are normalised too: a sources entry is',
+  '    // URL-style, so a backslash is wrong on every platform.',
   '    output: {',
-  '      sourcemapPathTransform: relativeSourcePath =>',
-  '        relativeSourcePath',
-  "          .replaceAll(String.fromCodePoint(92), '/')",
-  "          .replace(/^([.][.][/])+/, '../')",
+  '      sourcemapPathTransform: (relativeSourcePath, sourcemapPath) => {',
+  "        const { existsSync } = require('node:fs')",
+  "        const { dirname, resolve } = require('node:path')",
+  "        const url = relativeSourcePath.replaceAll(String.fromCodePoint(92), '/')",
+  '',
+  '        return existsSync(resolve(dirname(sourcemapPath), url)) ? url : url.replace(/^[.][.][/]/, \'\')',
+  '      },',
   '    },',
   '',
 ].join('\n')

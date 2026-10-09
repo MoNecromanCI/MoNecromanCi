@@ -627,12 +627,16 @@ section('js stack', [], () => {
   // the workspace's own linter disowns are the fragmentation the single root
   // config exists to end, and deleting them after the fact would leave every
   // `nx` command printing "Your AI agent configuration is outdated".
-  for (const leftover of ['.agents', '.claude', '.codex', '.cursor', '.gemini', '.opencode',
+  for (const leftover of ['.agents', '.claude/settings.json', '.codex', '.cursor', '.gemini', '.opencode',
     'opencode.json', 'AGENTS.md', 'CLAUDE.md', '.github/skills']) {
     enforce(
       `no AI-agent scaffolding: ${leftover}`,
       !existsSync(path.join(workspace, leftover)),
     )
+  }
+  // .claude itself is not Nx's: mnci prepares the team's assistants there (#366) and registers its MCP server.
+  for (const prepared of ['.claude/agents/wizard.md', '.claude/agents/necromancer.md', '.claude/agents/sorcerer.md', '.mcp.json']) {
+    enforce(`prepared assistants: ${prepared}`, existsSync(path.join(workspace, prepared)))
   }
 
   // The root config is three lines importing the shared package — the whole
@@ -1808,6 +1812,23 @@ section('js stack', [], () => {
     'sdk: the declaration stub uses a URL-style module specifier',
     !sdkStub.includes(String.fromCodePoint(92)),
     sdkStub,
+  )
+
+  // A breakpoint in a .ts file binds only if the built bundle's map names real sources: the swc path through
+  // @nx/rollup once wrote `sources: []` (#308), and a build output moved one level deeper breaks the
+  // collapsed `../` run in sourcemapPathTransform (#311). Read the map back and resolve every source.
+  const sdkMapPath = path.join(workspace, 'packages/sdk/dist/index.esm.js.map')
+  let sdkMapSources = []
+  try {
+    sdkMapSources = JSON.parse(readFileSync(sdkMapPath, 'utf8')).sources ?? []
+  } catch {
+    /* leaves the list empty -> the check below fails */
+  }
+  const sdkUnresolved = sdkMapSources.filter(source => !existsSync(path.resolve(path.dirname(sdkMapPath), source)))
+  enforce(
+    'sdk: the bundle source map names sources, and each one is a real file',
+    sdkMapSources.length > 0 && sdkUnresolved.length === 0,
+    sdkMapSources.length === 0 ? 'no sources in ' + sdkMapPath : 'unresolved: ' + sdkUnresolved.join(', '),
   )
 
   enforce(
