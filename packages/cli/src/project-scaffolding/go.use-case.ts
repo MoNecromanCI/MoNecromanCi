@@ -126,6 +126,10 @@ function ensureGoModule (workspaceRoot: string): void {
   }
   logger.step('Bootstrapping the Go workspace (go.work, one module per project)')
   runNx(['g', '@nx-go/nx-go:init', '--no-interactive'], workspaceRoot)
+  // The plugin copies the developer's Go version into the go.work it has just written. Held to the ceiling HERE and
+  // never again: once the file is the workspace's, its `go` line is theirs to raise, and later adds must not lower
+  // it below what the modules in it need (#425).
+  clampGoDirective(join(workspaceRoot, 'go.work'))
 }
 
 /**
@@ -241,7 +245,12 @@ function clampGoDirective (filePath: string): void {
 }
 
 /**
- * Holds a freshly generated project, and the workspace's `go.work`, to a `go` directive CI can load.
+ * Holds a freshly generated project to a `go` directive CI can load.
+ *
+ * @remarks
+ * Only the new project's own `go.mod`. The workspace's `go.work` is clamped once, when mnci creates it, and is left
+ * alone afterwards: a lower `go` line in a module inside a higher workspace is valid, whereas lowering the
+ * workspace below a module that needs a newer Go breaks every build (#425).
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param projectDir - The project's workspace-relative directory.
@@ -251,7 +260,6 @@ function clampGoDirective (filePath: string): void {
  */
 function pinGoDirective (workspaceRoot: string, projectDir: string): void {
   clampGoDirective(join(workspaceRoot, projectDir, 'go.mod'))
-  clampGoDirective(join(workspaceRoot, 'go.work'))
 }
 
 /**

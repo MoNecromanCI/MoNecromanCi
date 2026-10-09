@@ -1735,6 +1735,11 @@ pipeline installs `golangci-lint` itself (see below).
   `<host>/<org>/<repo>/<dir>` from the git origin. Siblings import each other
   by that path, and `go.work` resolves them locally, with no `replace`
   directives.
+- **The `go` directive is held to 1.24 where mnci writes it, and nowhere else** (#348, #425). The plugin copies the
+  developer's Go version into `go.mod` and `go.work`, and CI's `golangci-lint` refuses a module newer than the Go it
+  was built with, which fails every Go lint target on the first CI run, and only for a developer on the newest Go.
+  So a new project's `go.mod`, and the `go.work` mnci creates, are capped at 1.24. A `go.work` the workspace already
+  has is never touched: raise it by hand when a module needs a newer Go, and later `mnci add` calls leave it alone.
 - **A Go library is a capability of slice packages.** The plugin's library
   generator writes `<name>.go` at the project root, which makes the root
   package the whole library. mnci replaces it with a root `doc.go` and moves
