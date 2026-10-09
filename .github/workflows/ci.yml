@@ -32,7 +32,12 @@ concurrency:
   # killing it part-way can leave a tag pushed with the publish only half done, a
   # state no rerun repairs cleanly. Those runs queue instead, which also stops two
   # `nx release` invocations racing to create the same tag.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  #
+  # The nightly and a manual dispatch get a group of their own. They only run the long e2e jobs (the release
+  # steps are gated on a push), but in the push group they held it for over two hours, so a merge to main
+  # waited, and GitHub keeps one pending run per group, so a newer pending run could even replace a release run
+  # that was queued behind them.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
