@@ -132,6 +132,27 @@ eternal orchestration restarts forever by design, so a harness that honoured it
 would never return. `run.continuedAsNew` carries the next input, and the next
 generation is a separate `runWorkflow` call.
 
+## 8. The real workflows (2026-10-09)
+
+The three real orchestrators (`createArticle`, `cleanup`, `resetSharePoint`) were read from the owning project's
+`master` and ported onto the typed boundary in a scratch folder, outside both repositories, with structural
+stand-ins for their contract types (member names and types, no business logic). Their source is not kept here.
+All three compile under `strict` with no cast the API forced.
+
+What the port showed:
+
+- The project already had its own typed wrapper (`defineActivity`, `callActivity`, `defineOrchestration`,
+  `startOrchestration`), an early form of this API. The differences a migration meets: `context` is an explicit first
+  argument of `callActivity`, and `createRetryOptions()` becomes `retryPolicy({...})`.
+- `cleanup` fans out in batches. The original bypassed its own typing there (`activity.registered(...).withRetry(...)`
+  then `as boolean[]`). `activityTask` plus `all` types the same code with no cast, which is finding 2 paying off.
+- `catch (error: any)` becomes `unknown` with an `instanceof Error` check; nothing in the API needs `any`.
+- Shapes all three use: sequential retried activities, try/catch around one activity, `Task.all` batches, custom
+  status values, an early return from a failure branch.
+
+Still unverified, because none of the three uses it: replay under a real host, retry exhaustion, `parse`,
+`continueAsNew`, events, timers and sub-orchestrations.
+
 ## What is still not verified
 
 These reconstructions were written by the same author as the API, so they

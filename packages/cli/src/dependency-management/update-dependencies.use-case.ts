@@ -27,6 +27,7 @@ import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
 import { resolveEcosystems, syncProjectReferences } from './sync-dependencies.use-case'
 import { reportToolVersions } from '../tool-versions'
+import { completeLockfile } from '../lockfile-completion'
 
 /**
  * Options accepted by `mnci up`.
@@ -593,6 +594,9 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
 
   if (options.install !== false) {
     reinstall(workspaceRoot, new Set(selected.map(entry => entry.ecosystem)))
+    if (selected.some(entry => entry.ecosystem === 'npm')) {
+      completeLockfile(workspaceRoot)
+    }
   }
 
   if (changed.length > 0) {

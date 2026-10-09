@@ -32,6 +32,7 @@ import {
 } from '../workspace-overlay'
 import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
+import { completeLockfile } from '../lockfile-completion'
 
 /**
  * Options accepted by {@link runUpgrade}.
@@ -407,6 +408,8 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   // over the whole workspace — and it used to run in silence after the overlay
   // message, so a large workspace looked hung for a minute or more. `new` already
   // logged this; `upgrade` did not.
+  // The overlay and the installs above may have rewritten the lockfile with the local npm (#295).
+  completeLockfile(workspaceRoot)
   logger.step(
     'Formatting the workspace (eslint --fix) — the slowest step, minutes on a large workspace',
   )

@@ -22,6 +22,7 @@ import { addReactApp } from './react-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
 import { addVscodeExtension } from './vscode-extension.use-case'
 import { syncProjectReferences } from '../dependency-management'
+import { completeLockfile } from '../lockfile-completion'
 import {
   ensureNxPeerOverrides,
   markPrivate,
@@ -432,6 +433,8 @@ export async function runAdd (
   // `nx sync` plus the root-manifest/`.code-workspace` edits above touch files
   // outside the new project — so this formats the workspace, not just
   // `<projectRoot>`. Keeps `npm run format:check` green after every add.
+  // First, the lockfile: the generators' installs wrote it with the local npm, and CI's is newer (#295).
+  completeLockfile(workspaceRoot)
   runFormatter(workspaceRoot)
 
   logger.success(`Added ${resolvedKind} '${resolvedName}'.`)

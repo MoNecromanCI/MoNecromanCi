@@ -75,7 +75,7 @@ jobs:
       # is part of the contract: npm 11 reuses an already-installed tree instead
       # of re-resolving, so it applies `overrides` differently from npm 10. See
       # NPM_VERSION's remarks for the measurement.
-      - run: npm install -g npm@11
+      - run: npm install -g npm@12
         name: Pin npm to the major mnci verifies against
 
       - run: npm ci
@@ -209,7 +209,7 @@ jobs:
       # is part of the contract: npm 11 reuses an already-installed tree instead
       # of re-resolving, so it applies `overrides` differently from npm 10. See
       # NPM_VERSION's remarks for the measurement.
-      - run: npm install -g npm@11
+      - run: npm install -g npm@12
         name: Pin npm to the major mnci verifies against
 
       - run: npm ci
@@ -242,11 +242,11 @@ jobs:
         name: Add Go tool bin to PATH
         continue-on-error: true
 
-      - run: node -e "const cp=require('node:child_process'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');const sdk=path.join(os.homedir(),'.mnci-flutter-3.44.8');if(fs.existsSync(sdk)){console.log('Flutter SDK already at '+sdk+' - skipping.');process.exit(0)}process.exit(cp.spawnSync('git',['clone','--depth','1','--branch','3.44.8','https://github.com/flutter/flutter.git',sdk],{stdio:'inherit'}).status ?? 1)"
-        name: Install the Flutter SDK (3.44.8, so the e2e's Flutter section runs)
+      - run: node -e "const cp=require('node:child_process'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');const sdk=path.join(os.homedir(),'.mnci-flutter-3.47.7');if(fs.existsSync(sdk)){console.log('Flutter SDK already at '+sdk+' - skipping.');process.exit(0)}process.exit(cp.spawnSync('git',['clone','--depth','1','--branch','3.47.7','https://github.com/flutter/flutter.git',sdk],{stdio:'inherit'}).status ?? 1)"
+        name: Install the Flutter SDK (3.47.7, so the e2e's Flutter section runs)
         continue-on-error: true
 
-      - run: node -e "const fs=require('node:fs'),path=require('node:path'),os=require('node:os');const bin=path.join(os.homedir(),'.mnci-flutter-3.44.8','bin');if(!fs.existsSync(bin)){console.log('No Flutter SDK to publish - skipping.');process.exit(0)}fs.appendFileSync(process.env.GITHUB_PATH,bin+os.EOL)"
+      - run: node -e "const fs=require('node:fs'),path=require('node:path'),os=require('node:os');const bin=path.join(os.homedir(),'.mnci-flutter-3.47.7','bin');if(!fs.existsSync(bin)){console.log('No Flutter SDK to publish - skipping.');process.exit(0)}fs.appendFileSync(process.env.GITHUB_PATH,bin+os.EOL)"
         name: Add the Flutter SDK to PATH
         continue-on-error: true
 
@@ -290,7 +290,7 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm install -g npm@11
+      - run: npm install -g npm@12
         name: Pin npm to the major mnci verifies against
 
       - run: npm ci

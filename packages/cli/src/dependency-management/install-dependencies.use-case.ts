@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
+import { completeLockfile } from '../lockfile-completion'
 import {
   type Ecosystem,
   type ProjectLocation,
@@ -105,6 +106,9 @@ export function runInstall (
       continue
     }
     installInto(workspaceRoot, location, packages, Boolean(options.saveDev))
+  }
+  if (locations.some(location => location.ecosystem === 'npm')) {
+    completeLockfile(workspaceRoot)
   }
 }
 
@@ -279,6 +283,9 @@ function installEverything (
     logger.step(`Installing ${ecosystem} dependencies (${command} ${arguments_.join(' ')})`)
     if (runShell(command, [...arguments_], workspaceRoot) !== 0) {
       logger.warn(`${command} ${arguments_.join(' ')} failed — re-run it once the cause is fixed`)
+    }
+    if (ecosystem === 'npm') {
+      completeLockfile(workspaceRoot)
     }
   }
 }

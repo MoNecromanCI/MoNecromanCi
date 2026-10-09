@@ -300,7 +300,7 @@ tags, which have no Actions equivalent):
 12 Download Go module dependencies            (guard) ← Go dep injection
 13 Install golangci-lint                      (guard)
 14 Add Go tool bin to PATH                    (guard)
-15 Install the Flutter SDK (3.44.8)           (guard)
+15 Install the Flutter SDK (3.47.7)           (guard)
 16 Add the Flutter SDK to PATH                (guard)
 17 Resolve Dart dependencies                  (guard) ← Flutter dep injection
 18 npx nx sync:check
