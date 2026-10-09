@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { listGoModuleDirectories } from '../go-workspace'
 import { GOLANGCI_LINT_VERSION } from '../workspace-overlay'
 import { addToPath, type CiHost } from './ci-environment.client'
 import type { CiDependencies, CiProcesses } from './phase.contract'
@@ -42,30 +43,40 @@ const GOLANGCI_LINT_MODULE = 'github.com/golangci/golangci-lint/v2/cmd/golangci-
  * Downloads the workspace's Go module dependencies.
  *
  * @remarks
- * The root `go.mod` is what marks a workspace as having Go projects; without one this does nothing.
+ * A workspace has Go projects when it has a `go.work` (the multi-module layout `mnci add go-*` creates, with no
+ * root module) or a root `go.mod` (an adopted flat repository). A plain `go mod download` at the root fails in the
+ * first layout, so each module the `go.work` lists is downloaded on its own with `go -C`. Without either file this
+ * does nothing.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param processes - The process runner.
  * @param log - The logger.
- * @returns 0 when there is no Go project (no root `go.mod`) or the download worked, otherwise its status.
+ * @returns 0 when there is no Go project or every download worked, otherwise the first failing status.
  * @throws Never - a failing command is a status.
  * @typeParam None - this function has no generic type parameters.
  */
 export function downloadGoModules (workspaceRoot: string, processes: CiProcesses, log: (message: string) => void): number {
-  if (!existsSync(join(workspaceRoot, 'go.mod'))) {
+  const modules = listGoModuleDirectories(workspaceRoot)
+  if (modules === undefined) {
     log('No Go projects - skipping.')
 
     return 0
   }
+  for (const directory of modules) {
+    const status = processes.run('go', directory === '.' ? ['mod', 'download'] : ['-C', directory, 'mod', 'download'])
+    if (status !== 0) {
+      return status
+    }
+  }
 
-  return processes.run('go', ['mod', 'download'])
+  return 0
 }
 
 /**
  * Installs `golangci-lint` at the pinned version, verifying the download against the release's checksums.
  *
  * @remarks
- * Skips when there is no Go project or the linter is already installed. Otherwise it downloads the
+ * Skips when there is no Go project (no `go.work` and no root `go.mod`) or the linter is already installed. Otherwise it downloads the
  * prebuilt release for this OS and architecture (about a second, against about 70 compiling it),
  * checks its SHA-256 against the release's own checksum file, extracts it with the system `tar` and
  * puts the binary in `GOPATH/bin`. Anything that goes wrong (no prebuilt release for this platform, a
@@ -86,7 +97,7 @@ export async function installGolangciLint (
   machine: Machine,
 ): Promise<number> {
   const { processes, log, fetchBytes } = dependencies
-  if (!existsSync(join(workspaceRoot, 'go.mod'))) {
+  if (listGoModuleDirectories(workspaceRoot) === undefined) {
     log('No Go projects - skipping.')
 
     return 0
@@ -175,7 +186,7 @@ export function publishGoTools (
   processes: CiProcesses,
   log: (message: string) => void,
 ): void {
-  if (!existsSync(join(workspaceRoot, 'go.mod'))) {
+  if (listGoModuleDirectories(workspaceRoot) === undefined) {
     log('No Go projects - skipping.')
 
     return

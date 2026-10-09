@@ -9,3 +9,5 @@
  */
 
 export { goModulePrefix, hasGoProject, isNxGoPluginRegistered, NX_GO_PLUGIN, registerNxGoPlugin } from './go-plugin.use-case'
+export { parseGoWorkUses } from './go-work-uses.algorithm'
+export { listGoModuleDirectories } from './list-go-modules.use-case'
