@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   canRepairRollupConfig,
   hasRollupSourceMaps,
@@ -133,5 +136,77 @@ describe('withRollupSourceMaps: the compiler swap on a config eslint already ref
     // whatever column the value happened to be aligned to.
     expect(after).toContain("\n    compiler: 'babel',")
     expect(after).not.toContain('\n babel')
+  })
+})
+
+/** Evaluates the generated `sourcemapPathTransform` property of a config and returns the function. */
+function transformOf (config: string): (relativeSourcePath: string, sourcemapPath: string) => string {
+  const start = config.indexOf('sourcemapPathTransform:')
+  const property = config.slice(start, config.indexOf('\n      },', start) + '\n      },'.length)
+
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval -- evaluates the generated property to test what it does.
+  const evaluate = new Function('require', `return ({ ${property} })`) as (load: NodeJS.Require) => { sourcemapPathTransform: (a: string, b: string) => string }
+
+  return evaluate(require).sourcemapPathTransform
+}
+
+const GENERATED_CONFIG = [
+  "const { withNx } = require('@nx/rollup/with-nx');",
+  '',
+  'module.exports = withNx(',
+  '  {',
+  "    main: './src/index.ts',",
+  "    compiler: 'swc',",
+  '  },',
+  '  {',
+  '  }',
+  ');',
+].join('\n')
+
+describe('withRollupSourceMaps: the path transform (#311)', () => {
+  let workspace: string
+
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), 'mnci-sourcemap-'))
+    mkdirSync(join(workspace, 'packages/sdk/dist'), { recursive: true })
+    mkdirSync(join(workspace, 'packages/sdk/src'), { recursive: true })
+    mkdirSync(join(workspace, 'libs/utils/dist'), { recursive: true })
+    writeFileSync(join(workspace, 'packages/sdk/src/sdk.ts'), '')
+    writeFileSync(join(workspace, 'libs/utils/dist/utils.js'), '')
+  })
+
+  afterEach(() => {
+    rmSync(workspace, { recursive: true, force: true })
+  })
+
+  it('shortens the project\'s own source by the one segment rollup adds, and keeps a path to a file that is there', () => {
+    const transform = transformOf(withRollupSourceMaps(GENERATED_CONFIG))
+    const map = join(workspace, 'packages/sdk/dist/index.esm.js.map')
+
+    expect(transform('../../src/sdk.ts', map)).toBe('../src/sdk.ts')
+    expect(transform(String.raw`..\..\src\sdk.ts`, map)).toBe('../src/sdk.ts')
+    expect(transform('../../../libs/utils/dist/utils.js', map)).toBe('../../../libs/utils/dist/utils.js')
+  })
+
+  it('replaces the collapsing transform earlier versions wrote, in the shape mnci generates and the shape eslint leaves', () => {
+    const generated = withRollupSourceMaps(GENERATED_CONFIG)
+    const start = generated.indexOf('sourcemapPathTransform:')
+    const end = generated.indexOf('\n      },', start)
+    const collapsing = [
+      "sourcemapPathTransform: relativeSourcePath =>\n        relativeSourcePath\n          .replaceAll(String.fromCodePoint(92), '/')\n          .replace(/^([.][.][/])+/, '../')",
+      String.raw`sourcemapPathTransform: relativeSourcePath =>
+        relativeSourcePath
+          .replaceAll(String.fromCodePoint(92), '/')
+          .replace(/^(\.\.\/)+/, '../')`,
+    ]
+    for (const old of collapsing) {
+      const config = generated.slice(0, start) + old + generated.slice(end)
+
+      const upgraded = withRollupSourceMaps(config)
+
+      expect(upgraded).toContain('existsSync')
+      expect(upgraded).not.toContain("'../')")
+      expect(withRollupSourceMaps(upgraded)).toBe(upgraded)
+    }
   })
 })

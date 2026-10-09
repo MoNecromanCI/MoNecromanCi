@@ -1810,6 +1810,23 @@ section('js stack', [], () => {
     sdkStub,
   )
 
+  // A breakpoint in a .ts file binds only if the built bundle's map names real sources: the swc path through
+  // @nx/rollup once wrote `sources: []` (#308), and a build output moved one level deeper breaks the
+  // collapsed `../` run in sourcemapPathTransform (#311). Read the map back and resolve every source.
+  const sdkMapPath = path.join(workspace, 'packages/sdk/dist/index.esm.js.map')
+  let sdkMapSources = []
+  try {
+    sdkMapSources = JSON.parse(readFileSync(sdkMapPath, 'utf8')).sources ?? []
+  } catch {
+    /* leaves the list empty -> the check below fails */
+  }
+  const sdkUnresolved = sdkMapSources.filter(source => !existsSync(path.resolve(path.dirname(sdkMapPath), source)))
+  enforce(
+    'sdk: the bundle source map names sources, and each one is a real file',
+    sdkMapSources.length > 0 && sdkUnresolved.length === 0,
+    sdkMapSources.length === 0 ? 'no sources in ' + sdkMapPath : 'unresolved: ' + sdkUnresolved.join(', '),
+  )
+
   enforce(
     'sdk: no dead declaration maps in the tarball',
     sdkPackedFiles.every(file => !file.endsWith('.d.ts.map')),

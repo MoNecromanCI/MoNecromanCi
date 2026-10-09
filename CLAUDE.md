@@ -469,7 +469,7 @@ reach the same logic without going through scaffolding) and re-applied on `mnci 
   structurally valid but semantically empty maps (`sources: []`) through
   `@nx/rollup`'s swc plugin. `sourcemapPathTransform` also normalizes the emitted
   `sources` path (rollup's OS-native, one-parent-too-many path is wrong on every
-  platform for a URL-style specifier).
+  platform for a URL-style specifier), and it asks whether the file is there (#311, found by the e2e reading the map back): the project's own sources arrive with one `../` too many and lose it, while a source another library already mapped (bundled from its build output) arrives right and is kept. The first version collapsed the whole `../` run to one, which broke the second kind; `mnci upgrade` rewrites that older form.
 - **`types`**: the generator writes `types: './dist/index.esm.d.ts'`, a file its own
   build never emits. `repairPublishableManifest()`
   (`rollup-library/repair-publishable-manifest.use-case.ts`) repoints it at
