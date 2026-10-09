@@ -76,13 +76,29 @@ function venvExecutable (venvPath, name) {
     : path.join(venvPath, 'bin', name)
 }
 
-/** Runs a command inheriting stdio, throwing on non-zero exit. */
+/**
+ * The longest any one command may run before it is killed and counted as failed.
+ *
+ * A command that never returns used to hold the whole job until the runner's six-hour limit, and twice it stalled a
+ * nightly for nearly two hours with no output (a `git commit` in the `go adoption` section, cause unknown). The
+ * slowest legitimate step, a Flutter or .NET build, takes minutes, so thirty is generous; a hang now fails ONE
+ * section, which `section()` records, and the rest of the suite runs.
+ */
+const COMMAND_TIMEOUT_MS = 30 * 60 * 1000
+
+/** Whether a pipeline file calls `command` on a line that is not a comment (a switched-off phase is commented out). */
+function isActiveCall (text, command) {
+  return text.split('\n').some(line => !line.trimStart().startsWith('#') && line.includes(command))
+}
+
+/** Runs a command inheriting stdio, throwing on non-zero exit or when it exceeds {@link COMMAND_TIMEOUT_MS}. */
 function run (command, cwd) {
   console.log(`\n$ ${command}   (cwd: ${cwd})`)
   execSync(command, {
     cwd,
-    stdio: 'inherit',
-    env:   { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true' },
+    stdio:   'inherit',
+    timeout: COMMAND_TIMEOUT_MS,
+    env:     { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true' },
   })
 }
 
@@ -126,6 +142,7 @@ function tryRunCapture (command, cwd, extraEnvironment = {}) {
       cwd,
       encoding: 'utf8',
       stdio:    ['ignore', 'pipe', 'pipe'],
+      timeout:  COMMAND_TIMEOUT_MS,
       env:      { ...process.env, NX_DAEMON: 'false', HUSKY: '0', CI: 'true', ...extraEnvironment },
     })
     console.log(output)
@@ -756,12 +773,19 @@ section('js stack', [], () => {
     'pipeline stamps the CLI agent and variable group',
     pipelineYaml.includes('vmImage: ubuntu-latest') && pipelineYaml.includes('- group: Build'),
   )
+  // Packing is `mnci ci pack` since #269 (covered by the ci-pipeline unit tests). The pipeline must call it with the
+  // phase ACTIVE: a fresh workspace once came out with pack and release switched off, because Nx's own pipeline was
+  // migrated as a legacy file. The per-app build tag stays an Azure-only step in the YAML.
   enforce(
-    'pipeline packs apps to a drop and tags per app (type-name)',
-    pipelineYaml.includes('nx run-many -t package') &&
+    'pipeline packs apps to a drop and tags per app (type-name), with pack switched on',
+    isActiveCall(pipelineYaml, 'npx mnci ci pack') &&
       pipelineYaml.includes('ArtifactName: drop') &&
       pipelineYaml.includes('##vso[build.addbuildtag]') &&
-      pipelineYaml.includes('path.basename(f,\'.zip\')'),
+      !pipelineYaml.includes('nx run-many -t package'),
+  )
+  enforce(
+    'pipeline releases: the release phase is switched on in a fresh workspace',
+    isActiveCall(pipelineYaml, 'npx mnci ci release'),
   )
   // This workspace was generated with --registry npm, so auth is NODE_AUTH_TOKEN
   // sourced from an NPM_TOKEN variable, not PAT — the azurePipelinesYaml/
@@ -800,12 +824,12 @@ section('js stack', [], () => {
   // freshly generated workspace, so it should carry no ACTIONABLE advisory. If
   // this ever fails, read the log rather than the assertion — it means what mnci
   // generates ships a fixable vulnerability, which is worth knowing.
-  const npmAuditStep = pipelineParsed?.steps?.find(
-    step => step.displayName === 'npm audit (fails on an actionable advisory)',
-  )
+  // The gate is `mnci ci audit` now. The pipeline must call it, and the phase, run from THIS build of the CLI (the
+  // workspace's own devDependency is the last published one), must pass on a fresh workspace.
+  const npmAuditStep = pipelineParsed?.steps?.find(step => step.script === 'npx mnci ci audit')
   enforce(
-    "pipeline's npm audit step is the actionable-gating form, and a fresh workspace passes it",
-    Boolean(npmAuditStep) && tryRun(npmAuditStep.script, workspace),
+    "pipeline's audit step calls mnci ci audit, and a fresh workspace passes it",
+    Boolean(npmAuditStep) && tryRun(`node ${CLI} ci audit`, workspace),
     'see log above',
   )
 
@@ -893,10 +917,17 @@ section('js stack', [], () => {
     workflowYaml.includes('actions/checkout@v7') && !workflowYaml.includes('checkout -B'),
   )
   enforce(
-    'workflow packs apps to a drop artifact (no Azure build-tag mechanism)',
-    workflowYaml.includes('nx run-many -t package') &&
+    'workflow calls mnci ci pack and uploads the drop artifact (no Azure build-tag mechanism)',
+    isActiveCall(workflowYaml, 'npx mnci ci pack') &&
       workflowYaml.includes('actions/upload-artifact@v7') &&
+      !workflowYaml.includes('nx run-many -t package') &&
       !workflowYaml.includes('addbuildtag'),
+  )
+  enforce(
+    'workflow releases (the release phase is on) and carries none of the steps Nx generated',
+    isActiveCall(workflowYaml, 'npx mnci ci release') &&
+      !workflowYaml.includes('nx start-ci-run') &&
+      !workflowYaml.includes('nx fix-ci'),
   )
   let workflowParsed = null
   try {
@@ -915,12 +946,10 @@ section('js stack', [], () => {
 
   // Same real-execution proof as the Azure pipeline, against this workspace's
   // real node_modules (generated with --registry npm too).
-  const npmAuditStepGithub = workflowParsed?.jobs?.ci?.steps?.find(
-    step => step.name === 'npm audit (fails on an actionable advisory)',
-  )
+  const npmAuditStepGithub = workflowParsed?.jobs?.ci?.steps?.find(step => step.run === 'npx mnci ci audit')
   enforce(
-    "workflow's npm audit step is the actionable-gating form, and a fresh workspace passes it",
-    Boolean(npmAuditStepGithub) && tryRun(npmAuditStepGithub.run, workspaceGithub),
+    "workflow's audit step calls mnci ci audit, and a fresh workspace passes it",
+    Boolean(npmAuditStepGithub) && tryRun(`node ${CLI} ci audit`, workspaceGithub),
     'see log above',
   )
 
@@ -2207,12 +2236,11 @@ section('python', ['alt stack'], () => {
   const altPipelineParsed = yaml.load(
     readFileSync(path.join(altWorkspace, 'azure-pipelines.yml'), 'utf8'),
   )
-  const pipAuditStep = altPipelineParsed?.steps?.find(
-    step => step.displayName === 'pip-audit (non-blocking)',
-  )
+  // pip-audit runs inside `mnci ci audit` and only reports, so the phase must exit 0 whatever it finds.
+  const pipAuditStep = altPipelineParsed?.steps?.find(step => step.script === 'npx mnci ci audit')
   enforce(
-    "pipeline's pip-audit step exits 0 even when real vulnerabilities are found",
-    Boolean(pipAuditStep) && tryRun(pipAuditStep.script, altWorkspace),
+    "pipeline's audit phase exits 0 on a Python workspace even when pip-audit finds vulnerabilities",
+    Boolean(pipAuditStep) && tryRun(`node ${CLI} ci audit`, altWorkspace),
     'see log above',
   )
 

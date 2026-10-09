@@ -180,6 +180,9 @@ jobs:
     name: e2e (windows-latest)
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
     runs-on: windows-latest
+    # A full run takes about an hour and a half; this caps a stuck one well before the six-hour default, and a push
+    # to main that needs a release run is queued behind it meanwhile.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
         with:
