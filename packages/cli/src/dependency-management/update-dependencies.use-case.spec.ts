@@ -14,6 +14,8 @@ jest.mock('../nx-workspace', () => ({
 // The registry is the one thing this command cannot own: stubbed so the suite
 // asserts what mnci does with an answer, never what npm replies.
 jest.mock('./registry.client', () => ({ latestVersions: jest.fn() }))
+// Likewise the release sources of the tools mnci pins: the network is not this command's to own.
+jest.mock('../tool-versions', () => ({ reportToolVersions: jest.fn() }))
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -21,10 +23,12 @@ import { join } from 'node:path'
 import { checkbox } from '@inquirer/prompts'
 import { latestVersions } from './registry.client'
 import { runFormatter, runShell } from '../nx-workspace'
+import { reportToolVersions } from '../tool-versions'
 import { collectOutdated, runUp } from './update-dependencies.use-case'
 
 const mockCheckbox = jest.mocked(checkbox)
 const mockLatestVersions = jest.mocked(latestVersions)
+const mockReportToolVersions = jest.mocked(reportToolVersions)
 const mockRunShell = jest.mocked(runShell)
 const mockRunFormatter = jest.mocked(runFormatter)
 
@@ -295,6 +299,19 @@ describe('runUp', () => {
 
     expect(readManifest('packages/a/package.json').dependencies.axios).toBe('1.9.0')
     expect(readManifest('packages/b/package.json').dependencies.axios).toBe('~1.9.0')
+  })
+
+  it('reports the tools mnci pins on a full run, but not when --ecosystem narrows it (#241)', async () => {
+    seedWorkspace()
+    mockLatestVersions.mockResolvedValue(new Map())
+
+    await runUp(workspaceRoot, { check: true })
+
+    expect(mockReportToolVersions).toHaveBeenCalledTimes(1)
+
+    await runUp(workspaceRoot, { check: true, ecosystem: 'npm' })
+
+    expect(mockReportToolVersions).toHaveBeenCalledTimes(1)
   })
 
   it('writes nothing when the prompt comes back empty', async () => {

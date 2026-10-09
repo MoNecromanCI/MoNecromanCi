@@ -841,8 +841,11 @@ the devcontainer and both CI providers read it: nothing installs `latest`. An ov
 providers and asserts that the devcontainer, GitHub and Azure carry the same Node and .NET versions, that the container's Go
 feature names the pinned linter, and that no generated file asks for a tool at `latest`. `mnci ci setup` installs
 `golangci-lint` only when the one on `PATH` is not the pinned version: a devcontainer feature or runner image ships its own,
-and finding it used to skip the pin. The hosted agents bring their own Go, so `GO_VERSION` pins the devcontainer only. Reporting
-a newer release of each pinned tool in `mnci up` is still open on #241.
+and finding it used to skip the pin. The hosted agents bring their own Go, so `GO_VERSION` pins the devcontainer only. `mnci up`
+ends its tooling section (the `tool-versions/` slice) with each pinned tool whose own release source reports a newer one, compared at
+the pin's precision (a Node major, a Go minor, a full golangci-lint version), informationally: the remedy is an mnci release. The
+sources are `go list` (the linter), `nodejs.org` (newest LTS), `go.dev/dl`, the .NET release index, the Flutter tags and `npm view`;
+an unreachable one is skipped, and `--ecosystem` leaves the section out.
 
 ### Tag-Only Git
 

@@ -26,6 +26,7 @@ import { runFormatter, runShell } from '../nx-workspace'
 import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
 import { resolveEcosystems, syncProjectReferences } from './sync-dependencies.use-case'
+import { reportToolVersions } from '../tool-versions'
 
 /**
  * Options accepted by `mnci up`.
@@ -546,6 +547,12 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
     if (!hasEcosystem(workspaceRoot, ecosystem)) {
       logger.info(`⊘ SKIPPED ${ecosystem} — no ${ecosystem} project in this workspace.`)
     }
+  }
+
+  // The tools mnci pins are not requirements of any manifest, so they are reported on their own, and only for a full
+  // run: `--ecosystem` asks about one kind of dependency, not about mnci's own pins (#241).
+  if (options.ecosystem === undefined) {
+    await reportToolVersions()
   }
 
   logger.step('Querying registries for the latest published versions')
