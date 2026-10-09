@@ -150,8 +150,41 @@ What the port showed:
 - Shapes all three use: sequential retried activities, try/catch around one activity, `Task.all` batches, custom
   status values, an early return from a failure branch.
 
-Still unverified, because none of the three uses it: replay under a real host, retry exhaustion, `parse`,
-`continueAsNew`, events, timers and sub-orchestrations.
+Replay under a real host, retry exhaustion, `parse`, `continueAsNew`, events, timers and sub-orchestrations are
+covered by finding 9.
+
+## 9. A real host (2026-10-09)
+
+Everything before this ran against the package's own harness. `test/real-host/` runs the built package on Azure
+Functions Core Tools 4.14 with Azurite (extension bundle 4.x, `durable-functions` 3.5, `@azure/functions` 4.16), and
+starts seven orchestrations over HTTP. Every one behaved as the typed API says:
+
+- **Replay:** three sequential activities, each executed exactly once (`Step:a,Step:b,Step:c` in the activity log),
+  though the orchestrator body ran again after each. `now(context)` gave a stable start and finish.
+- **Retry exhaustion:** `retryPolicy({ maxNumberOfAttempts: 3 })` on an activity that always throws: the activity ran
+  three times, then the `catch` in the orchestration ran.
+- **Events:** `eventTask` raced against `timerTask(6000)` through `any`. Raising the event after 1.5 s completed the
+  instance about a second later with the typed payload (the cancelled timer did not hold it open); with no event it
+  completed with the timeout branch after 6 s.
+- **Timers:** `sleepFor(4000)` returned after 3.76 s of orchestration time (`currentUtcDateTime` is the replay clock, not
+  the wall clock, so a duration measured with it is approximate).
+- **Sub-orchestrations:** two calls to a child, one failing; the parent caught the failure and finished.
+- **`continueAsNew`:** three generations, the activity ran once in each, and the instance completed with the last
+  output.
+- **`parse`:** a bad input failed the instance with the parse error's message; a good one ran.
+
+What the real host showed that the harness could not:
+
+- **A caught failure's `message` is not the one thrown.** An activity that threw `boom x` arrives in the orchestration as
+  an `Error` whose message is `Activity function 'Boom' failed:  boom x \n {"$type":"System.Exception, ...` followed by
+  the host's whole serialised .NET exception, stack trace included (a few kilobytes). A failed sub-orchestration is the
+  same with `Orchestrator function 'Child' failed: child 2 failed \n Message: ...`. Code that compares or displays
+  `error.message` must expect that; the harness hands back the original `Error`, so a test that passes there can
+  mismatch here. Not fixed: it is the host's wrapping, and unwrapping it would be a guess at its format.
+- Stored `createdTime` and `lastUpdatedTime` have one-second resolution.
+
+Still unverified: entity functions (the package has none), a host restart in the middle of an orchestration (replay
+after a real process restart), and a real storage account instead of Azurite.
 
 ## What is still not verified
 
@@ -159,6 +192,5 @@ These reconstructions were written by the same author as the API, so they
 confirm that the API composes over shapes that author thought of. Findings 2–6
 are real defects it found, which is evidence the exercise was worth doing — but
 it is not the evidence the real workflows would give. Specifically untested:
-real SDK behaviour end to end (no Functions host is involved anywhere here),
-retry exhaustion (the harness throws once; it does not exhaust attempts), and
-entity functions.
+entity functions, and a host restart in the middle of an orchestration (the real-host
+checks in finding 9 cover everything else that was listed here).

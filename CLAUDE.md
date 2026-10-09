@@ -755,7 +755,7 @@ to *that* orchestration's own input. Peer dependency only (`durable-functions` i
 imported by value in `activity.ts`/`orchestration.ts` to call `df.app.*`, but that's
 still zero runtime `dependencies`). `test/dogfood/` holds reconstructions of real
 workflows for API-shape validation, not production verification — its README says
-so.
+so. `test/real-host/` runs the built package on a real Durable host (Core Tools plus Azurite), by hand: replay, retry exhaustion, events, timers, sub-orchestrations, `continueAsNew` and `parse` all behave as typed (FINDINGS.md, finding 9); a caught failure's `message` is the host's wrapped text, not the original.
 
 ## Known Issues & Future Plans
 
