@@ -900,6 +900,13 @@ target builds, such as a `.dmg`). It copies to `dist/release-assets/<app>/` and 
 cache keys are untouched. Measured with a fake `gh` in a scratch workspace. Not covered: validating the config in `mnci doctor`, and the
 `mnci` pipelines' own steps (they only call the script).
 
+### Prepared assistants (#366)
+
+`mnci new` and `mnci upgrade` write `.claude/agents/wizard.md` (architect: plans and changes code by the vertical-slice rules), `necromancer.md` (drives mnci, through the MCP
+server) and `sorcerer.md` (writer: documentation, diagrams, Playwright screenshots), plus `.mcp.json` registering `npx mnci mcp` (`mnci-agents/`). Written once and the team's from then on:
+a file that exists is never touched, so a `.mcp.json` with other servers keeps them (and the mnci one is then not added; the output does not say so). Agent descriptions must not hold a
+colon, which breaks the YAML front matter (the spec parses them). Claude Code format only; other assistants' folders are not written.
+
 ### `mnci mcp` (#292)
 
 `mcp-server/` serves the Model Context Protocol over stdio, hand-rolled (`initialize`, `ping`, `tools/list`, `tools/call`; no SDK, so the CLI keeps three

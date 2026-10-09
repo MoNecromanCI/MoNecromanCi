@@ -35,6 +35,7 @@ import {
 import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
 import { completeLockfile } from '../lockfile-completion'
+import { writeMnciAgents } from '../mnci-agents'
 import { migrateNx } from './migrate-nx.use-case'
 
 /**
@@ -308,6 +309,13 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
 
   logger.step('Re-applying the MoNecromanCI overlay')
   applyOverlay(workspaceRoot, resolved, logger.detail)
+  const agents = writeMnciAgents(workspaceRoot)
+  if (agents.length > 0) {
+    logger.step('Preparing the mnci assistants and registering the mnci MCP server (written once, yours from here)')
+    for (const path of agents) {
+      logger.detail(`wrote ${path}`)
+    }
+  }
 
   // A per-project sweep, unlike everything above it. A rollup config is written
   // once at `add` time, so a workspace generated before source maps were wired
