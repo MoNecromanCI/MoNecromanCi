@@ -299,7 +299,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # The Go app's image is built from a binary `go build` produces, so the toolchain is needed here too.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         name: Install Go (so the Go app's image is built)
         continue-on-error: true
         with:
