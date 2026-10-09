@@ -250,7 +250,12 @@ export function addNodeApp (
     package: nodeAppPackageTarget(name),
   })
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
-  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:serve` })
+  registerProjectCommands(workspaceRoot, name, {
+    build:    true,
+    start:    `nx run ${name}:serve`,
+    buildDev: `nx run ${name}:build:development`,
+    dev:      `nx run ${name}:serve`,
+  })
 }
 
 /**

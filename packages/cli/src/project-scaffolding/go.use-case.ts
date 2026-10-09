@@ -362,6 +362,28 @@ function goBuildTarget (name: string): Record<string, unknown> {
 }
 
 /**
+ * The `build-dev` target for a Go app: the binary with the optimiser and inlining off, for a debugger.
+ *
+ * @remarks
+ * `-gcflags=all=-N -l` holds a space, so the flag is quoted INSIDE the command string: `nx:run-commands` hands the
+ * string to a shell, which would otherwise split it and give `go build` a stray `-l` (measured, #230; `go version -m`
+ * on the result shows the flag). It writes to `dist/dev/apps/<name>`, not beside {@link goBuildTarget}'s output, so
+ * the two never overwrite each other and Nx restoring a cached `build` does not delete it.
+ *
+ * @param name - The Go app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goBuildDevTarget (name: string): Record<string, unknown> {
+  return {
+    executor: 'nx:run-commands',
+    outputs:  [`{workspaceRoot}/dist/dev/apps/${name}`],
+    options:  { command: `go build "-gcflags=all=-N -l" -o ../../dist/dev/apps/${name}/${name} .`, cwd: `apps/${name}` },
+  }
+}
+
+/**
  * The `package` target for a Go app: zip its built binary into the drop.
  *
  * @remarks
@@ -782,9 +804,9 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     writeGoAppExample(workspaceRoot, `apps/${name}`)
   }
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
-    build: goBuildTarget(name),
-    test:  goTestTarget(),
-    lint:  goLintTarget(),
+    'build': goBuildTarget(name),
+    'test':  goTestTarget(),
+    'lint':  goLintTarget(),
     ...(cgo
       ? { 'build-native': goNativeBuildTarget(name), 'package-native': goNativePackageTarget(name) }
       : {
@@ -792,7 +814,8 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
           'build-all':   goBuildAllTarget(name),
           'package-all': goPackageAllTarget('go-app', name),
         }),
-    start: goStartTarget(name),
+    'build-dev': goBuildDevTarget(name),
+    'start':     goStartTarget(name),
   })
   if (options.release === true) {
     makeGoAppReleasable(workspaceRoot, name)
@@ -800,7 +823,11 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
   if (options.web !== undefined) {
     wireGoAppToWeb(workspaceRoot, name, options.web)
   }
-  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
+  registerProjectCommands(workspaceRoot, name, {
+    build:    true,
+    start:    `nx run ${name}:start`,
+    buildDev: `nx run ${name}:build-dev`,
+  })
   if (cgo) {
     logger.warn(
       `${name} needs a C toolchain, so CI builds it on a runner of each OS. Run \`mnci upgrade\` to add the native job to your pipeline, and add the -dev packages it links to the Linux prerequisites step.`,
