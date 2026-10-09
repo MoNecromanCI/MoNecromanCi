@@ -350,6 +350,29 @@ describe('registerProjectCommands', () => {
     expect(scripts()['app:start']).toBe('nx run app:serve')
   })
 
+  it('writes <name>:build:dev and <name>:dev only for a kind that has them, and a background task for dev (#230)', () => {
+    writeFileSync(
+      join(workspaceRoot, 'demo.code-workspace'),
+      JSON.stringify({ folders: [], tasks: { version: '2.0.0', tasks: [] } }),
+    )
+
+    registerProjectCommands(workspaceRoot, 'api', {
+      build:    true,
+      start:    'nx run api:serve',
+      buildDev: 'nx run api:build:development',
+      dev:      'nx run api:serve',
+    })
+    registerProjectCommands(workspaceRoot, 'svc', { build: true, buildDev: 'nx run svc:build-dev' })
+
+    expect(scripts()['api:build:dev']).toBe('nx run api:build:development')
+    expect(scripts()['api:dev']).toBe('nx run api:serve')
+    expect(scripts()['svc:build:dev']).toBe('nx run svc:build-dev')
+    expect(scripts()['svc:dev']).toBeUndefined()
+    expect(tasks().find(task => task.label === 'api: dev')).toMatchObject({ script: 'api:dev', isBackground: true })
+    expect(tasks().find(task => task.label === 'api: build:dev')).toMatchObject({ script: 'api:build:dev' })
+    expect(tasks().some(task => task.label === 'svc: dev')).toBe(false)
+  })
+
   it('preserves scripts already in package.json (both mnci-owned and hand-added)', () => {
     writeFileSync(
       join(workspaceRoot, 'package.json'),

@@ -491,23 +491,33 @@ export function removeGeneratedEslintConfig (workspaceRoot: string, projectRoot:
  */
 export interface ProjectCommands {
   /** Whether this kind has a `build` Nx target — adds `<name>:build` when true. */
-  build:  boolean
+  build:     boolean
   /**
    * The exact command for `<name>:qa`, for a project whose checks are not lint and test (an end-to-end
    * project has no `test` target). Defaults to `nx run <name>:lint && nx run <name>:test`.
    */
-  qa?:    string
+  qa?:       string
   /**
    * More scripts, by suffix (`image` gives `<name>:image`), for a kind whose project has targets the three
    * standard ones do not cover.
    */
-  extra?: Record<string, string>
+  extra?:    Record<string, string>
   /**
    * The exact command for `<name>:start` (e.g. `nx run <name>:serve`,
    * `nx run <name>:start`) — omitted entirely when the kind has no local
    * dev-server story.
    */
-  start?: string
+  start?:    string
+  /**
+   * The exact command for `<name>:build:dev`: a build that keeps what a debugger needs (source maps, unoptimised
+   * code), for a kind whose toolchain tells the two apart. Omitted where it has not been measured (#230).
+   */
+  buildDev?: string
+  /**
+   * The exact command for `<name>:dev`: build for debugging and rebuild or restart on change. Omitted where the
+   * kind has no such mechanism that has been measured (#230).
+   */
+  dev?:      string
 }
 
 /**
@@ -553,7 +563,7 @@ function projectTask (name: string, kind: string): Record<string, unknown> {
   const script = `${name}:${kind}`
   const base = { label: `${name}: ${kind}`, type: 'npm', script, problemMatcher: [] }
 
-  if (kind === 'start') {
+  if (kind === 'start' || kind === 'dev') {
     return { ...base, isBackground: true }
   }
 
@@ -990,6 +1000,12 @@ export function registerProjectCommands (
   if (commands.start) {
     scripts[`${name}:start`] = commands.start
   }
+  if (commands.buildDev) {
+    scripts[`${name}:build:dev`] = commands.buildDev
+  }
+  if (commands.dev) {
+    scripts[`${name}:dev`] = commands.dev
+  }
   const extraScripts = Object.entries(commands.extra ?? {})
   for (const [suffix, command] of extraScripts) {
     scripts[`${name}:${suffix}`] = command
@@ -1037,6 +1053,8 @@ export function registerProjectCommands (
     projectTask(name, 'qa'),
     ...(commands.build ? [projectTask(name, 'build')] : []),
     ...(commands.start ? [projectTask(name, 'start')] : []),
+    ...(commands.buildDev ? [projectTask(name, 'build:dev')] : []),
+    ...(commands.dev ? [projectTask(name, 'dev')] : []),
     ...Object.keys(commands.extra ?? {}).map(suffix => projectTask(name, suffix)),
   ]
   // A launch entry per project with a `start`, replaced by its exact name so a second `add`, or an upgrade, leaves

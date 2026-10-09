@@ -427,14 +427,22 @@ Nx plugin where none does:
 - What `start` is differs by kind, and nothing yet makes it uniform: React and Node apps map it to `serve` (a
   dev server that rebuilds), Go, Python and C# map it to running what `build` produced, and Flutter has none.
 
-**Not built yet (tracked in #230): `<name>:build:dev` and `<name>:dev`** for the app kinds. The intended meaning is
-`build:dev` = a build that carries whatever debug info the toolchain distinguishes (source maps, unoptimised
-codegen, debug symbols), and `dev` = build that and watch, rebuilding or restarting on change. The mechanics
-differ per toolchain and each needs measuring before it is written: Node's `@nx/js:node` `buildTarget` needs the
-manifest's real scoped name; Go's `air` shells out via `execSync`, so `-gcflags=all=-N -l` needs its space quoted
-**inside** the flag string; Python's `watchmedo auto-restart` restarts on every subprocess exit unless given
-`--no-restart-on-command-exit`; C#'s `dotnet build`/`run` default to `Debug` (opposite of the JS convention), so
-`build`/`build:dev` would be explicit `-c Release`/`-c Debug`. Until then `mnci dev` runs each project's `start`.
+**`<name>:build:dev` and `<name>:dev` (#230)**: `build:dev` is a build that carries what a debugger needs (source maps,
+unoptimised code) and `dev` builds that and rebuilds or restarts on change. Each mechanism was measured on a generated
+workspace before it was written, and a kind appears only where it was:
+
+- `node-app`: `build:dev` = `nx run <name>:build:development` (esbuild with source maps; `build` defaults to `production`,
+  which has none), `dev` = `nx run <name>:serve` (`@nx/js:node` with the development build target, which rebuilds on change).
+- `react-app`: `build:dev` = `nx run <name>:build-dev`, `dev` = `nx run <name>:serve` (Vite's dev server).
+- `go-app`: a `build-dev` target (`go build "-gcflags=all=-N -l"` into `dist/dev/apps/<name>`, the flag quoted INSIDE the
+  command string because `nx:run-commands` hands it to a shell, which would split the space; `go version -m` on the result
+  shows it) and its `build:dev` script. No `dev`: it needs `air`, which mnci does not install. `mnci upgrade` does not yet add
+  the target to an existing Go app.
+
+Still unbuilt: Python (`watchmedo auto-restart` restarts on every subprocess exit unless given `--no-restart-on-command-exit`,
+and needs `watchdog`), and C# (`dotnet build`/`run` already default to `Debug`, the opposite of the JS convention, so changing
+`build` to `-c Release` would change what is packaged; `dotnet watch run` is the likely `dev`). Until then `mnci dev` runs each
+project's `start`.
 
 A future `cli-lib` kind (publishable package that is also invoked like an app) would need the app treatment;
 deferred, since the kind doesn't exist yet.
