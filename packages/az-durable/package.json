@@ -34,7 +34,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "@azure/functions": "^4.16.2",
+    "@azure/functions": "^4.16.5",
     "@typescript-eslint/parser": "^8.68.0",
     "durable-functions": "^3.5.0"
   },
