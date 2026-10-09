@@ -21,6 +21,7 @@
 import { execSync, spawn, spawnSync } from 'node:child_process'
 import {
   existsSync,
+  globSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -102,6 +103,31 @@ function printEvidence (title, root, files, commands = []) {
     const lines = filter ? result.output.split('\n').filter(line => filter.test(line)) : result.output.split('\n')
     console.log(`\n--- ${label}\n${lines.slice(0, 60).join('\n')}`)
   }
+}
+
+/**
+ * #291: adds a dependency to ONE project with `mnci i -w`, then checks it landed in that project's manifest and in
+ * no other manifest of the workspace.
+ *
+ * @param details - `ecosystem` names the check; `project` is the `-w` target; `manifest` is that project's manifest
+ * and `siblings` are the manifest globs to search for leaks, relative to `root`; `needle` is how the package
+ * appears in a manifest; `spec` is what is passed to `mnci i`; `extraEnvironment` is added to the command's.
+ */
+function checkInstallLandsInOne (details) {
+  const { ecosystem, root, project, siblings, needle, spec, extraEnvironment } = details
+  // A manifest whose file name is not known in advance (a .csproj) is given as a glob.
+  const manifest = details.manifest.includes('*') ? (globSync(details.manifest, { cwd: root })[0] ?? details.manifest).replaceAll('\\', '/') : details.manifest
+  const result = tryRunCapture(`node ${CLI} i -w ${project} ${spec}`, root, extraEnvironment)
+  const landed = existsSync(path.join(root, manifest)) && readFileSync(path.join(root, manifest), 'utf8').includes(needle)
+  const manifests = siblings.flatMap(pattern => globSync(pattern, { cwd: root }))
+    .map(file => file.replaceAll('\\', '/'))
+    .filter(file => file !== manifest)
+  const leaked = manifests.filter(file => readFileSync(path.join(root, file), 'utf8').includes(needle))
+  enforce(
+    `install: ${ecosystem} dependency lands in the target project's manifest and in no other`,
+    result.ok && landed && leaked.length === 0,
+    `${result.output.slice(-800)}\nlanded: ${landed}; leaked into: ${leaked.join(', ') || 'nothing'}`,
+  )
 }
 
 /** Whether a pipeline file calls `command` on a line that is not a comment (a switched-off phase is commented out). */
@@ -1979,6 +2005,17 @@ section('alt stack', [], () => {
         existsSync(path.join(altWorkspace, `dist/drop/react-app-web-${environment}.zip`)),
       ),
   )
+
+  // #291: a dependency added to one project lands in that project's package.json and nowhere else, the root's included.
+  checkInstallLandsInOne({
+    ecosystem: 'npm',
+    root:      altWorkspace,
+    project:   'sdk',
+    manifest:  'packages/sdk/package.json',
+    siblings:  ['package.json', 'apps/*/package.json', 'packages/*/package.json', 'libs/*/package.json'],
+    needle:    '"ms":',
+    spec:      'ms',
+  })
 })
 section('python', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
@@ -2469,6 +2506,18 @@ section('python', ['alt stack'], () => {
       altReleasePublishDryRun.output.includes(`[dry-run] would run: ${PYTHON} -m twine upload`),
     altReleasePublishDryRun.output,
   )
+
+  // #291: `mnci i -w` edits that project's pyproject.toml, then does the editable install (into the shared
+  // environment this section already installs into). No other project's pyproject gains the package.
+  checkInstallLandsInOne({
+    ecosystem: 'pip',
+    root:      altWorkspace,
+    project:   'pyshared',
+    manifest:  'python-packages/pyshared/pyproject.toml',
+    siblings:  ['python-packages/*/pyproject.toml', 'libs/*/pyproject.toml', 'apps/*/pyproject.toml', 'requirements-dev.txt'],
+    needle:    'six',
+    spec:      'six',
+  })
 })
 section('go', ['alt stack'], () => {
   /* ---------------------------------------------------------------------------
@@ -3014,6 +3063,17 @@ section('go', ['alt stack'], () => {
     rmSync(path.join(altWorkspace, 'apps/uiweb/dist'), { recursive: true, force: true })
     const siteTest = tryRunCapture('npx nx run site:test --skip-nx-cache', altWorkspace)
     enforce('go: the app tests green on a fresh clone with nothing staged, because the target stages first', siteTest.ok, siteTest.output)
+
+    // #291: `go get` runs in that project's module only, so no other go.mod gains the requirement.
+    checkInstallLandsInOne({
+      ecosystem: 'go',
+      root:      altWorkspace,
+      project:   'goutil',
+      manifest:  'libs/goutil/go.mod',
+      siblings:  ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
+      needle:    'github.com/google/uuid',
+      spec:      'github.com/google/uuid',
+    })
   } else {
     skip('the entire Go section', 'the Go toolchain is not on PATH')
   }
@@ -3729,6 +3789,17 @@ section('csharp', ['alt stack'], () => {
         readFileSync(path.join(altWorkspace, 'nuget.config'), 'utf8').includes('nuget.org') &&
         !readFileSync(path.join(altWorkspace, 'nuget.config'), 'utf8').includes('packageSourceCredentials'),
     )
+
+    // #291: `dotnet add package` runs against that project's .csproj only.
+    checkInstallLandsInOne({
+      ecosystem: 'nuget',
+      root:      altWorkspace,
+      project:   'cslib',
+      manifest:  'packages/cslib/*.csproj',
+      siblings:  ['packages/*/*.csproj', 'libs/*/*.csproj', 'tests/*/*.csproj'],
+      needle:    'Include="Newtonsoft.Json"',
+      spec:      'Newtonsoft.Json',
+    })
   } else {
     skip('the entire C# section', 'the .NET SDK is not on PATH')
   }
@@ -3907,6 +3978,17 @@ section('flutter', [], () => {
       flutterRelease.ok && /dartshared/i.test(flutterRelease.output),
       flutterRelease.output,
     )
+
+    // #291: `flutter pub add` runs in that member only; the root pubspec holds no dependency block.
+    checkInstallLandsInOne({
+      ecosystem: 'pub',
+      root:      altWorkspace,
+      project:   'dartshared',
+      manifest:  'packages/dartshared/pubspec.yaml',
+      siblings:  ['pubspec.yaml', 'packages/*/pubspec.yaml', 'libs/*/pubspec.yaml', 'apps/*/pubspec.yaml'],
+      needle:    'collection:',
+      spec:      'collection',
+    })
   } else {
     skip(
       'the entire Flutter section',
