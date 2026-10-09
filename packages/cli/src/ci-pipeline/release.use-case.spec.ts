@@ -269,6 +269,76 @@ describe('mnci ci release: after the release (#269, #259)', () => {
   })
 })
 
+/** A go-lib project, which `nx release` excludes. */
+function goLibrary (): void {
+  seed('packages/tty/project.json', JSON.stringify({ name: 'tty', tags: ['type:go-lib'] }))
+}
+
+/** The git commands the harness answered through `capture`, in order. */
+function gitCaptures (setup: Harness, captures: Record<string, CaptureResult>): string[] {
+  const asked: string[] = []
+  const original = setup.processes.capture
+  setup.processes.capture = (command, arguments_) => {
+    const line = [command, ...arguments_].join(' ')
+    if (command === 'git' && captures[line] !== undefined) {
+      asked.push(line)
+
+      return captures[line]
+    }
+
+    return original(command, arguments_)
+  }
+
+  return asked
+}
+
+describe('mnci ci release: Go libraries (#359)', () => {
+  const OK: CaptureResult = { status: 0, stdout: '' }
+  const LOG = 'git log --format=%s\u{1F}%b\u{1E} -- packages/tty'
+
+  it('tags and pushes a go-lib after nx release, even in a workspace with nothing else to release', async () => {
+    goLibrary()
+    const setup = harness()
+    const asked = gitCaptures(setup, {
+      'git tag --list packages/tty/v*':      OK,
+      [LOG]:                                 { status: 0, stdout: 'feat: first\u{1F}\u{1E}' },
+      'git tag packages/tty/v0.0.1':         OK,
+      'git push origin packages/tty/v0.0.1': OK,
+    })
+
+    expect(await release(setup, { NODE_AUTH_TOKEN: 'x' })).toBe(0)
+    expect(asked).toEqual(['git tag --list packages/tty/v*', LOG, 'git tag packages/tty/v0.0.1', 'git push origin packages/tty/v0.0.1'])
+  })
+
+  it('does not touch git for tags in a workspace with no go-lib', async () => {
+    const setup = harness()
+    const asked = gitCaptures(setup, {})
+
+    await release(setup)
+
+    expect(asked).toEqual([])
+  })
+
+  it('fails the run, saying why, when tagging fails', async () => {
+    goLibrary()
+    const setup = harness()
+    gitCaptures(setup, { 'git tag --list packages/tty/v*': { status: 128, stdout: '' } })
+
+    expect(await release(setup)).toBe(1)
+    expect(setup.logged.join('\n')).toContain('Releasing the Go libraries failed')
+  })
+
+  it('tags nothing, and does not run, when nx release itself failed', async () => {
+    seed('packages/lib/package.json')
+    goLibrary()
+    const setup = harness({ 'npx nx release --yes': 1 })
+    const asked = gitCaptures(setup, { 'git tag --list packages/tty/v*': OK })
+
+    expect(await release(setup, { NODE_AUTH_TOKEN: 'x' })).not.toBe(0)
+    expect(asked).toEqual([])
+  })
+})
+
 describe('mnci ci release: publish credentials (#269)', () => {
   it('wires the public PyPI token into TWINE_* for a Python release', async () => {
     seed('python-packages/core/pyproject.toml', '[project]\nname = "core"\n')

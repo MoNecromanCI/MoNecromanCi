@@ -229,15 +229,21 @@ projects: ['packages/*', 'python-packages/*', '!tag:type:go-lib']
 but has **no `package.json`**, so Nx's default `versionActions` looks for one that
 is not there and **aborts while building the release graph** — which kills
 `nx release` for the _entire_ workspace, not just the Go project. (It has its own
-`go.mod` now; the exclusion stays until Go nested-module tags,
-`libs/<name>/v1.2.3`, are implemented — the remaining #289 work.)
+`go.mod` now; it is released by tag instead, see below.)
 
 _Verified A/B against a real `@nx-go/nx-go:library`:_ without the exclusion
 `EXIT=1`; with it `EXIT=0` and the npm lib releases normally.
 
-Excluding is also right for now: a Go module is versioned by a tag whose prefix
-is its directory (`packages/<x>/v1.2.3`), not by the `{projectName}@{version}`
-tag `nx release` writes, so the two do not meet until nested-module tags exist.
+Excluding is also right: a Go module is versioned by a tag whose prefix is its
+directory (`packages/<x>/v1.2.3`), not by the `{projectName}@{version}` tag
+`nx release` writes. The `release` CI phase therefore tags each `go-lib` itself,
+after `nx release` (#359): the next version comes from the conventional commits
+that touched its directory since its latest `<dir>/vX.Y.Z` tag (`v0.0.1` on the
+first commit; before 1.0 a `feat` or `fix` is a patch and a breaking change a
+minor; `docs`, `chore`, `test`, `ci`, `refactor`, `build` and `style` release
+nothing). Tags are lightweight and pushed one by one. There is no GitHub Release
+or changelog per module, and nothing propagates: a `go-lib` that requires another
+has its `require` bumped by hand when the dependency is tagged.
 
 A **Dart** package in `packages/` needs no such exclusion — `pubspec.yaml` has a
 real `version:` field and `@mnci/nx-flutter` stamps a `versionActions` override.

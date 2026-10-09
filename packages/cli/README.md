@@ -45,6 +45,7 @@ src/
   dependency-adoption/        adopt --dependencies: root runtime dependencies into the projects that import them
   clean-working-tree/         the git precondition every step that changes files shares
   release-tag-lineage/        release tags kept reachable across a rename; doctor, upgrade and adopt all use it
+  go-module-release/          a go-lib released by nested-module tag (<dir>/vX.Y.Z) from the release phase
   esm-conversion/             a generated Node app made an ES module (add --esm)
   dev-servers/                mnci dev: several projects started together
   workspace-presets/          mnci new --preset: a whole shape of workspace, wired
@@ -1018,12 +1019,17 @@ relying on it, and expect to fix or silence what it reports.
 
 The directory is very nearly the whole model — one exception, and it is a bug
 fix rather than a nicety. `go-lib` also lives in `packages/`, but a Go package
-has **no per-project manifest** (mnci puts every Go project in one root
-`go.mod`), so Nx's default `versionActions` looks for a `package.json` that is
+has **no `package.json`**, so Nx's default `versionActions` looks for one that is
 not there and aborts _while building the release graph_ — killing `nx release`
 for the whole workspace, not just the Go project. It is therefore excluded with
-`!tag:type:go-lib`, which is also the semantically correct call: one module
-means its packages have no independent versions to bump. A publishable **Dart**
+`!tag:type:go-lib` and released **by tag** instead: the `release` phase tags each
+`go-lib` `packages/<name>/vX.Y.Z` (the form `go get` resolves for a nested module)
+after `nx release`, choosing the version from the conventional commits that touched
+its directory since its latest tag (#359). Before 1.0 a `feat` or `fix` is a patch
+and a breaking change a minor; from 1.0 they are patch, minor and major; `docs`,
+`chore`, `test`, `ci`, `refactor`, `build` and `style` release nothing. The tags
+are lightweight, with no GitHub Release or changelog per module, and nothing
+propagates between modules. A publishable **Dart**
 package in `packages/` needs no such exclusion — `pubspec.yaml` has a real
 `version:` field, and `@mnci/nx-flutter` stamps a `versionActions` override that
 reads it. Publishable Python packages get their own

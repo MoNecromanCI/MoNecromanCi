@@ -11,6 +11,7 @@ import {
 } from '../workspace-overlay'
 import { detectCiHost, groupEnd, groupStart } from './ci-environment.client'
 import type { CiDependencies, CiProcesses } from './phase.contract'
+import { listGoLibraryDirectories, releaseGoLibraries } from '../go-module-release'
 
 /** How many releasable projects of each ecosystem the workspace has. */
 interface ReleasableCounts {
@@ -367,6 +368,45 @@ function nxPushesTags (workspaceRoot: string): boolean {
 }
 
 /**
+ * Tags the Go libraries whose commits call for a release.
+ *
+ * @remarks
+ * A `go-lib` is excluded from `nx release` (Nx's default version actions look for a `package.json`), and Go finds a
+ * version of a nested module by a tag named `<directory>/vX.Y.Z`, so it is released here, by tag, from the
+ * conventional commits that touched its directory (#359). Each tag is pushed as it is made. A workspace with no
+ * `go-lib` does nothing, silently.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param processes - The process runner.
+ * @param log - The logger.
+ * @returns 0 when every library was released or had nothing to release, otherwise 1.
+ * @throws Never - a failing git command is logged and returned as a status.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function tagGoLibraries (workspaceRoot: string, processes: CiProcesses, log: (message: string) => void): number {
+  if (listGoLibraryDirectories(workspaceRoot).length === 0) {
+    return 0
+  }
+  const git = (arguments_: string[]): string => {
+    const result = processes.capture('git', arguments_)
+    if (result.status !== 0) {
+      throw new Error(`git ${arguments_.join(' ')} failed`)
+    }
+
+    return result.stdout
+  }
+  try {
+    releaseGoLibraries(workspaceRoot, { git, log })
+
+    return 0
+  } catch (error) {
+    log(`Releasing the Go libraries failed - ${error instanceof Error ? error.message : String(error)}`)
+
+    return 1
+  }
+}
+
+/**
  * What follows a successful `nx release`: the Go zips, then the tags.
  *
  * @remarks
@@ -463,6 +503,10 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
   const released = runReleaseCommand(workspaceRoot, registry, releasableCounts(workspaceRoot), environment, processes, log)
   if (released !== 0) {
     return close(released)
+  }
+  const libraries = tagGoLibraries(workspaceRoot, processes, log)
+  if (libraries !== 0) {
+    return close(libraries)
   }
 
   return close(afterRelease(workspaceRoot, processes, nxPushesTags(workspaceRoot)))
