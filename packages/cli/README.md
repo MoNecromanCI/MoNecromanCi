@@ -312,9 +312,11 @@ that pins exactly stays pinned.
   `workspace:` protocol, an `npm:pkg@range` alias, a pub `git:` map. Those are
   reported as a warning and left alone.
 
-**Go reports "nothing to sync" rather than a silent pass**, because one root
-`go.mod` means one version of every module — there is nothing that *could*
-disagree.
+**Go is read but not converged, and says so rather than passing silently.** Every Go project has its
+own `go.mod`, so two of them can require different versions of one module. But under the root `go.work` the
+workspace builds with the highest version any of them requires (minimal version selection), so a lower
+declaration does not ship a second copy; the fix for a stale one is `mnci up`, which upgrades it with
+`go get`. An adopted flat repository (one root `go.mod`, no `go.work`) is read the same way.
 
 `--check` reports and exits non-zero without writing anything, so it works as a CI
 step. `--ecosystem npm|pip|pub|go` narrows the run.
@@ -350,7 +352,9 @@ first run of this command offered "typescript 6.0.2 › 7.0.2", which is real
 TypeScript's version, about a package the workspace does not have.
 
 A selected Go module is upgraded with `go get <module>@<version>`, never by
-editing `go.mod` — that file is the toolchain's to write.
+editing `go.mod` — that file is the toolchain's to write. It runs inside each module that declares the
+package (a multi-module workspace has no root module to run it in), and the reinstall is `go work sync`
+(`go mod tidy` for a flat repository).
 
 Flags: `--check` (report only; also the automatic behaviour when stdout is not a
 TTY, so a piped or CI run reports instead of hanging on a prompt), `-y/--yes`

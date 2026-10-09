@@ -689,9 +689,12 @@ to one is mirrored in the other by construction:
   on dependency versions, and npm has no `catalog:` mechanism, so nothing else
   enforces one-version-per-workspace.
 - `mnci sync` closes that gap: converges every externally-declared dependency range
-  to the installed version across npm/pip/pub/go/nuget, then runs `nx sync`. Go is
-  excluded (one root module, nothing to converge) with an explicit message, not a
-  silent no-op. Peer ranges (`>=` compatibility declarations) are excluded from
+  to the installed version across npm/pip/pub/nuget, then runs `nx sync`. Go is
+  read (every module's `go.mod`, via the root `go.work`, or the single root `go.mod` of an
+  adopted flat repo) but not converged, with an explicit message, not a silent no-op: under a
+  `go.work` the build list takes the highest version any module requires, so differing
+  declarations do not ship two copies. `mnci up` upgrades a Go module with `go get` in each
+  module that declares it, then `go work sync` (`go mod tidy` for a flat repo). Peer ranges (`>=` compatibility declarations) are excluded from
   convergence — narrowing one drops consumers of a published plugin.
   `resolvedVersion` is honestly `undefined` for pip (no lockfile) and NuGet (each
   `.csproj` restores independently, no workspace-wide resolution).

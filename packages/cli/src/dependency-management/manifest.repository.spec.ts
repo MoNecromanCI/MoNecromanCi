@@ -337,6 +337,37 @@ describe('go', () => {
   })
 })
 
+describe('go in a multi-module workspace (#297)', () => {
+  it('reads every module go.work lists, labelling each site with its module directory', () => {
+    write('go.work', 'go 1.24\n\nuse (\n\t./apps/cli\n\t./libs/core\n)\n')
+    write('apps/cli/go.mod', 'module example.com/x/apps/cli\n\nrequire github.com/spf13/cobra v1.8.0\n')
+    write('libs/core/go.mod', 'module example.com/x/libs/core\n\nrequire (\n\tgithub.com/spf13/cobra v1.7.0\n\tgithub.com/inconshreveable/mousetrap v1.1.0 // indirect\n)\n')
+
+    const sites = collectInventory(workspaceRoot, ['go']).get('github.com/spf13/cobra') ?? []
+
+    expect(sites.map(site => [site.project, site.spec]).toSorted((a, b) => a[0].localeCompare(b[0]))).toEqual([
+      ['apps/cli', 'v1.8.0'],
+      ['libs/core', 'v1.7.0'],
+    ])
+    expect(sites.every(site => !site.rewritable)).toBe(true)
+    expect(collectInventory(workspaceRoot, ['go']).get('github.com/inconshreveable/mousetrap')?.[0].section).toBe('indirect')
+  })
+
+  it('treats a workspace with a go.work and no root go.mod as having Go', () => {
+    expect(hasEcosystem(workspaceRoot, 'go')).toBe(false)
+
+    write('go.work', 'go 1.24\n')
+
+    expect(hasEcosystem(workspaceRoot, 'go')).toBe(true)
+  })
+
+  it('still reads an adopted flat repository, whose only module is the root', () => {
+    write('go.mod', 'module example.com/flat\n\nrequire github.com/spf13/cobra v1.8.0\n')
+
+    expect(collectInventory(workspaceRoot, ['go']).get('github.com/spf13/cobra')?.[0].spec).toBe('v1.8.0')
+  })
+})
+
 describe('hasEcosystem', () => {
   it('detects each ecosystem by its root marker', () => {
     expect(hasEcosystem(workspaceRoot, 'go')).toBe(false)

@@ -347,6 +347,28 @@ describe('runUp', () => {
     expect(readFileSync(join(workspaceRoot, 'go.mod'), 'utf8')).toBe(goMod)
   })
 
+  it('runs go get inside each module that declares the package, and go work sync after, in a multi-module workspace (#297)', async () => {
+    write('nx.json', JSON.stringify({}))
+    write('package.json', JSON.stringify({ name: '@demo/source' }))
+    write('go.work', 'go 1.24\n\nuse (\n\t./apps/cli\n\t./libs/core\n\t./libs/other\n)\n')
+    write('apps/cli/go.mod', 'module example.com/x/apps/cli\n\nrequire github.com/spf13/cobra v1.8.0\n')
+    write('libs/core/go.mod', 'module example.com/x/libs/core\n\nrequire github.com/spf13/cobra v1.7.0\n')
+    write('libs/other/go.mod', 'module example.com/x/libs/other\n\nrequire github.com/stretchr/testify v1.9.0\n')
+    mockLatestVersions.mockImplementation(async ecosystem =>
+      ecosystem === 'go' ? new Map([['github.com/spf13/cobra', 'v1.9.1']]) : new Map(),
+    )
+
+    await runUp(workspaceRoot, { yes: true })
+
+    expect(mockRunShell).toHaveBeenCalledWith('go', ['get', 'github.com/spf13/cobra@v1.9.1'], join(workspaceRoot, 'apps/cli'))
+    expect(mockRunShell).toHaveBeenCalledWith('go', ['get', 'github.com/spf13/cobra@v1.9.1'], join(workspaceRoot, 'libs/core'))
+    // The module that does not declare it is left alone, and there is no root module to run it in.
+    expect(mockRunShell).not.toHaveBeenCalledWith('go', ['get', 'github.com/spf13/cobra@v1.9.1'], join(workspaceRoot, 'libs/other'))
+    expect(mockRunShell).not.toHaveBeenCalledWith('go', ['get', 'github.com/spf13/cobra@v1.9.1'], workspaceRoot)
+    expect(mockRunShell).toHaveBeenCalledWith('go', ['work', 'sync'], workspaceRoot)
+    expect(mockRunShell).not.toHaveBeenCalledWith('go', ['mod', 'tidy'], workspaceRoot)
+  })
+
   it('reinstalls NuGet via nx run-many -t restore, never a bare dotnet restore', async () => {
     write('nx.json', JSON.stringify({}))
     write('package.json', JSON.stringify({ name: '@demo/source', scripts: {} }))

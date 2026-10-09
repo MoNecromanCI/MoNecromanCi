@@ -343,7 +343,7 @@ export function runSync (workspaceRoot: string, options: SyncOptions): void {
     }
   }
   if (ecosystems.includes('go') && hasEcosystem(workspaceRoot, 'go')) {
-    logger.success('go — nothing to sync; one root go.mod means one version of every module.')
+    logger.success('go — not converged: modules in a go.work build with the highest version any of them requires, so differing declarations do not ship two copies. `mnci up` upgrades each one through go get.')
   }
 
   const drift = collectDrift(workspaceRoot, ecosystems)
