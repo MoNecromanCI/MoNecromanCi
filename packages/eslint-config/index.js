@@ -87,8 +87,9 @@ export const ignores = [
  * Omit it in a workspace with no publishable npm packages. Pass
  * `verticalSlices: true` - the globs of the projects that follow it, or
  * `{ files, roles }` to extend the role vocabulary - to
- * enforce the vertical-slice rules (see `configs/verticalSlices.js`); they are
- * off by default, because they are an architecture, not a style. Pass
+ * change which projects the vertical-slice rules apply to (see `configs/verticalSlices.js`).
+ * They are ON by default - mnci's architecture is vertical feature slices - and
+ * `verticalSlices: false` opts out. Pass
  * `browserAutomation: true` - or globs - in a Playwright or Puppeteer project,
  * so an in-page callback like `page.evaluate(() => document.title)` can see
  * browser globals; `unicorn/isolated-functions` reports every one of them
@@ -96,7 +97,7 @@ export const ignores = [
  * @returns The flat config array.
  */
 export default function mnci (options = {}) {
-  const { workspaceRoot, verticalSlices: slices, browserAutomation: browser } = options
+  const { workspaceRoot, verticalSlices: slices = true, browserAutomation: browser } = options
 
   return [
     { name: 'mnci/ignores', ignores },

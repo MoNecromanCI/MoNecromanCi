@@ -184,7 +184,7 @@ describe("the e2e's own TypeScript fixtures satisfy the shipped Standard block",
     // is not a hypothetical failure mode here: an earlier version of this file
     // passed all seven of its tests while linting a path ESLint was ignoring.
     expect(fixtures.map(([target]) => target)).toEqual(
-      expect.arrayContaining(['apps/api/src/deps.ts', 'apps/api/src/main.ts']),
+      expect.arrayContaining(['apps/api/src/deps/api-deps.use-case.ts', 'apps/api/src/deps/index.ts', 'apps/api/src/main.ts']),
     )
   })
 

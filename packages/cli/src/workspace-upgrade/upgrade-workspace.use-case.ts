@@ -8,6 +8,7 @@ import { runFormatter } from '../nx-workspace'
 import {
   addCsharpDevTargets,
   addGoPlatformTargets,
+  addGoSliceChecks,
   addPythonDevTargets,
   GO_RELEASE_SCRIPT_PATH,
   pinVscodeExtensionProjectNames,
@@ -360,6 +361,14 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (goApps.length > 0) {
     logger.step('Adding the six-platform, debug and watch targets to Go apps (build-all, package-all, build-dev, dev)')
     for (const path of goApps) {
+      logger.detail(`updated ${path}`)
+    }
+  }
+  // The Go file-role check (#232): `slice-check` for every Go project, and `lint` depending on it. Strict on purpose.
+  const sliceChecks = addGoSliceChecks(workspaceRoot)
+  if (sliceChecks.length > 0) {
+    logger.step('Adding the Go vertical-slice file-role check (slice-check; lint now depends on it)')
+    for (const path of sliceChecks) {
       logger.detail(`updated ${path}`)
     }
   }

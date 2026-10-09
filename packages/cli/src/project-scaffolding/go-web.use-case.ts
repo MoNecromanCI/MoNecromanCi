@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
@@ -17,6 +17,22 @@ import { logger } from '../terminal'
  */
 const TARGETS_NEEDING_THE_FRONTEND = ['build', 'test', 'lint', 'start', 'build-all', 'build-native'] as const
 
+/**
+ * The Go module path an app declares in its `go.mod`.
+ *
+ * @param directory - The app's directory.
+ * @returns The module path, or `undefined` when there is no `go.mod` or no module line.
+ * @throws Never - an unreadable `go.mod` reads as none.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function readGoModuleOf (directory: string): string | undefined {
+  try {
+    return /^module\s+(\S+)/m.exec(readFileSync(join(directory, 'go.mod'), 'utf8'))?.[1]
+  } catch {
+    return undefined
+  }
+}
+
 /** The address the generated server listens on, and the one Vite proxies `/api` to in development. */
 const DEFAULT_ADDRESS = '127.0.0.1:8080'
 
@@ -27,14 +43,14 @@ interface WebWiredProject {
 }
 
 /**
- * The Go source that embeds the staged frontend and serves it.
+ * The Go source that embeds the staged frontend and serves it: `webui/web_handler.go`, its own slice, so the app's root holds only `main.go`.
  *
  * @remarks
  * `all:` so a file whose name starts with `.` or `_` is embedded too (a bundler can emit
  * one). An unknown path falls back to `index.html`, so a client-side route survives a
  * reload. `fs.Sub` roots the files at the frontend, not at `web/`.
  */
-export const GO_WEB_SOURCE = `package main
+export const GO_WEB_SOURCE = `package webui
 
 import (
 \t"embed"
@@ -48,9 +64,9 @@ import (
 //go:embed all:web
 var webFiles embed.FS
 
-// webHandler serves the built frontend. A path that is not a file falls back to
+// Handler serves the built frontend. A path that is not a file falls back to
 // index.html, so a client-side route survives a reload.
-func webHandler() http.Handler {
+func Handler() http.Handler {
 \troot, err := fs.Sub(webFiles, "web")
 \tif err != nil {
 \t\tpanic(err)
@@ -70,18 +86,20 @@ func webHandler() http.Handler {
 `
 
 /**
- * The `main.go` of an app that serves its frontend.
+ * The `main.go` of an app that serves its frontend, given the app's Go module path.
  *
  * @remarks
  * `version` is what `build-all` stamps with `-X main.version`, so it is declared here,
  * and logged so it is used (the `unused` linter rejects a variable nothing reads).
  */
-export const GO_WEB_MAIN = `package main
+export const goWebMain = (modulePath: string): string => `package main
 
 import (
 \t"log"
 \t"net/http"
 \t"os"
+
+\t"${modulePath}/webui"
 )
 
 var version = "dev"
@@ -92,14 +110,14 @@ func main() {
 \t\taddress = "${DEFAULT_ADDRESS}"
 \t}
 \tmux := http.NewServeMux()
-\tmux.Handle("/", webHandler())
+\tmux.Handle("/", webui.Handler())
 \tlog.Printf("%s serving on http://%s", version, address)
 \tlog.Fatal(http.ListenAndServe(address, mux))
 }
 `
 
 /**
- * The test of an app that serves its frontend: the embed holds a page, for a file and for a route.
+ * The test of the `webui` slice (`webui/web_handler_test.go`): the embed holds a page, for a file and for a route.
  *
  * @remarks
  * It asserts the handler answers `200` with an `<html` body for both the root and an
@@ -107,7 +125,7 @@ func main() {
  * guarantees. It needs the staged `web/` directory to exist to compile, which is why
  * `test` is one of {@link TARGETS_NEEDING_THE_FRONTEND}.
  */
-export const GO_WEB_MAIN_TEST = `package main
+export const GO_WEB_MAIN_TEST = `package webui
 
 import (
 \t"net/http"
@@ -119,7 +137,7 @@ import (
 func TestWebHandlerServesTheBuiltFrontend(t *testing.T) {
 \tfor _, target := range []string{"/", "/a/client/side/route"} {
 \t\trecorder := httptest.NewRecorder()
-\t\twebHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+\t\tHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
 \t\tif recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "<html") {
 \t\t\tt.Fatalf("GET %s: %d %q", target, recorder.Code, recorder.Body.String())
 \t\t}
@@ -136,6 +154,7 @@ func TestWebHandlerServesTheBuiltFrontend(t *testing.T) {
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param web - The directory name of the React app, under `apps/`.
+ * @param modulePath - The Go module path of the app, which `main.go` imports the `webui` slice through; read from its `go.mod` when absent.
  * @returns Nothing.
  * @throws Error when `apps/<web>` is missing or is not a React app.
  * @typeParam None - this function has no generic type parameters.
@@ -208,8 +227,8 @@ function addApiProxy (viteConfigPath: string): boolean {
  *   change to it marks the Go app affected, while a change to the Go app does not rebuild it.
  * - **`dev`** runs the Vite dev server and the Go server together, with the `/api` proxy
  *   added to the Vite config.
- * - The app's `main.go` is replaced by a small server (the generated one is a hello world),
- *   with `web.go` and a test that the embed holds a page.
+ * - The app's `main.go` is replaced by a small server (the generated one is a hello world), and a `webui` slice
+ *   (`web_handler.go`, with its test) embeds the staged frontend, so the app's root holds only `main.go`.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The Go app's project name.
@@ -218,7 +237,7 @@ function addApiProxy (viteConfigPath: string): boolean {
  * @throws Error when the Go app's `project.json` is missing or not valid JSON.
  * @typeParam None - this function has no generic type parameters.
  */
-export function wireGoAppToWeb (workspaceRoot: string, name: string, web: string): void {
+export function wireGoAppToWeb (workspaceRoot: string, name: string, web: string, modulePath?: string): void {
   const projectJsonPath = join(workspaceRoot, 'apps', name, 'project.json')
   const project = readJson<WebWiredProject>(projectJsonPath)
   const webName = webProjectName(workspaceRoot, web)
@@ -232,9 +251,9 @@ export function wireGoAppToWeb (workspaceRoot: string, name: string, web: string
     executor:  'nx:run-commands',
     dependsOn: [{ projects: [webName], target: 'build' }],
     inputs:    [{ dependentTasksOutputFiles: '**/*' }],
-    outputs:   [`{workspaceRoot}/apps/${name}/web`],
+    outputs:   [`{workspaceRoot}/apps/${name}/webui/web`],
     options:   {
-      command: `node -e "const fs=require('node:fs');fs.rmSync('apps/${name}/web',{recursive:true,force:true});fs.cpSync('apps/${web}/dist','apps/${name}/web',{recursive:true})"`,
+      command: `node -e "const fs=require('node:fs');fs.rmSync('apps/${name}/webui/web',{recursive:true,force:true});fs.cpSync('apps/${web}/dist','apps/${name}/webui/web',{recursive:true})"`,
     },
   }
   targets.dev = {
@@ -246,10 +265,11 @@ export function wireGoAppToWeb (workspaceRoot: string, name: string, web: string
     toJson({ ...project, implicitDependencies: [...new Set([...(project.implicitDependencies ?? []), webName])], targets }),
   )
   const directory = join(workspaceRoot, 'apps', name)
-  writeFileEnsured(join(directory, '.gitignore'), '/web/\n')
-  writeFileEnsured(join(directory, 'web.go'), GO_WEB_SOURCE)
-  writeFileEnsured(join(directory, 'main.go'), GO_WEB_MAIN)
-  writeFileEnsured(join(directory, 'main_test.go'), GO_WEB_MAIN_TEST)
+  writeFileEnsured(join(directory, '.gitignore'), '/webui/web/\n')
+  writeFileEnsured(join(directory, 'webui', 'web_handler.go'), GO_WEB_SOURCE)
+  writeFileEnsured(join(directory, 'webui', 'web_handler_test.go'), GO_WEB_MAIN_TEST)
+  writeFileEnsured(join(directory, 'main.go'), goWebMain(modulePath ?? readGoModuleOf(directory) ?? name))
+  rmSync(join(directory, 'main_test.go'), { force: true })
 
   const viteConfig = readdirSync(join(workspaceRoot, 'apps', web)).find(entry => entry.startsWith('vite.config.'))
   if (viteConfig === undefined || !addApiProxy(join(workspaceRoot, 'apps', web, viteConfig))) {

@@ -129,9 +129,30 @@ describe('runAdd vscode-extension', () => {
     expect(mockRunNx).toHaveBeenCalledWith(expect.arrayContaining(['g', '@nx/node:application', 'apps/ext', '--framework=none']), workspaceRoot)
     expect(mockRunShell).toHaveBeenCalledWith(
       'npm',
-      ['install', '--save-dev', `@types/vscode@~${VSCODE_ENGINE_FLOOR}`, '@vscode/vsce', '--no-audit', '--no-fund'],
+      ['install', '--save-dev', `@types/vscode@~${VSCODE_ENGINE_FLOOR}`, '@vscode/vsce', '@vscode/test-cli', '@vscode/test-electron', 'mocha', '@types/mocha', '--no-audit', '--no-fund'],
       workspaceRoot,
     )
+  })
+
+  it('writes the integration tests outside src, with their config, and a target that is not part of verify (#244)', async () => {
+    await runAdd('vscode-extension', 'ext', {})
+
+    const project = join(workspaceRoot, 'apps/ext')
+    expect(readFileSync(join(project, 'integration/extension.integration.ts'), 'utf8')).toContain("executeCommand('ext.hello')")
+    const tsconfig: unknown = JSON.parse(readFileSync(join(project, 'integration/tsconfig.json'), 'utf8'))
+    expect(tsconfig).toMatchObject({
+      compilerOptions: { module: 'node16', outDir: '../out-integration', types: ['node', 'mocha', 'vscode'] },
+    })
+    expect(readFileSync(join(project, '.vscode-test.mjs'), 'utf8')).toContain("files: 'out-integration/**/*.integration.js'")
+    expect(readFileSync(join(project, '.gitignore'), 'utf8')).toBe('/.vscode-test/\n/out-integration/\n')
+    const ignore = readFileSync(join(project, '.vscodeignore'), 'utf8')
+    for (const entry of ['integration/**', 'out-integration/**', '.vscode-test/**', '.vscode-test.mjs']) {
+      expect(ignore).toContain(entry)
+    }
+    expect(manifest().nx.targets['test:integration']).toMatchObject({
+      dependsOn: ['build'],
+      options:   { command: 'node tools/vscode-extension.cjs integration apps/ext' },
+    })
   })
 
   it('refreshes package-lock.json after unscoping the manifest, or npm ci refuses it (#251)', async () => {
@@ -354,11 +375,16 @@ describe('refreshVscodeExtensionScript', () => {
  * real ones (their package.json `bin`). Each records its argv, working directory
  * and VERSION, and the fake vsce writes the --out file and lists bin/.
  */
-function fakeTool (name: string, body: string): void {
+function fakeTool (name: string, body: string, binName = name.split('/').pop()!, extra: Record<string, unknown> = {}): void {
   const root = join(workspaceRoot, 'node_modules', name)
   mkdirSync(root, { recursive: true })
-  writeFileSync(join(root, 'package.json'), JSON.stringify({ name, bin: { [name.split('/').pop()!]: 'cli.js' } }))
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name, bin: { [binName]: 'cli.js' }, ...extra }))
   writeFileSync(join(root, 'cli.js'), body)
+}
+
+/** The prelude every fake tool starts with: node's `fs` and `path`, and the workspace root to log into. */
+function record (): string {
+  return `const fs=require('node:fs');const path=require('node:path');const root=${JSON.stringify(workspaceRoot)};`
 }
 
 function calls (): string[] {
@@ -386,6 +412,48 @@ describe('tools/vscode-extension.cjs, executed', () => {
     const record = `const fs=require('node:fs');const path=require('node:path');const root=${JSON.stringify(workspaceRoot)};`
     fakeTool('@vscode/vsce', record + String.raw`const a=process.argv.slice(2);const bin=fs.existsSync('bin')?fs.readdirSync('bin').join('+'):'-';fs.appendFileSync(path.join(root,'calls.log'),'vsce '+a.join(' ')+' | cwd='+path.relative(root,process.cwd())+' | bin='+bin+'\n');const o=a.indexOf('--out');if(o!==-1){fs.writeFileSync(a[o+1],'vsix')}`)
     fakeTool('nx', record + String.raw`fs.appendFileSync(path.join(root,'calls.log'),'nx '+process.argv.slice(2).join(' ')+' | VERSION='+process.env.VERSION+'\n');for(const p of ['windows-amd64','windows-arm64','linux-amd64','linux-arm64','darwin-amd64','darwin-arm64']){const d=path.join(root,'dist/platforms/engine',p);fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,'engine-'+p),'binary')}`)
+  })
+
+  it('compiles the integration tests and runs them in VS Code, from the project folder (#244)', () => {
+    fakeTool('typescript', record() + String.raw`fs.appendFileSync(path.join(root,'calls.log'),'tsc '+process.argv.slice(2).join(' ')+'\n')`, 'tsc')
+    // @vscode/test-cli hides its package.json from require.resolve through "exports"; the script must not rely on it.
+    fakeTool('@vscode/test-cli', record() + String.raw`fs.appendFileSync(path.join(root,'calls.log'),'vscode-test | cwd='+path.relative(root,process.cwd())+'\n')`, 'vscode-test', { exports: { '.': './cli.js' } })
+
+    const result = runScript(['integration', 'apps/ext'])
+
+    if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain('xvfb-run')
+
+      return
+    }
+    expect(result.status).toBe(0)
+    expect(calls()).toEqual([`tsc -p ${join('apps/ext', 'integration', 'tsconfig.json')}`, `vscode-test | cwd=${join('apps', 'ext')}`])
+  })
+
+  it('compiles with tsc6 when the typescript package ships only that bin, as in a mnci workspace (#244)', () => {
+    fakeTool('typescript', record() + String.raw`fs.appendFileSync(path.join(root,'calls.log'),'tsc6 '+process.argv.slice(2).join(' ')+'\n')`, 'tsc6')
+    fakeTool('@vscode/test-cli', record() + String.raw`fs.appendFileSync(path.join(root,'calls.log'),'vscode-test\n')`, 'vscode-test', { exports: { '.': './cli.js' } })
+    if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+      return
+    }
+
+    const result = runScript(['integration', 'apps/ext'])
+
+    expect(result.stderr).toBe('')
+    expect(result.status).toBe(0)
+    expect(calls()[0]).toContain('tsc6 -p ')
+  })
+
+  it('names xvfb-run, not an Electron crash, when a Linux machine has no display (#244)', () => {
+    if (process.platform !== 'linux') {
+      return
+    }
+    const result = runScript(['integration', 'apps/ext'], { DISPLAY: undefined, WAYLAND_DISPLAY: undefined })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('xvfb-run -a npx nx run ext:test:integration')
+    expect(calls()).toEqual([])
   })
 
   it('packages one universal vsix from the project folder', () => {

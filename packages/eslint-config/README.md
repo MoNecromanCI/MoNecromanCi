@@ -84,7 +84,7 @@ as a comment, so it is readable without opening node_modules.
 | `mnci/tests`                             | `*.spec`/`*.test` relaxations — `eslint-plugin-jest`, plus Vitest's `vi`/`vitest` globals      |
 | `mnci/tests/mock-aware`                  | specs inside a project: `jest/unbound-method` replaces the base rule, which false-positives on every `expect(mock.method)` |
 | `mnci/nx-dependency-checks`              | `@nx/eslint-plugin` on publishable packages' manifests — only when `workspaceRoot` is passed   |
-| `mnci/vertical-slices`                   | Vertical feature slices: role-suffixed kebab-case files, a subfeature reached only through its index, no two subfeatures importing each other — only when `verticalSlices` is passed. See below |
+| `mnci/vertical-slices`                   | Vertical feature slices: role-suffixed kebab-case files, a subfeature reached only through its index, no two subfeatures importing each other — unless `verticalSlices: false`. See below |
 | `mnci/standard`                          | JavaScript Standard Style as ~60 `@stylistic` rules — **this is the formatter.** See below     |
 | `mnci/house-style`                       | The deliberate departures from Standard: trailing commas, aligned object values, `consistent-as-needed` quote-props, a blank line before `return`, two statements per line. Composed after `mnci/standard`, so it wins |
 
@@ -219,15 +219,16 @@ that throws in Node. TypeScript is what still catches it — `document` is not i
 scope unless the project's `lib` includes `dom` — which is why this is opt-in
 and scoped by glob rather than on by default.
 
-### Vertical feature slices (`configs/verticalSlices.js`) — opt-in
+### Vertical feature slices (`configs/verticalSlices.js`) — on by default
 
 For workspaces organised as **vertical feature slices**: each project's `src/`
 holds subfeatures, each exposing an `index`, each holding flat, role-suffixed
-files. Off by default, because it is an architecture, not a style — turned on
-for a workspace that is not built this way, it would fail every file on day one.
+files. **On by default**: vertical slices are mnci's architecture, not an option, so a
+new workspace is checked from its first commit. A workspace that is not built this
+way opts out with `verticalSlices: false` (it would otherwise fail every file).
 
 ```js
-export default mnci({ workspaceRoot: import.meta.dirname, verticalSlices: true })
+export default mnci({ workspaceRoot: import.meta.dirname, verticalSlices: false }) // opt out
 // or only for the projects that follow it:
 export default mnci({ verticalSlices: ['packages/*/src/**/*.ts'] })
 // or with extra roles, for a vocabulary the default list does not cover:

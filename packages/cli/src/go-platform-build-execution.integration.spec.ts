@@ -18,6 +18,7 @@ import { execFileSync, execSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { GO_SLICE_CHECK_SCRIPT } from './go-slice-check'
 import { addGoPlatformTargets, GO_PLATFORMS, runAdd } from './project-scaffolding'
 
 const hasGo = spawnSync('go', ['version']).status === 0
@@ -186,7 +187,7 @@ describeWithGo('the embedded frontend of a Go app, executed (#262)', () => {
   const site = (): string => join(root, 'apps', 'site')
 
   it('does not compile until the frontend is staged, which is why every Go target waits for it', () => {
-    const result = spawnSync('go', ['vet', './apps/site/'], { cwd: root, encoding: 'utf8' })
+    const result = spawnSync('go', ['vet', './apps/site/...'], { cwd: root, encoding: 'utf8' })
 
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain('web')
@@ -195,7 +196,7 @@ describeWithGo('the embedded frontend of a Go app, executed (#262)', () => {
   it('stages the build output, replacing whatever was staged before', () => {
     const projectJson = readFileSync(join(site(), 'project.json'), 'utf8')
     const project = JSON.parse(projectJson) as { targets: Record<string, { options: { command: string } }> }
-    const staged = join(site(), 'web')
+    const staged = join(site(), 'webui', 'web')
     mkdirSync(staged, { recursive: true })
     writeFileSync(join(staged, 'stale.html'), 'left over from an earlier build')
 
@@ -209,14 +210,24 @@ describeWithGo('the embedded frontend of a Go app, executed (#262)', () => {
 
   it('writes Go that is gofmt-clean, passes go vet, and whose test finds the page in the embed', () => {
     const formatting = spawnSync('gofmt', ['-l', site()], { encoding: 'utf8' })
-    const vet = spawnSync('go', ['vet', './apps/site/'], { cwd: root, encoding: 'utf8' })
-    const test = spawnSync('go', ['test', './apps/site/'], { cwd: root, encoding: 'utf8' })
+    const vet = spawnSync('go', ['vet', './apps/site/...'], { cwd: root, encoding: 'utf8' })
+    const test = spawnSync('go', ['test', './apps/site/...'], { cwd: root, encoding: 'utf8' })
 
     expect(formatting.stdout.trim()).toBe('')
     expect(vet.status).toBe(0)
     expect(test.stdout).toContain('ok')
     expect(test.status).toBe(0)
   }, 180_000)
+
+  it('lays out as the Go slice check requires: main.go alone at the root, the embed in its own slice', () => {
+    const script = join(root, 'go-slice-check.cjs')
+    writeFileSync(script, GO_SLICE_CHECK_SCRIPT)
+
+    const result = spawnSync(process.execPath, [script, site()], { encoding: 'utf8' })
+
+    expect(`${result.stdout}${result.stderr}`).toContain('Go slice layout OK')
+    expect(result.status).toBe(0)
+  })
 
   it('builds a binary that takes the version stamp the release step writes', () => {
     const binary = join(root, 'site-binary')

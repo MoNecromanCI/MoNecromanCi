@@ -29,7 +29,8 @@ export const CONTAINER_SCRIPT_PATH = 'tools/container-image.cjs'
  * unset, as the Go builds do) and `latest` is moved too, the extra build context is passed only when its directory
  * exists, and a missing Docker is reported by name rather than as a spawn failure.
  */
-export const CONTAINER_SCRIPT = `// Written by MoNecromanCI; \`mnci upgrade\` rewrites it. Builds and runs a container image.
+export const CONTAINER_SCRIPT = `#!/usr/bin/env node
+// Written by MoNecromanCI; \`mnci upgrade\` rewrites it. Builds and runs a container image.
 //   node tools/container-image.cjs build --image <name> --file <Dockerfile> --context <dir> [--files <dir>]
 //   node tools/container-image.cjs start --image <name> [--publish <host:container>]
 const { spawnSync } = require('node:child_process')

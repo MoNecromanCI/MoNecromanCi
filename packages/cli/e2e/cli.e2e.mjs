@@ -1331,10 +1331,16 @@ section('js stack', [], () => {
   // the contract stated in this comment was enforced only by a 50-minute Windows
   // run — and it broke the moment `space-before-function-paren` was turned on.
   // A fixture that is deliberately unformatted must NOT carry the marker.
+  mkdirSync(path.join(workspace, 'apps/api/src/deps'), { recursive: true })
   // @standard-clean
   writeFileSync(
-    path.join(workspace, 'apps/api/src/deps.ts'),
+    path.join(workspace, 'apps/api/src/deps/api-deps.use-case.ts'),
     "import ms from 'ms'\nimport { utils } from '@demo/utils'\n\nexport function apiDeps (): string {\n  return 'api uses ' + utils() + ' and ' + ms(60_000)\n}\n",
+  )
+  // @standard-clean
+  writeFileSync(
+    path.join(workspace, 'apps/api/src/deps/index.ts'),
+    "export { apiDeps } from './api-deps.use-case'\n",
   )
   // @standard-clean
   writeFileSync(
@@ -1994,10 +2000,13 @@ section('alt stack', [], () => {
 
   // Prove the config in force is actually mnci's, not a default: plant
   // deliberately non-Standard code and require `format` to normalise exactly it.
-  const misformatted = path.join(altWorkspace, 'packages/sdk/src/misformatted.ts')
-  writeFileSync(misformatted, 'export const greeting =    "hi";\n')
+  // In a slice of its own: the vertical-slice rules are on by default (#232), and a file at the root of src would fail `format` on its name.
+  const misformattedDirectory = path.join(altWorkspace, 'packages/sdk/src/misformatted')
+  mkdirSync(misformattedDirectory, { recursive: true })
+  writeFileSync(path.join(misformattedDirectory, 'greeting.algorithm.ts'), 'export const greeting =    "hi";\n')
+  writeFileSync(path.join(misformattedDirectory, 'index.ts'), "export { greeting } from './greeting.algorithm'\n")
   run('npm run format', altWorkspace)
-  rmSync(misformatted, { force: true })
+  rmSync(misformattedDirectory, { recursive: true, force: true })
   enforce(
     'alt: build (vitest stack) runs green',
     tryRun('npx nx run-many -t build', altWorkspace),
@@ -3052,7 +3061,7 @@ section('go', ['alt stack'], () => {
       siteBuild.ok &&
         siteBuild.output.includes('uiweb:build') &&
         siteBuild.output.indexOf('uiweb:build') < siteBuild.output.lastIndexOf('site:build') &&
-        existsSync(path.join(altWorkspace, 'apps/site/web/index.html')) &&
+        existsSync(path.join(altWorkspace, 'apps/site/webui/web/index.html')) &&
         existsSync(siteBinary),
       siteBuild.output,
     )
@@ -4068,23 +4077,35 @@ section('vscode extension', ['alt stack'], () => {
     editorVerify.output,
   )
 
-  // The slice rules are opt-in, and the scaffold has to pass them when they are on:
-  // src/main.ts (never extension.ts) and nothing else at the root of src.
-  const vsxEslintConfig = path.join(vsxWorkspace, 'eslint.config.mjs')
-  const vsxEslintOriginal = readFileSync(vsxEslintConfig, 'utf8')
-  writeFileSync(vsxEslintConfig, vsxEslintOriginal.replace('...mnci()', '...mnci({ verticalSlices: true })'))
-  const editorSliceLint = tryRunCapture('npx nx run editor:lint --skip-nx-cache', vsxWorkspace)
-  writeFileSync(vsxEslintConfig, vsxEslintOriginal)
+  // The slice rules are on by default (#232), so the lint above already held the scaffold to them:
+  // src/main.ts (never extension.ts) and nothing else at the root of src. Say so, and say that the
+  // opt-out is not what made it pass.
   enforce(
-    'vscode: the scaffold passes lint with verticalSlices on',
-    vsxEslintOriginal.includes('...mnci()') && editorSliceLint.ok,
-    editorSliceLint.output,
+    'vscode: the scaffold passes lint with the vertical-slice rules on, as they are by default',
+    readFileSync(path.join(vsxWorkspace, 'eslint.config.mjs'), 'utf8')
+      .split('\n')
+      .every(line => !(!line.trimStart().startsWith('//') && line.includes('verticalSlices: false'))),
   )
 
   // tools/ is linted by the workspace root, not by the project (#249): the packaging
   // script mnci writes there must pass the lint it is written into.
   const toolsLint = tryRunCapture('npx eslint tools', vsxWorkspace)
   enforce('vscode: the generated tools/vscode-extension.cjs passes the workspace lint', toolsLint.ok, toolsLint.output)
+
+  // The integration tests (#244): a real VS Code is downloaded (once, ~100 MB, cached) and the sample test runs inside it.
+  // Needs a display. Windows and macOS have one; a headless Linux machine must say xvfb-run rather than crash Electron.
+  const vsxHasDisplay = process.platform !== 'linux' || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
+  const editorIntegration = tryRunCapture('npx nx run editor:test:integration', vsxWorkspace)
+  if (vsxHasDisplay) {
+    enforce('vscode: test:integration passes in a real VS Code', editorIntegration.ok && editorIntegration.output.includes('1 passing'), editorIntegration.output)
+  } else {
+    enforce('vscode: test:integration names xvfb-run when there is no display', !editorIntegration.ok && editorIntegration.output.includes('xvfb-run'), editorIntegration.output)
+    skip('vscode: test:integration in a real VS Code', 'this Linux machine has no display (run it under xvfb-run)')
+  }
+  enforce(
+    'vscode: the integration tests do not reach the .vsix',
+    readFileSync(path.join(vsxWorkspace, 'apps/editor/.vscodeignore'), 'utf8').split('\n').includes('integration/**'),
+  )
 
   const editorPackage = tryRunCapture('npx nx run editor:package', vsxWorkspace)
   const vsixTargets = withSidecar

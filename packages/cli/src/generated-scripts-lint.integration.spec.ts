@@ -16,6 +16,9 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { CSHARP_VERSION_ACTIONS } from './project-scaffolding/csharp.use-case'
+import { GO_SLICE_CHECK_PATH, GO_SLICE_CHECK_SCRIPT } from './go-slice-check'
+import { CONTAINER_SCRIPT, CONTAINER_SCRIPT_PATH } from './project-scaffolding/container.use-case'
+import { GO_RELEASE_SCRIPT, GO_RELEASE_SCRIPT_PATH } from './project-scaffolding/go-release.use-case'
 import { VSCODE_EXTENSION_SCRIPT, VSCODE_EXTENSION_SCRIPT_PATH } from './project-scaffolding/vscode-extension.use-case'
 import { ESLINT_MNCI_CONFIG, ESLINT_MNCI_FILENAME, ESLINT_USER_CONFIG } from './workspace-overlay'
 
@@ -58,6 +61,9 @@ describe('scripts mnci writes into tools/ pass the lint they will be linted by',
   it.each([
     [VSCODE_EXTENSION_SCRIPT_PATH, VSCODE_EXTENSION_SCRIPT],
     ['tools/csharp-version-actions.cjs', CSHARP_VERSION_ACTIONS],
+    [GO_RELEASE_SCRIPT_PATH, GO_RELEASE_SCRIPT],
+    [GO_SLICE_CHECK_PATH, GO_SLICE_CHECK_SCRIPT],
+    [CONTAINER_SCRIPT_PATH, CONTAINER_SCRIPT],
   ])('%s', (path, content) => {
     const result = lint(path, content)
 

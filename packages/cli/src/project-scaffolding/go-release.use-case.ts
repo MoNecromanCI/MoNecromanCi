@@ -138,10 +138,10 @@ function assetConfig (app) {
 // 'go-app-<app>-<goos>-<goarch>.zip' -> { os, arch, ext }, or undefined for any other file.
 function parseBuiltName (app, file) {
   const prefix = 'go-app-' + app + '-'
-  if (!file.startsWith(prefix) || !file.endsWith('.zip')) return undefined
+  if (!file.startsWith(prefix) || !file.endsWith('.zip')) return null
   const platform = file.slice(prefix.length, -'.zip'.length)
   const dash = platform.lastIndexOf('-')
-  if (dash < 1) return undefined
+  if (dash < 1) return null
 
   return { os: platform.slice(0, dash), arch: platform.slice(dash + 1), ext: 'zip' }
 }
@@ -149,17 +149,13 @@ function parseBuiltName (app, file) {
 // What a built zip is attached as. Without a configured name the file keeps the name it was built with.
 function assetName (app, version, file, config) {
   const parts = parseBuiltName(app, file)
-  if (!config.name || !parts) return file
+  if (!parts || !config.name) return file
 
-  const values = {
-    product: config.product || app,
-    version,
-    os: (config.osAlias || {})[parts.os] || parts.os,
-    arch: (config.archAlias || {})[parts.arch] || parts.arch,
-    ext: parts.ext,
-  }
+  const os = (config.osAlias || {})[parts.os] || parts.os
+  const arch = (config.archAlias || {})[parts.arch] || parts.arch
+  const values = { product: config.product || app, version, os, arch, ext: parts.ext }
 
-  return config.name.replace(/\{(\w+)\}/g, (_match, key) => {
+  return config.name.replaceAll(/\{(\w+)\}/g, (_match, key) => {
     if (!ASSET_PLACEHOLDERS.includes(key)) fail(app + ': release.asset.name has an unknown placeholder {' + key + '} - use ' + ASSET_PLACEHOLDERS.map(each => '{' + each + '}').join(', ') + '.')
 
     return values[key]
@@ -211,10 +207,11 @@ function attachAssets (native) {
 
       return join(staging, name)
     })
-    for (const extra of config.extra || []) {
+    const extras = config.extra || []
+    for (const extra of extras) {
       if (!extra.target || !extra.files) fail(app + ': each release.asset.extra needs a target and files.')
       nx(['run', app + ':' + extra.target], { VERSION: version })
-      const found = globSync(extra.files.replaceAll('{version}', version))
+      const found = globSync(extra.files.replaceAll('{version}', () => version))
       if (found.length === 0) fail(app + ': ' + extra.target + ' produced nothing matching ' + extra.files + '.')
       files.push(...found)
     }
