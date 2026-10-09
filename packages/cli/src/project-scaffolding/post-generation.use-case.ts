@@ -715,6 +715,22 @@ function emptySlice (projectRoot: string, sliceDir: string): void {
 }
 
 /**
+ * Whether a generated project's package is an ES module.
+ *
+ * @param projectRoot - Absolute path to the generated project's directory.
+ * @returns True when its `package.json` has `"type": "module"`.
+ * @throws Never - a missing or unreadable manifest is not an ES module package.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function isEsModulePackage (projectRoot: string): boolean {
+  try {
+    return readJson<{ type?: unknown }>(join(projectRoot, 'package.json')).type === 'module'
+  } catch {
+    return false
+  }
+}
+
+/**
  * Moves a generator's `src/lib/<name>` placeholder into a project-named slice.
  *
  * @remarks
@@ -759,17 +775,20 @@ function reshapeScaffoldSlice (projectRoot: string, name: string, extension: str
     }
   }
 
-  // The package barrel re-exports the slice, not the old ./lib/<name>. Whether the
-  // slice's own barrel carries the ESM `.js` suffix follows the form the scaffold used.
+  // The package barrel re-exports the slice, not the old ./lib/<name>. Whether the slice's own barrel carries the
+  // ESM `.js` suffix follows the form the scaffold used, OR the package being an ES module: a library whose
+  // package.json says "type": "module" is read as ESM by any app that resolves its source through the workspace's
+  // custom condition, and TypeScript then requires explicit extensions under `nodenext` (TS2834), which a
+  // CommonJS app consuming it hit on Nx 23.3.0 (#410).
   const barrel = join(sourceDir, 'index.ts')
-  const esm = existsSync(barrel) && readFileSync(barrel, 'utf8').includes(`./lib/${name}.js'`)
+  const esm = (existsSync(barrel) && readFileSync(barrel, 'utf8').includes(`./lib/${name}.js'`)) || (extension === 'ts' && isEsModulePackage(projectRoot))
   writeFileEnsured(join(sliceDir, 'index.ts'), `export * from './${name}.${role}${esm ? '.js' : ''}'\n`)
   if (existsSync(barrel)) {
     writeFileEnsured(
       barrel,
       readFileSync(barrel, 'utf8')
         .replaceAll(`./lib/${name}.js'`, () => `./${name}/index.js'`)
-        .replaceAll(`./lib/${name}'`, () => `./${name}'`),
+        .replaceAll(`./lib/${name}'`, () => (esm ? `./${name}/index.js'` : `./${name}'`)),
     )
   }
 

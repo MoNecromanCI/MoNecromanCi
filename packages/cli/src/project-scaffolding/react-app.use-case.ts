@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { separateReactAppOutput } from '../react-app-output'
-import { reactAppE2eSpec, reactAppExampleFiles } from './react-app-example.algorithm'
+import { reactAppE2eSpec, reactAppExampleFiles, withNodeTypes } from './react-app-example.algorithm'
 import {
   addNxTargets,
   ensureAdmZip,
@@ -205,6 +205,11 @@ function pairE2eProject (workspaceRoot: string, name: string): void {
   const e2eRoot = join(workspaceRoot, 'apps', e2eName)
   rmSync(join(e2eRoot, 'src/example.spec.ts'), { force: true })
   writeFileEnsured(join(e2eRoot, 'src/greeting.e2e.spec.ts'), reactAppE2eSpec(name))
+  // Its config file needs Node's types, which a project only gets by naming them (#410).
+  const tsconfigPath = join(e2eRoot, 'tsconfig.json')
+  if (fileExists(tsconfigPath)) {
+    writeFileEnsured(tsconfigPath, withNodeTypes(readFileSync(tsconfigPath, 'utf8')))
+  }
   removeGeneratedEslintConfig(workspaceRoot, `apps/${e2eName}`)
   registerProjectCommands(workspaceRoot, e2eName, {
     build: false,

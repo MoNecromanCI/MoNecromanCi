@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -85,6 +86,23 @@ function venvExecutable (venvPath, name) {
  * section, which `section()` records, and the rest of the suite runs.
  */
 const COMMAND_TIMEOUT_MS = 30 * 60 * 1000
+
+/**
+ * Prints files and command output for a check that has just failed, so a failure that only happens on a CI runner
+ * leaves evidence in its log instead of a bare "failed". Printing only, never an assertion.
+ */
+function printEvidence (title, root, files, commands = []) {
+  console.log(`\n──── evidence: ${title} ────`)
+  for (const file of files) {
+    console.log(`\n--- ${file}`)
+    console.log(existsSync(path.join(root, file)) ? readFileSync(path.join(root, file), 'utf8').slice(0, 3000) : '(missing)')
+  }
+  for (const [label, command, filter] of commands) {
+    const result = tryRunCapture(command, root)
+    const lines = filter ? result.output.split('\n').filter(line => filter.test(line)) : result.output.split('\n')
+    console.log(`\n--- ${label}\n${lines.slice(0, 60).join('\n')}`)
+  }
+}
 
 /** Whether a pipeline file calls `command` on a line that is not a comment (a switched-off phase is commented out). */
 function isActiveCall (text, command) {
@@ -202,8 +220,9 @@ const failedSections = new Set()
  */
 function section (label, needs, body) {
   // `MNCI_E2E_ONLY=label[,label]` runs just those sections, to iterate on one without the 25 minutes.
-  const only = process.env.MNCI_E2E_ONLY
-  if (only !== undefined && !only.split(',').includes(label)) {
+  // Empty means every section: a workflow that passes the variable on without a value sets it to ''.
+  const only = process.env.MNCI_E2E_ONLY?.trim()
+  if (only && !only.split(',').map(name => name.trim()).includes(label)) {
     return
   }
   const blockedBy = needs.find(name => failedSections.has(name))
@@ -475,7 +494,14 @@ function hasDotnet () {
   }
 }
 
-const temporary = mkdtempSync(path.join(tmpdir(), 'mnci-e2e-'))
+// The REAL path, not the one the OS hands out. On a Windows runner `os.tmpdir()` is the 8.3 short name
+// `C:\Users\RUNNER~1\...` while symlinks, git and Node's resolver answer with `C:\Users\runneradmin\...`. A tool
+// that compares the two as strings sees two places: Vite refused its own index.html as "outside of the serving
+// allow list", TypeScript read one library file under two names, and `nx release` found no commit touching a
+// package because git's top level and the workspace root did not match. Nobody works under a `~1` path, so
+// the suite does not either.
+const createdTemporary = mkdtempSync(path.join(tmpdir(), 'mnci-e2e-'))
+const temporary = realpathSync.native(createdTemporary)
 const workspace = path.join(temporary, 'demo')
 // Hoisted out of the `alt stack` section on purpose: `python` and `go` are
 // separate sections that both drive this workspace, so it is the one binding
@@ -3266,6 +3292,20 @@ section('node esm apps', [], () => {
     run('npm install --ignore-scripts --no-audit --no-fund', root)
     run('npx nx sync', root)
     const built = tryRunCapture('npx nx run-many -t build,typecheck --projects=core,cjs', root)
+    if (!built.ok) {
+      printEvidence('a CommonJS app against an ESM-only library', root, [
+        'apps/cjs/tsconfig.app.json',
+        'apps/cjs/tsconfig.json',
+        'apps/cjs/package.json',
+        'packages/core/package.json',
+        'packages/core/tsconfig.lib.json',
+        'tsconfig.base.json',
+      ], [
+        ['where TypeScript finds @esm/core', 'npx tsc -p apps/cjs/tsconfig.app.json --noEmit --traceResolution', /@esm\/core/],
+        ['versions', 'npx tsc --version && node --version && npm --version'],
+        ['what node_modules/@esm/core is', 'node -e "const fs=require(\'fs\');const p=\'node_modules/@esm/core\';console.log(fs.lstatSync(p).isSymbolicLink()?\'symlink -> \'+fs.realpathSync(p):\'a directory\')"'],
+      ])
+    }
     enforce('esm: a CommonJS app typechecks and builds against an ESM-only library', built.ok, built.output.slice(-2000))
     const ranCjs = tryRunCapture('node apps/cjs/dist/main.js', root)
     enforce('esm: the CommonJS app loads the ESM-only library (require of an ES module)', ranCjs.ok && ranCjs.output.includes('Hello, from a cjs app!'), ranCjs.output)
@@ -3294,6 +3334,18 @@ section('react e2e project', [], () => {
   enforce('react e2e: <name>-e2e has a :qa and neither :build nor :start', scripts['web-e2e:qa'] !== undefined && scripts['web-e2e:build'] === undefined && scripts['web-e2e:start'] === undefined, JSON.stringify(Object.keys(scripts)))
 
   const verify = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=web,web-e2e', root)
+  if (!verify.ok) {
+    printEvidence('the React app and its Playwright project', root, [
+      'apps/web-e2e/tsconfig.json',
+      'apps/web-e2e/package.json',
+      'tsconfig.base.json',
+      'package.json',
+    ], [
+      ['which @types/node is installed', 'npm ls @types/node --all'],
+      ['the type packages at the root', 'node -e "console.log(require(\'fs\').readdirSync(\'node_modules/@types\').join(\' \'))"'],
+      ['versions', 'npx tsc --version && node --version && npm --version'],
+    ])
+  }
   enforce('react e2e: lint, typecheck, test and build are green for the app and its e2e project (what CI verifies)', verify.ok, verify.output.slice(-2500))
 
   // #346: tsc and Vite both wrote to dist, and Nx runs an app's build and typecheck together, so the typecheck failed
@@ -3335,8 +3387,16 @@ section('container images', [], () => {
    * paths fall back to index.html, and a Go app's static binary on distroless.
    * Needs a Docker engine that runs Linux images; says so and skips when it has none.
    * ------------------------------------------------------------------------- */
-  if (!tryRunCapture('docker info', temporary).ok) {
+  // A Windows runner has Docker, but in Windows-container mode, where `node:24-alpine` has no matching manifest.
+  // The Linux CI job proves these images; here the section is skipped, loudly, unless the engine runs Linux.
+  const engine = tryRunCapture('docker info --format "{{.OSType}}"', temporary)
+  if (!engine.ok) {
     skip('the entire container images section', 'no Docker engine is running here')
+
+    return
+  }
+  if (engine.output.trim() !== 'linux') {
+    skip('the entire container images section', `the Docker engine runs ${engine.output.trim()} containers, and these are Linux images`)
 
     return
   }

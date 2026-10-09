@@ -1,4 +1,4 @@
-import { reactAppE2eSpec, reactAppExampleFiles } from './react-app-example.algorithm'
+import { reactAppE2eSpec, reactAppExampleFiles, withNodeTypes } from './react-app-example.algorithm'
 
 describe('reactAppExampleFiles', () => {
   const files = reactAppExampleFiles('web')
@@ -44,5 +44,33 @@ describe('reactAppE2eSpec', () => {
 
     expect(spec).toContain("page.goto('/')")
     expect(spec).toContain("getByText('Hello, storefront!')")
+  })
+})
+
+describe('withNodeTypes', () => {
+  it("adds node to a Playwright project's tsconfig that names no types, keeping everything else", () => {
+    const before = JSON.stringify({ extends: '../../tsconfig.base.json', compilerOptions: { allowJs: true, outDir: 'out-tsc/playwright' }, include: ['**/*.ts'] })
+
+    expect(JSON.parse(withNodeTypes(before))).toEqual({
+      extends:         '../../tsconfig.base.json',
+      compilerOptions: { allowJs: true, outDir: 'out-tsc/playwright', types: ['node'] },
+      include:         ['**/*.ts'],
+    })
+  })
+
+  it('keeps the types already there, and adds node once', () => {
+    const once = withNodeTypes(JSON.stringify({ compilerOptions: { types: ['jest'] } }))
+
+    expect(JSON.parse(once).compilerOptions.types).toEqual(['jest', 'node'])
+    expect(JSON.parse(withNodeTypes(once)).compilerOptions.types).toEqual(['jest', 'node'])
+  })
+
+  it('creates compilerOptions when there are none, and leaves text that is not JSON alone', () => {
+    expect(JSON.parse(withNodeTypes('{}')).compilerOptions.types).toEqual(['node'])
+    expect(withNodeTypes('{ // a comment\n}')).toBe('{ // a comment\n}')
+  })
+
+  it('ends with a newline, like every file mnci writes', () => {
+    expect(withNodeTypes('{}').endsWith('\n')).toBe(true)
   })
 })
