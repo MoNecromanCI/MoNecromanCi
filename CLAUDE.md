@@ -865,6 +865,15 @@ commands that write the lockfile: `mnci new`, `add`, `upgrade`, `install` and `u
 PRs), which still needs `npx npm@12 install --package-lock-only` by hand. Lockfiles written by npm 11.21 and npm 12 are
 interchangeable in both directions (measured when the pin moved to 12).
 
+### A release that fails part way keeps the tags of what published (#429)
+
+`nx release` tags every project and then publishes; one package refused by the registry (a deleted version, a rate limit) fails
+the command while the rest are already on the feed. The release phase runs it through `runTee` (live output AND a copy) and, on
+failure, `partial-release/` reads nx's "Failed tasks" list and pushes the tags that point at `HEAD` except those of the failed
+projects, so a retry does not re-propose, and fail on, every version that did publish. The failed projects' tags are held back and
+named. A tag that does not name its project (a shared `v1.2.3`) cannot be attributed, so then nothing is pushed. The run still
+fails. Not covered: the GitHub Release for those packages, and a registry that refuses a version it was told to skip.
+
 ### Tag-Only Git
 
 - `nx release` never commits, only tags

@@ -12,7 +12,7 @@ export const COMMAND_GROUPS: Readonly<Record<string, CommandGroup>> = {
   new:      'workspace',
   upgrade:  'workspace',
   doctor:   'workspace',
-  adopt:    'inspect',
+  adopt:    'workspace',
   add:      'projects',
   dev:      'projects',
   install:  'dependencies',

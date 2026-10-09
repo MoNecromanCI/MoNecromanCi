@@ -308,7 +308,7 @@
   {
     "name": "adopt",
     "aliases": [],
-    "group": "inspect",
+    "group": "workspace",
     "description": "Read an existing repository and report what bringing it under mnci would involve: blockers, warnings and the step that clears each. Read-only unless a step flag is given; exits non-zero when something blocks",
     "arguments": [],
     "options": [

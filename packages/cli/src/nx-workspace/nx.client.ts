@@ -158,6 +158,59 @@ export async function runCaptureAsync (
 }
 
 /**
+ * The outcome of a command run through {@link runTee}.
+ *
+ * @remarks
+ * Status and output together, so a caller can decide from what the command said as well as how it ended.
+ *
+ * @typeParam None - this interface has no generic type parameters.
+ */
+export interface TeeResult {
+  /** The child process exit status; `1` when it never produced one. */
+  status: number
+  /** Everything the child wrote to stdout and stderr, in arrival order, decoded as UTF-8. */
+  output: string
+}
+
+/**
+ * Runs a command, letting its output stream live AND keeping a copy of it.
+ *
+ * @remarks
+ * `run` streams but remembers nothing, and `runCapture` remembers but hides the output until the
+ * end (and drops stderr). The release phase needs both: a long `nx release` must show its progress
+ * in the pipeline log, and when it fails the phase must read which projects failed to publish.
+ *
+ * @param command - The executable to run.
+ * @param arguments_ - The arguments passed to the executable.
+ * @param cwd - The working directory to run the command in.
+ * @returns The exit status and the combined output.
+ * @throws Never - a spawn failure is status `1`.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function runTee (command: string, arguments_: string[], cwd: string): Promise<TeeResult> {
+  return await new Promise<TeeResult>(resolve => {
+    const child = spawn(command, arguments_, { cwd, stdio: ['inherit', 'pipe', 'pipe'] })
+    let output = ''
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => {
+      output += chunk
+      process.stdout.write(chunk)
+    })
+    child.stderr?.on('data', (chunk: string) => {
+      output += chunk
+      process.stderr.write(chunk)
+    })
+    child.on('error', () => {
+      resolve({ status: 1, output })
+    })
+    child.on('close', code => {
+      resolve({ status: code ?? 1, output })
+    })
+  })
+}
+
+/**
  * Runs an async job over every input, at most `limit` at a time.
  *
  * @remarks

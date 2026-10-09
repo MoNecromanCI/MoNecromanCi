@@ -15,6 +15,8 @@ export interface CiProcesses {
   run:     (command: string, arguments_: string[]) => number
   /** Runs a command and returns what it printed. */
   capture: (command: string, arguments_: string[]) => CaptureResult
+  /** Runs a command streaming its output live AND returning a copy of it; optional, for the phases that read what failed. */
+  tee?:    (command: string, arguments_: string[]) => Promise<{ status: number, output: string }>
 }
 
 /**
