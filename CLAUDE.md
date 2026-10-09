@@ -910,6 +910,12 @@ or holds whitespace is refused before any command runs, `mnci_install` requires 
 model reads, not a protocol error. `new`, `upgrade`, `adopt` and `up` are not exposed. Verified against the official `@modelcontextprotocol/sdk` client (initialize,
 list, call, a refused name, an unknown tool). Register it in the assistant as `npx mnci mcp`, started in the workspace root.
 
+### `mnci upgrade --migrate` (#312)
+
+`migrateNx` (`workspace-upgrade/`) runs `nx migrate latest`, an install when it wrote `migrations.json`, then `nx migrate --run-migrations`, after the overlay and before the
+format/lockfile steps. A flag, not the default, since `latest` can be newer than the Nx this mnci was verified with. A failing step stops the rest with the command to resume;
+`migrations.json` is kept for review. Unit-tested with the commands mocked; **not run against a real workspace**.
+
 ### Pipeline templates (#293)
 
 `mnci pipeline [template] [--project <app>] [--ci azure|github|both] [--force]` (`pipeline-templates/`) writes a ready-made pipeline file

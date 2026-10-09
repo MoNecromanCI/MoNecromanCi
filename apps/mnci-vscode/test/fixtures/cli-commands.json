@@ -250,6 +250,15 @@
         "variadic": false,
         "repeatable": false,
         "negated": false
+      },
+      {
+        "name": "migrate",
+        "flags": "--migrate",
+        "description": "also upgrade Nx itself: nx migrate latest, an install, then its migrations (latest may be newer than this mnci was verified with)",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
       }
     ]
   },
