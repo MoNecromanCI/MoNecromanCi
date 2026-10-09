@@ -129,6 +129,20 @@ function checkEslintEntryPointReachesTheRules (workspaceRoot: string): Finding[]
   const entryPoint = join(workspaceRoot, ESLINT_USER_FILENAME)
   const source = existsSync(entryPoint) ? readFileSync(entryPoint, 'utf8') : ''
 
+  // A config from before the split imports the package itself. It reaches the rules just as well, so it is not
+  // broken (#422): it is told, as a warning, that the file mnci keeps current is not in use, and how to switch.
+  if (!source.includes(ESLINT_MNCI_FILENAME) && source.includes('@mnci/eslint-config')) {
+    return [
+      {
+        check:   `${ESLINT_USER_FILENAME} imports the mnci rules`,
+        ok:      true,
+        warning: true,
+        detail:  `${ESLINT_USER_FILENAME} imports @mnci/eslint-config directly, so it lints with the rules, but ${ESLINT_MNCI_FILENAME}, which mnci keeps current on upgrade, is not used`,
+        remedy:  `to use it, change the specifier of that import from '@mnci/eslint-config' to './${ESLINT_MNCI_FILENAME}'; the call and its options (workspaceRoot, verticalSlices, ...) stay exactly as they are, because the generated file exports a function that passes them on`,
+      },
+    ]
+  }
+
   return [
     {
       check:  `${ESLINT_USER_FILENAME} imports the mnci rules`,

@@ -2587,6 +2587,46 @@ describe('applyOverlay', () => {
     }
   })
 
+  it('keeps an ESLint entry point that imports the package directly, and says how to use the generated file (#422)', () => {
+    const config = "import mnci from '@mnci/eslint-config'\nexport default [...mnci({ workspaceRoot: import.meta.dirname, verticalSlices: [] })]\n"
+    writeFileSync(join(workspaceRoot, 'eslint.config.mjs'), config)
+    const progress: string[] = []
+
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'azure',
+      stack:         DEFAULT_STACK,
+    }, (line) => { progress.push(line) })
+
+    expect(readFileSync(join(workspaceRoot, 'eslint.config.mjs'), 'utf8')).toBe(config)
+    const text = progress.join(' | ')
+
+    expect(text).toContain('eslint.config.mjs — kept as it is')
+    expect(text).toContain('imports @mnci/eslint-config directly, which still works')
+    expect(text).toContain("change that import's specifier to './eslint.config.mnci.mjs'")
+  })
+
+  it('says nothing extra for an entry point that already imports the generated file', () => {
+    writeFileSync(join(workspaceRoot, 'eslint.config.mjs'), "import mnci from './eslint.config.mnci.mjs'\nexport default [...mnci()]\n")
+    const progress: string[] = []
+
+    applyOverlay(workspaceRoot, {
+      workspaceName: 'demo',
+      scope:         '@demo',
+      registry:      { kind: 'npm' },
+      agent:         'ubuntu-latest',
+      variableGroup: 'Build',
+      ci:            'azure',
+      stack:         DEFAULT_STACK,
+    }, (line) => { progress.push(line) })
+
+    expect(progress.join(' | ')).not.toContain('directly')
+  })
+
   it('writes .devcontainer/devcontainer.json, so a local environment can match CI', () => {
     overlayWith(DEFAULT_STACK)
 

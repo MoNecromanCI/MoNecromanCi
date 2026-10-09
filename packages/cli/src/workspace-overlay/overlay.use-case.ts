@@ -1769,6 +1769,12 @@ function writeEslintEntryPoint (workspaceRoot: string, onProgress: (line: string
   const path = join(workspaceRoot, ESLINT_USER_FILENAME)
   if (existsSync(path) && !isUnmodifiedMnciEslintConfig(readFileSync(path, 'utf8'))) {
     onProgress(`${ESLINT_USER_FILENAME} — kept as it is, it is yours`)
+    const source = readFileSync(path, 'utf8')
+    if (!source.includes(ESLINT_MNCI_FILENAME) && source.includes('@mnci/eslint-config')) {
+      // The older shape, which still lints correctly (#422). Say what the new file is for and the one edit that
+      // uses it, rather than leaving a generated file nothing imports and no word about it.
+      onProgress(`  it imports @mnci/eslint-config directly, which still works; to use ${ESLINT_MNCI_FILENAME} instead, change that import's specifier to './${ESLINT_MNCI_FILENAME}' (the call and its options stay as they are)`)
+    }
 
     return
   }

@@ -149,6 +149,27 @@ describe('collectFindings', () => {
     expect(finding?.remedy).toContain('...mnci()')
   })
 
+  it('warns, and does not fail, for an entry point that imports the package directly (#422)', () => {
+    // The shape from before the split, still working: it lints with the rules. Failing it left a workspace the
+    // upgrade had just touched in a state its own doctor rejected, with no word that anything was wrong.
+    seedHealthyWorkspace()
+    writeFileSync(join(workspaceRoot, 'eslint.config.mnci.mjs'), 'export default []')
+    writeFileSync(
+      join(workspaceRoot, 'eslint.config.mjs'),
+      "import mnci from '@mnci/eslint-config'\nexport default [...mnci({ workspaceRoot: import.meta.dirname, verticalSlices: [] })]\n",
+    )
+
+    const finding = findingFor(collectFindings(workspaceRoot), 'imports the mnci rules')
+
+    expect(finding?.ok).toBe(true)
+    expect(finding?.warning).toBe(true)
+    expect(finding?.detail).toContain('imports @mnci/eslint-config directly')
+    // The remedy says what to change and that the options stay.
+    expect(finding?.remedy).toContain("from '@mnci/eslint-config' to './eslint.config.mnci.mjs'")
+    expect(finding?.remedy).toContain('verticalSlices')
+    expect(finding?.remedy).toContain('exactly as they are')
+  })
+
   it('passes once the entry point imports them', () => {
     seedHealthyWorkspace()
     writeFileSync(join(workspaceRoot, 'eslint.config.mnci.mjs'), 'export default []')
