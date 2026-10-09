@@ -430,3 +430,26 @@ describe('mnci ci release: forced versions (#283)', () => {
     expect(setup.commands.filter(line => line.startsWith('npx nx release'))).toEqual(['npx nx release 4.0.0 --yes'])
   })
 })
+
+describe('mnci ci release: excluded python packages (#432)', () => {
+  it('does not ask for PYPI_TOKEN when every python package is excluded from release.projects', async () => {
+    seed('nx.json', JSON.stringify({ release: { projects: ['packages/*', 'python-packages/*', '!python-packages/tool'] } }))
+    seed('python-packages/tool/pyproject.toml', '[project]\nname = "tool"\n')
+    const setup = harness()
+
+    const status = await release(setup, {})
+
+    expect(setup.logged.some(line => line.includes('PYPI_TOKEN'))).toBe(false)
+    expect(status).toBe(0)
+  })
+
+  it('still asks for it while another python package is released', async () => {
+    seed('nx.json', JSON.stringify({ release: { projects: ['python-packages/*', '!tool'] } }))
+    seed('python-packages/tool/pyproject.toml', '[project]\nname = "tool"\n')
+    seed('python-packages/real/pyproject.toml', '[project]\nname = "real"\n')
+    const setup = harness()
+
+    expect(await release(setup, {})).toBe(1)
+    expect(setup.logged.some(line => line.includes('PYPI_TOKEN is empty or unset'))).toBe(true)
+  })
+})
