@@ -35,6 +35,7 @@ import {
 import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
 import { completeLockfile } from '../lockfile-completion'
+import { migrateNx } from './migrate-nx.use-case'
 
 /**
  * Options accepted by {@link runUpgrade}.
@@ -71,6 +72,8 @@ export interface UpgradeOptions {
   ci?:            CiProvider
   /** Unit-test runner (`jest` or `vitest`). */
   testRunner?:    StackConfig['testRunner']
+  /** Also run `nx migrate latest` and its migrations (#312). */
+  migrate?:       boolean
 }
 
 /**
@@ -418,6 +421,9 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   // over the whole workspace — and it used to run in silence after the overlay
   // message, so a large workspace looked hung for a minute or more. `new` already
   // logged this; `upgrade` did not.
+  if (options.migrate === true) {
+    migrateNx(workspaceRoot)
+  }
   // The overlay and the installs above may have rewritten the lockfile with the local npm (#295).
   completeLockfile(workspaceRoot)
   logger.step(

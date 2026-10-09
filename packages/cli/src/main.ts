@@ -106,6 +106,7 @@ export function buildProgram (cliVersion: string): Command {
       '--test-runner <runner>',
       'unit-test runner: jest | vitest (overrides the persisted value)',
     )
+    .option('--migrate', 'also upgrade Nx itself: nx migrate latest, an install, then its migrations (latest may be newer than this mnci was verified with)')
     .action((options: UpgradeOptions) => {
       runUpgrade(process.cwd(), options)
     })
