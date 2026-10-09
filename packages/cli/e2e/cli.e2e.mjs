@@ -627,12 +627,16 @@ section('js stack', [], () => {
   // the workspace's own linter disowns are the fragmentation the single root
   // config exists to end, and deleting them after the fact would leave every
   // `nx` command printing "Your AI agent configuration is outdated".
-  for (const leftover of ['.agents', '.claude', '.codex', '.cursor', '.gemini', '.opencode',
+  for (const leftover of ['.agents', '.claude/settings.json', '.codex', '.cursor', '.gemini', '.opencode',
     'opencode.json', 'AGENTS.md', 'CLAUDE.md', '.github/skills']) {
     enforce(
       `no AI-agent scaffolding: ${leftover}`,
       !existsSync(path.join(workspace, leftover)),
     )
+  }
+  // .claude itself is not Nx's: mnci prepares the team's assistants there (#366) and registers its MCP server.
+  for (const prepared of ['.claude/agents/wizard.md', '.claude/agents/necromancer.md', '.claude/agents/sorcerer.md', '.mcp.json']) {
+    enforce(`prepared assistants: ${prepared}`, existsSync(path.join(workspace, prepared)))
   }
 
   // The root config is three lines importing the shared package — the whole

@@ -232,8 +232,8 @@ describe('runAdd npm-lib', () => {
 
     const config = readFileSync(join(workspaceRoot, 'packages/sdk/rollup.config.cjs'), 'utf8')
     expect(config).toContain('sourcemapPathTransform')
-    // A collapse, not a fixed prefix, so it cannot go stale at another depth.
-    expect(config).toContain("replace(/^([.][.][/])+/, '../')")
+    // It asks whether the file is there, so a source another library already mapped is kept (#311).
+    expect(config).toContain('existsSync(resolve(dirname(sourcemapPath), url))')
   })
 
   it('keeps the source maps out of the published tarball', async () => {
