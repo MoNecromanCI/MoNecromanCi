@@ -1535,6 +1535,9 @@ export const ESLINT_BLOCK_INVENTORY = `// WHAT IS IN HERE. Each line is one conf
 //   mnci/typescript*              TS rules on top of them, no type information needed
 //   mnci/type-aware*              the rules that DO read types (no-floating-promises and
 //                                 friends), scoped to {apps,libs,packages}/*/src
+//   mnci/vertical-slices*         vertical feature slices: role-suffixed files, a slice reached only
+//                                 through its index, no cycles — ON by default; verticalSlices: false
+//                                 in eslint.config.mjs opts out
 //   mnci/import-graph             import cycles — eslint-plugin-import-x
 //   mnci/react                    JSX/TSX — @eslint-react/eslint-plugin,
 //                                 eslint-plugin-react-hooks, -react-refresh, -jsx-a11y
@@ -1681,7 +1684,8 @@ export const ESLINT_USER_CONFIG = `// This file is YOURS. mnci writes it once an
 import mnci from './${ESLINT_MNCI_FILENAME}'
 
 // TO CONFIGURE the shared rules, pass options to mnci() below — e.g.
-// \`...mnci({ verticalSlices: ['packages/*/src/**/*.ts'] })\`.
+// \`...mnci({ verticalSlices: ['packages/*/src/**/*.ts'] })\`. The vertical-slice rules are ON by default
+// (they are mnci's architecture); \`...mnci({ verticalSlices: false })\` opts out.
 //
 // TO OVERRIDE a rule, append a block AFTER the spread — later blocks win, so
 // one of your own beats anything above it. Give it a name, so

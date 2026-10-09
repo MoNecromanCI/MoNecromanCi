@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runCapture, runNx, runShell } from '../nx-workspace'
 import { runAdd } from './add-project.use-case'
-import { addGoPlatformTargets, AIR_VERSION, GO_PLATFORMS, goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
+import { addGoPlatformTargets, addGoSliceChecks, AIR_VERSION, GO_PLATFORMS, goLibraryIdentifiers, reshapeGoLibraryScaffold } from './go.use-case'
 
 const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
@@ -347,9 +347,9 @@ describe('runAdd go', () => {
       const stage = projectOf('site').targets['stage-web']
       // The real Nx name, scope included, not the directory: dependsOn matches on it.
       expect(stage.dependsOn).toEqual([{ projects: ['@demo/web'], target: 'build' }])
-      expect(stage.outputs).toEqual(['{workspaceRoot}/apps/site/web'])
+      expect(stage.outputs).toEqual(['{workspaceRoot}/apps/site/webui/web'])
       expect(stage.inputs).toEqual([{ dependentTasksOutputFiles: '**/*' }])
-      expect(stage.options?.command).toContain("fs.cpSync('apps/web/dist','apps/site/web'")
+      expect(stage.options?.command).toContain("fs.cpSync('apps/web/dist','apps/site/webui/web'")
     })
 
     it('makes every target that compiles Go wait for it, so a fresh clone is green', async () => {
@@ -392,13 +392,17 @@ describe('runAdd go', () => {
 
       await runAdd('go-app', 'site', { web: 'web' })
 
-      expect(readSite('.gitignore')).toBe('/web/\n')
-      expect(readSite('web.go')).toContain('//go:embed all:web')
-      expect(readSite('web.go')).toContain('\tfiles := http.FileServer(http.FS(root))')
-      expect(readSite('main.go')).toContain('mux.Handle("/", webHandler())')
+      expect(readSite('.gitignore')).toBe('/webui/web/\n')
+      expect(readSite('webui/web_handler.go')).toContain('package webui')
+      expect(readSite('webui/web_handler.go')).toContain('//go:embed all:web')
+      expect(readSite('webui/web_handler.go')).toContain('\tfiles := http.FileServer(http.FS(root))')
+      expect(readSite('main.go')).toContain('mux.Handle("/", webui.Handler())')
+      expect(readSite('main.go')).toMatch(/"[^"]+\/webui"/)
       // The stamp build-all writes has something to land on, and something reads it.
       expect(readSite('main.go')).toContain('var version = "dev"')
-      expect(readSite('main_test.go')).toContain('TestWebHandlerServesTheBuiltFrontend')
+      expect(readSite('webui/web_handler_test.go')).toContain('TestWebHandlerServesTheBuiltFrontend')
+      // The root holds only main.go, which is what the Go slice check requires.
+      expect(existsSync(join(workspaceRoot, 'apps/site/web.go'))).toBe(false)
     })
 
     it('proxies /api to the Go server from the Vite dev server', async () => {
@@ -685,7 +689,7 @@ describe('runAdd go', () => {
     )
 
     const { targets } = readProjectJson('packages/core')
-    expect(Object.keys(targets).toSorted((a, b) => a.localeCompare(b))).toEqual(['lint', 'test'])
+    expect(Object.keys(targets).toSorted((a, b) => a.localeCompare(b))).toEqual(['lint', 'slice-check', 'test'])
     // Go publishing is a git tag, not a registry upload — there is nothing to push.
     expect(targets['nx-release-publish']).toBeUndefined()
   })
@@ -709,7 +713,7 @@ describe('runAdd go', () => {
     )
     expect(
       Object.keys(readProjectJson('libs/util').targets).toSorted((a, b) => a.localeCompare(b)),
-    ).toEqual(['lint', 'test'])
+    ).toEqual(['lint', 'slice-check', 'test'])
   })
 
   it('honours MNCI_NX_GO_SPEC so e2e can redirect the plugin install', async () => {
@@ -867,5 +871,58 @@ describe('addGoPlatformTargets', () => {
 
   it('does nothing in a workspace without apps/', () => {
     expect(addGoPlatformTargets(root)).toEqual([])
+  })
+})
+
+describe('addGoSliceChecks (#232)', () => {
+  let root: string
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'mnci-goslice-upgrade-'))
+  })
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  /** Writes a project.json under `parent/name`. */
+  function project (parent: string, name: string, tags: string[], targets: Record<string, unknown>): void {
+    mkdirSync(join(root, parent, name), { recursive: true })
+    writeFileSync(join(root, parent, name, 'project.json'), JSON.stringify({ name, tags, targets }))
+  }
+
+  const targetsOf = (path: string): Record<string, { dependsOn?: string[] }> => (JSON.parse(readFileSync(join(root, path, 'project.json'), 'utf8')) as { targets: Record<string, { dependsOn?: string[] }> }).targets
+
+  it('adds slice-check to every Go project and makes lint depend on it, keeping what lint already has', () => {
+    project('apps', 'api', ['type:go-app'], { lint: { executor: 'x', dependsOn: ['build'] } })
+    project('libs', 'core', ['type:go-internal-lib'], { lint: { executor: 'x' } })
+    project('apps', 'web', ['type:react-app'], { lint: { executor: 'y' } })
+
+    expect(addGoSliceChecks(root)).toEqual(['apps/api/project.json', 'libs/core/project.json', 'tools/go-slice-check.cjs'])
+    expect(targetsOf('apps/api').lint.dependsOn).toEqual(['build', 'slice-check'])
+    expect(targetsOf('libs/core').lint.dependsOn).toEqual(['slice-check'])
+    expect(JSON.stringify(targetsOf('apps/api')['slice-check'])).toContain('node tools/go-slice-check.cjs apps/api')
+    expect(targetsOf('apps/web')['slice-check']).toBeUndefined()
+  })
+
+  it('is a no-op the second time, and writes nothing for a workspace with no Go project', () => {
+    project('apps', 'api', ['type:go-app'], { lint: { executor: 'x' } })
+    addGoSliceChecks(root)
+
+    expect(addGoSliceChecks(root)).toEqual([])
+
+    const empty = mkdtempSync(join(tmpdir(), 'mnci-goslice-empty-'))
+    try {
+      expect(addGoSliceChecks(empty)).toEqual([])
+    } finally {
+      rmSync(empty, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a slice-check target the team wrote', () => {
+    project('apps', 'api', ['type:go-app'], { 'lint': { executor: 'x', dependsOn: ['slice-check'] }, 'slice-check': { command: 'mine' } })
+
+    expect(addGoSliceChecks(root)).toEqual(['tools/go-slice-check.cjs'])
+    expect(targetsOf('apps/api')['slice-check']).toEqual({ command: 'mine' })
   })
 })

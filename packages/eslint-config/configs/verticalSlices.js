@@ -233,10 +233,10 @@ export const plugin = {
  * files - and no two subfeatures importing each other.
  *
  * @remarks
- * **Opt-in**, because it is an architecture, not a style: most workspaces are
- * not organised this way, and turning it on for them would fail their lint on
- * day one. Enable it with `mnci({ verticalSlices: true })`, or pass the globs of
- * the projects that follow it.
+ * **On by default** (mnci's architecture is vertical feature slices), for every
+ * project's `src` under `apps/`, `libs/` and `packages/`. A workspace that is
+ * not organised this way opts out with `mnci({ verticalSlices: false })`, or
+ * passes the globs of the projects that follow it.
  *
  * Three rules:
  *

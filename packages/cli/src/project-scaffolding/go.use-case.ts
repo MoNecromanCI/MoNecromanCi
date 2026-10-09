@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
 import { fileExists, writeFileEnsured } from '../file-system'
+import { GO_SLICE_CHECK_PATH, GO_SLICE_CHECK_SCRIPT, goSliceCheckTarget } from '../go-slice-check'
 import { logger } from '../terminal'
 import { goModulePrefix, registerNxGoPlugin } from '../go-workspace'
 import { GO_CGO_TAG } from '../workspace-overlay'
@@ -328,9 +329,29 @@ function goTestTarget (): Record<string, unknown> {
 function goLintTarget (): Record<string, unknown> {
   return {
     executor:    '@nx-go/nx-go:lint',
+    dependsOn:   ['slice-check'],
     parallelism: false,
     options:     { linter: 'golangci-lint', args: ['run'] },
   }
+}
+
+/**
+ * The `lint` and `slice-check` targets every Go project gets, and the script they run (#232).
+ *
+ * @remarks
+ * `lint` depends on `slice-check`, the file-role check, so it runs wherever `lint` does, CI verify included. The script is
+ * written into the workspace here, so a project cannot exist without it.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param projectRoot - Workspace-relative project directory.
+ * @returns The two targets, to merge into the project's.
+ * @throws Propagates any Node.js `fs` error raised while writing the script.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goLintTargets (workspaceRoot: string, projectRoot: string): Record<string, unknown> {
+  writeFileEnsured(join(workspaceRoot, GO_SLICE_CHECK_PATH), GO_SLICE_CHECK_SCRIPT)
+
+  return { 'lint': goLintTarget(), 'slice-check': goSliceCheckTarget(projectRoot) }
 }
 
 /**
@@ -642,6 +663,79 @@ export function addGoPlatformTargets (workspaceRoot: string): string[] {
 }
 
 /**
+ * Adds the `slice-check` target to one project, and makes its `lint` depend on it.
+ *
+ * @remarks
+ * See {@link addGoSliceChecks}. Only a project tagged `type:go-*` is touched.
+ *
+ * @param projectJsonPath - Absolute path of the project's `project.json`.
+ * @param projectRoot - Workspace-relative project directory.
+ * @returns `not-go` for a project that is not Go (or has no `project.json`), `changed` when it was edited, `kept` when it already had both.
+ * @throws Error when the `project.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function sliceCheckProject (projectJsonPath: string, projectRoot: string): 'not-go' | 'changed' | 'kept' {
+  if (!fileExists(projectJsonPath)) {
+    return 'not-go'
+  }
+  const project = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as { tags?: string[], targets?: Record<string, { dependsOn?: unknown[] } & Record<string, unknown>> }
+  if ((project.tags ?? []).every(tag => !tag.startsWith('type:go-'))) {
+    return 'not-go'
+  }
+  const lint = project.targets?.lint
+  const additions: Record<string, unknown> = {}
+  if (project.targets?.['slice-check'] === undefined) {
+    additions['slice-check'] = goSliceCheckTarget(projectRoot)
+  }
+  if (lint !== undefined && !(lint.dependsOn ?? []).includes('slice-check')) {
+    additions.lint = { ...lint, dependsOn: [...(lint.dependsOn ?? []), 'slice-check'] }
+  }
+  if (Object.keys(additions).length === 0) {
+    return 'kept'
+  }
+  addProjectJsonTargets(projectJsonPath, additions)
+
+  return 'changed'
+}
+
+/**
+ * Gives the Go projects of an existing workspace the file-role check (#232), and keeps its script current.
+ *
+ * @remarks
+ * Run by `mnci upgrade`. A project is any under `apps/`, `libs/` or `packages/` tagged `type:go-*`. It gets the `slice-check`
+ * target if it lacks one, and its `lint` depends on it, added to whatever `dependsOn` it already has. A `slice-check` target
+ * the team wrote is kept. The script is rewritten when it differs, and written only when the workspace has a Go project.
+ * This is deliberately strict: an existing project that breaks the layout fails its next `lint`, which is the point.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative files it changed.
+ * @throws Error when a Go project's `project.json` is not valid JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addGoSliceChecks (workspaceRoot: string): string[] {
+  const changed: string[] = []
+  let foundGo = false
+  for (const parent of ['apps', 'libs', 'packages']) {
+    const directory = join(workspaceRoot, parent)
+    const names = fileExists(directory) ? readdirSync(directory) : []
+    for (const name of names) {
+      const outcome = sliceCheckProject(join(directory, name, 'project.json'), `${parent}/${name}`)
+      foundGo ||= outcome !== 'not-go'
+      if (outcome === 'changed') {
+        changed.push(`${parent}/${name}/project.json`)
+      }
+    }
+  }
+  const scriptPath = join(workspaceRoot, GO_SLICE_CHECK_PATH)
+  if (foundGo && (!fileExists(scriptPath) || readFileSync(scriptPath, 'utf8') !== GO_SLICE_CHECK_SCRIPT)) {
+    writeFileEnsured(scriptPath, GO_SLICE_CHECK_SCRIPT)
+    changed.push(GO_SLICE_CHECK_PATH)
+  }
+
+  return changed
+}
+
+/**
  * The `start` target for a Go app: `go run .`, locally.
  *
  * @remarks
@@ -853,7 +947,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build': goBuildTarget(name),
     'test':  goTestTarget(),
-    'lint':  goLintTarget(),
+    ...goLintTargets(workspaceRoot, `apps/${name}`),
     ...(cgo
       ? { 'build-native': goNativeBuildTarget(name), 'package-native': goNativePackageTarget(name) }
       : {
@@ -869,7 +963,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     makeGoAppReleasable(workspaceRoot, name)
   }
   if (options.web !== undefined) {
-    wireGoAppToWeb(workspaceRoot, name, options.web)
+    wireGoAppToWeb(workspaceRoot, name, options.web, goModulePathFor(workspaceRoot, `apps/${name}`))
   }
   registerProjectCommands(workspaceRoot, name, {
     build:    true,
@@ -929,7 +1023,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
     'test':        goTestTarget(),
-    'lint':        goLintTarget(),
+    ...goLintTargets(workspaceRoot, `apps/${name}`),
     'package':     goPackageTarget('go-function-app', name),
     'build-all':   goBuildAllTarget(name),
     'package-all': goPackageAllTarget('go-function-app', name),
@@ -975,7 +1069,7 @@ export function addGoLib (workspaceRoot: string, name: string): void {
   pinGoDirective(workspaceRoot, `packages/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'packages', name, 'project.json'), {
     test: goTestTarget(),
-    lint: goLintTarget(),
+    ...goLintTargets(workspaceRoot, `packages/${name}`),
   })
   const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'packages', name), name)
   registerProjectCommands(workspaceRoot, name, { build: false })
@@ -1019,7 +1113,7 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
   pinGoDirective(workspaceRoot, `libs/${name}`)
   addProjectJsonTargets(join(workspaceRoot, 'libs', name, 'project.json'), {
     test: goTestTarget(),
-    lint: goLintTarget(),
+    ...goLintTargets(workspaceRoot, `libs/${name}`),
   })
   const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'libs', name), name)
   registerProjectCommands(workspaceRoot, name, { build: false })

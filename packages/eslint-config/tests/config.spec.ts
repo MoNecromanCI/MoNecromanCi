@@ -182,7 +182,7 @@ let workspace: string
 let reported: Record<string, string[]>
 
 /** Writes a root config that loads this package exactly as a consumer would. */
-function writeConfig (directory: string, options = ''): void {
+function writeConfig (directory: string, options = '{ verticalSlices: false }'): void {
   const entry = pathToFileURL(join(packageRoot, 'index.js')).href
   writeFileSync(
     join(directory, 'eslint.config.mjs'),
