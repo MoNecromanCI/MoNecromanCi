@@ -3,6 +3,7 @@ import { CI_PHASES, runCiPhase, type CiPhase } from './ci-pipeline'
 import { PROJECT_KINDS, runAdd, runKinds, type AddOptions, type KindsOptions, type ProjectKind } from './project-scaffolding'
 import { runDev, type DevOptions } from './dev-servers'
 import { addPipelineTemplate, listPipelineTemplates, PIPELINE_TEMPLATES, type AddPipelineTemplateOptions } from './pipeline-templates'
+import { serveMcp } from './mcp-server'
 import { runDoctor, type DoctorOptions } from './workspace-diagnostics'
 import { runAdopt, type AdoptOptions } from './repository-adoption'
 import { runCommands, type CommandsOptions } from './command-catalog'
@@ -180,6 +181,15 @@ export function buildProgram (cliVersion: string): Command {
         return
       }
       addPipelineTemplate(process.cwd(), template, options)
+    })
+
+  program
+    .command('mcp')
+    .description(
+      'Serve this workspace to an AI assistant over the Model Context Protocol (stdio): tools to list the projects, kinds and commands, run the doctor, add a project, install a dependency, sync versions and add a pipeline. Register it in the assistant as the command `npx mnci mcp`, started in the workspace root',
+    )
+    .action(async () => {
+      await serveMcp(process.cwd(), process.argv[1], cliVersion)
     })
 
   program

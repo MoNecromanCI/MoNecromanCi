@@ -900,6 +900,16 @@ target builds, such as a `.dmg`). It copies to `dist/release-assets/<app>/` and 
 cache keys are untouched. Measured with a fake `gh` in a scratch workspace. Not covered: validating the config in `mnci doctor`, and the
 `mnci` pipelines' own steps (they only call the script).
 
+### `mnci mcp` (#292)
+
+`mcp-server/` serves the Model Context Protocol over stdio, hand-rolled (`initialize`, `ping`, `tools/list`, `tools/call`; no SDK, so the CLI keeps three
+dependencies; newline-delimited JSON; the client's protocol version is echoed when it is one of `MCP_PROTOCOL_VERSIONS`). Each tool is one `mnci`
+command run as a child of the CLI's own entry file (no shell, stdin closed): read-only `mnci_commands`/`kinds`/`projects`/`info`/`doctor` (the JSON contract)
+and writing `mnci_add_project`/`install`/`sync`/`pipeline`, flagged `readOnlyHint: false` so a client asks before running them. A name that starts with `-`
+or holds whitespace is refused before any command runs, `mnci_install` requires a project (never the root), and a failed command is an `isError` result the
+model reads, not a protocol error. `new`, `upgrade`, `adopt` and `up` are not exposed. Verified against the official `@modelcontextprotocol/sdk` client (initialize,
+list, call, a refused name, an unknown tool). Register it in the assistant as `npx mnci mcp`, started in the workspace root.
+
 ### Pipeline templates (#293)
 
 `mnci pipeline [template] [--project <app>] [--ci azure|github|both] [--force]` (`pipeline-templates/`) writes a ready-made pipeline file

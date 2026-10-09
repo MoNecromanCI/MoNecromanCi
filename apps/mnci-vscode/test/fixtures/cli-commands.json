@@ -554,6 +554,14 @@
     ]
   },
   {
+    "name": "mcp",
+    "aliases": [],
+    "group": "inspect",
+    "description": "Serve this workspace to an AI assistant over the Model Context Protocol (stdio): tools to list the projects, kinds and commands, run the doctor, add a project, install a dependency, sync versions and add a pipeline. Register it in the assistant as the command `npx mnci mcp`, started in the workspace root",
+    "arguments": [],
+    "options": []
+  },
+  {
     "name": "sync",
     "aliases": [],
     "group": "dependencies",

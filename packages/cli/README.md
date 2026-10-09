@@ -1867,6 +1867,13 @@ pipeline installs `golangci-lint` itself (see below).
     done yet.
   - Types shared between Go and TypeScript (OpenAPI, generated types) are out of
     scope.
+- **`mnci mcp`: mnci for an AI assistant (#292).** It serves the workspace over the Model
+  Context Protocol (stdio), so an assistant can list the projects and kinds, run the doctor and
+  add a project, install a dependency, sync versions or add a pipeline through mnci instead of
+  guessing at the files. Register it as the command `npx mnci mcp` with the workspace root as
+  its working directory (for Claude Code: `claude mcp add mnci -- npx mnci mcp`). The tools that
+  write say so, so an assistant asks before running them; `new`, `upgrade`, `adopt` and `up` are
+  not offered.
 - **`mnci pipeline`: more pipelines after the first (#293).** `mnci pipeline` lists the templates;
   `mnci pipeline e2e`, `package-zip`, `deploy-pages --project <app>` and
   `deploy-azure-function --project <app>` write the file for the workspace's CI provider (or `--ci`),
