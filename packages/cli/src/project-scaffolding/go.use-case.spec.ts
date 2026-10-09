@@ -179,12 +179,32 @@ describe('runAdd go', () => {
   it('clamps a generated go directive to one the CI linter can load, and drops the toolchain line (#348)', async () => {
     seedProjectJson('apps/api', 'api')
     writeFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'module apps/api\n\ngo 1.27.0\n\ntoolchain go1.27.0\n')
-    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27.0\n\nuse ./apps/api\n')
+    // The go.work the plugin's init writes, standing in for the generator that the mock does not run.
+    mockRunNx.mockImplementation((argv: string[]) => {
+      if (argv.includes('@nx-go/nx-go:init')) {
+        writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27.0\n\ntoolchain go1.27.0\n\nuse ./apps/api\n')
+      }
+    })
 
     await runAdd('go-app', 'api', {})
 
     expect(readFileSync(join(workspaceRoot, 'apps/api/go.mod'), 'utf8')).toBe('module apps/api\n\ngo 1.24\n\n')
+    // The go.work mnci created is clamped once, here.
     expect(readFileSync(join(workspaceRoot, 'go.work'), 'utf8')).toBe('go 1.24\n\nuse ./apps/api\n')
+  })
+
+  it('never lowers a go.work the workspace already has, though a module in it needs a newer Go (#425)', async () => {
+    // A module depends on a package that requires Go 1.26, so the workspace was raised to 1.27 by hand. Adding another
+    // module reset it to 1.24, and every build failed until the line was fixed back.
+    seedProjectJson('apps/desktop', 'desktop')
+    writeFileSync(join(workspaceRoot, 'go.work'), 'go 1.27\n\nuse (\n\t./apps/tui\n)\n')
+    writeFileSync(join(workspaceRoot, 'apps/desktop/go.mod'), 'module apps/desktop\n\ngo 1.27.0\n\ntoolchain go1.27.0\n')
+
+    await runAdd('go-app', 'desktop', {})
+
+    expect(readFileSync(join(workspaceRoot, 'go.work'), 'utf8')).toBe('go 1.27\n\nuse (\n\t./apps/tui\n)\n')
+    // The new module is still held to the ceiling: a lower directive inside a higher workspace is valid.
+    expect(readFileSync(join(workspaceRoot, 'apps/desktop/go.mod'), 'utf8')).toBe('module apps/desktop\n\ngo 1.24\n\n')
   })
 
   it('leaves a go directive at or below the ceiling alone (#348)', async () => {
