@@ -36,6 +36,12 @@
         "icon": "$(pulse)"
       },
       {
+        "command": "mnci.adopt",
+        "title": "Adopt this repository",
+        "category": "MNCI",
+        "icon": "$(repo)"
+      },
+      {
         "command": "mnci.add",
         "title": "Add project",
         "category": "MNCI",
