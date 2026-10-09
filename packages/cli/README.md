@@ -1895,6 +1895,22 @@ pipeline installs `golangci-lint` itself (see below).
     Nx bumps it by its own rule for a `0.x` version. To start somewhere else,
     push a `<name>@<version>` tag before the first release (`mvd-cli@0.9.0`),
     or set `RELEASE_SPECIFIER` to an exact version.
+  - **What the attached files are called is configurable (#317).** The zips are built as
+    `go-app-<name>-<goos>-<goarch>.zip`; `release.asset` in the app's `project.json` renames them on the way to
+    the Release:
+    ```json
+    "release": { "asset": {
+      "name": "{product}_{version}_{os}_{arch}.{ext}",
+      "product": "mvd",
+      "osAlias": { "darwin": "macos" },
+      "extra": [{ "target": "package-dmg", "files": "dist/dmg/mvd_{version}_macos_universal.dmg" }]
+    } }
+    ```
+    The placeholders are `{product}` (default: the project name), `{version}`, `{os}`, `{arch}` (each with an
+    optional `osAlias` / `archAlias`) and `{ext}`; an unknown one fails the upload. Each `extra` runs the app's own
+    target with `VERSION` set and attaches the files its glob matches, as they are named (so a `.dmg`, or a
+    `universal` build, needs no step in `ci.yml`). Without `name` the zips keep the name they were built with.
+    The build targets are untouched, so their cache keys are too.
   - **It carries a publish target that publishes nothing.** `nx release` tags
     first and publishes last, and a project matched for publishing without an
     `nx-release-publish` target made it exit 1 _after_ the tag existed

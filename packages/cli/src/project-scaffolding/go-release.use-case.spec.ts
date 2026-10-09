@@ -223,3 +223,29 @@ describe('the generated script\'s assets command, for native apps (#263)', () =>
     expect(result.stderr).toContain('Usage: node tools/go-app-release.cjs assets [--native]')
   })
 })
+
+describe('the generated script\'s asset names (#317)', () => {
+  type AssetName = (app: string, version: string, file: string, config: Record<string, unknown>) => string
+  const assetName = (): AssetName => (load() as unknown as { assetName: AssetName }).assetName
+
+  it('keeps the built name when no name is configured', () => {
+    expect(assetName()('mvd-tray', '0.0.9', 'go-app-mvd-tray-darwin-arm64.zip', {})).toBe('go-app-mvd-tray-darwin-arm64.zip')
+  })
+
+  it('fills the template, with the product, the OS alias and the version', () => {
+    const config = { name: '{product}_{version}_{os}_{arch}.{ext}', product: 'mvd', osAlias: { darwin: 'macos' } }
+
+    expect(assetName()('mvd-tray', '0.0.9', 'go-app-mvd-tray-darwin-arm64.zip', config)).toBe('mvd_0.0.9_macos_arm64.zip')
+    expect(assetName()('mvd-tray', '0.0.9', 'go-app-mvd-tray-windows-amd64.zip', config)).toBe('mvd_0.0.9_windows_amd64.zip')
+  })
+
+  it('defaults the product to the project name and honours an arch alias', () => {
+    const config = { name: '{product}-{version}-{os}-{arch}.{ext}', archAlias: { amd64: 'x64' } }
+
+    expect(assetName()('tool', '1.2.3', 'go-app-tool-linux-amd64.zip', config)).toBe('tool-1.2.3-linux-x64.zip')
+  })
+
+  it('leaves a file that is not a platform zip alone', () => {
+    expect(assetName()('tool', '1.2.3', 'readme.txt', { name: '{product}.{ext}' })).toBe('readme.txt')
+  })
+})
