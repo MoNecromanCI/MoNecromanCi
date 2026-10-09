@@ -342,10 +342,10 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
     }
   }
   // Go apps added before cross-compilation existed gain `build-all` and
-  // `package-all`; nothing they already have is touched.
+  // `package-all` (and a go-app its debug build, `build-dev`); nothing they already have is touched.
   const goApps = addGoPlatformTargets(workspaceRoot)
   if (goApps.length > 0) {
-    logger.step('Adding the six-platform build to Go apps (build-all, package-all)')
+    logger.step('Adding the six-platform and debug builds to Go apps (build-all, package-all, build-dev)')
     for (const path of goApps) {
       logger.detail(`updated ${path}`)
     }

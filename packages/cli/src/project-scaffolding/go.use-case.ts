@@ -575,10 +575,20 @@ export function addGoPlatformTargets (workspaceRoot: string): string[] {
     }
     const project = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as { tags?: string[], targets?: Record<string, unknown> }
     const tag = (project.tags ?? []).find(each => each === 'type:go-app' || each === 'type:go-function-app')?.slice('type:'.length)
-    if (tag === undefined || (project.tags ?? []).includes(GO_CGO_TAG)) {
+    if (tag === undefined) {
       continue
     }
     const missing: Record<string, unknown> = {}
+    if (tag === 'go-app' && project.targets?.['build-dev'] === undefined) {
+      missing['build-dev'] = goBuildDevTarget(name)
+    }
+    if ((project.tags ?? []).includes(GO_CGO_TAG)) {
+      if (Object.keys(missing).length > 0) {
+        addProjectJsonTargets(projectJsonPath, missing)
+        changed.push(`apps/${name}/project.json`)
+      }
+      continue
+    }
     if (project.targets?.['build-all'] === undefined) {
       missing['build-all'] = goBuildAllTarget(name)
     }

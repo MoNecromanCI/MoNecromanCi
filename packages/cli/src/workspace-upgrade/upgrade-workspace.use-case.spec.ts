@@ -172,7 +172,7 @@ describe('runUpgrade', () => {
     runUpgrade(workspaceRoot, {})
 
     const targets = (JSON.parse(readFileSync(join(workspaceRoot, 'apps', 'engine', 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets
-    expect(Object.keys(targets).sort((a, b) => a.localeCompare(b))).toEqual(['build-all', 'package-all'])
+    expect(Object.keys(targets).sort((a, b) => a.localeCompare(b))).toEqual(['build-all', 'build-dev', 'package-all'])
     expect(logged.join('\n')).toContain('apps/engine/project.json')
   })
 

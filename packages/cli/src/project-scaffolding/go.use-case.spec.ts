@@ -515,8 +515,8 @@ describe('runAdd go', () => {
       seedProjectJson('apps/plain', 'plain')
       writeFileSync(join(workspaceRoot, 'apps/plain/project.json'), JSON.stringify({ name: 'plain', tags: ['type:go-app'], targets: {} }))
 
-      expect(addGoPlatformTargets(workspaceRoot)).toEqual(['apps/plain/project.json'])
-      expect(readProjectJson('apps/tray').targets).toEqual({})
+      expect(addGoPlatformTargets(workspaceRoot)).toEqual(['apps/plain/project.json', 'apps/tray/project.json'])
+      expect(Object.keys(readProjectJson('apps/tray').targets as object)).toEqual(['build-dev'])
     })
   })
 
@@ -828,7 +828,8 @@ describe('addGoPlatformTargets', () => {
     expect(addGoPlatformTargets(root)).toEqual(['apps/engine/project.json', 'apps/handler/project.json'])
 
     const engine = targetsOf('engine')
-    expect(Object.keys(engine).sort((a, b) => a.localeCompare(b))).toEqual(['build', 'build-all', 'package-all'])
+    expect(Object.keys(engine).sort((a, b) => a.localeCompare(b))).toEqual(['build', 'build-all', 'build-dev', 'package-all'])
+    expect(JSON.stringify(engine['build-dev'])).toContain('-gcflags=all=-N -l')
     expect(JSON.stringify(engine['package-all'])).toContain('go-app-engine-*.zip')
     const handler = targetsOf('handler')
     expect(handler['build-all']).toEqual({ command: 'my own' })
@@ -836,6 +837,17 @@ describe('addGoPlatformTargets', () => {
     expect(targetsOf('web')).toEqual({})
 
     expect(addGoPlatformTargets(root)).toEqual([])
+  })
+
+  it('adds build-dev to a go-app (cgo included) without overwriting one, and not to a function app', () => {
+    app('native', ['type:go-app', 'build:cgo'], {})
+    app('mine', ['type:go-app'], { 'build-all': {}, 'package-all': {}, 'build-dev': { command: 'my own' } })
+    app('fn', ['type:go-function-app'], { 'build-all': {}, 'package-all': {} })
+
+    expect(addGoPlatformTargets(root)).toEqual(['apps/native/project.json'])
+    expect(Object.keys(targetsOf('native'))).toEqual(['build-dev'])
+    expect(targetsOf('mine')['build-dev']).toEqual({ command: 'my own' })
+    expect(targetsOf('fn')['build-dev']).toBeUndefined()
   })
 
   it('does nothing in a workspace without apps/', () => {
