@@ -833,6 +833,17 @@ One trap: the same `PAT` is consumed in **two encodings**. npm's `_password` tak
 base64 value Azure hands out, as-is; `twine` wants the raw token, which the CI release
 guard decodes. Check which before wiring a third protocol.
 
+### A tool version appears in exactly one mnci-owned place (#241)
+
+Every external tool or SDK mnci installs is a pinned constant in `workspace-overlay/overlay.use-case.ts` (`NODE_VERSION`,
+`NPM_VERSION`, `GOLANGCI_LINT_VERSION`, `FLUTTER_SDK_VERSION`, `DOTNET_SDK_VERSION`, `GO_VERSION`, and `VSCODE_ENGINE_FLOOR`), and
+the devcontainer and both CI providers read it: nothing installs `latest`. An overlay spec generates a workspace with both
+providers and asserts that the devcontainer, GitHub and Azure carry the same Node and .NET versions, that the container's Go
+feature names the pinned linter, and that no generated file asks for a tool at `latest`. `mnci ci setup` installs
+`golangci-lint` only when the one on `PATH` is not the pinned version: a devcontainer feature or runner image ships its own,
+and finding it used to skip the pin. The hosted agents bring their own Go, so `GO_VERSION` pins the devcontainer only. Reporting
+a newer release of each pinned tool in `mnci up` is still open on #241.
+
 ### Tag-Only Git
 
 - `nx release` never commits, only tags

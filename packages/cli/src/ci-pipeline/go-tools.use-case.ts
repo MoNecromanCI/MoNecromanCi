@@ -73,10 +73,22 @@ export function downloadGoModules (workspaceRoot: string, processes: CiProcesses
 }
 
 /**
+ * The version a `golangci-lint --version` output reports.
+ *
+ * @param output - What the command printed.
+ * @returns The version without a leading `v`, or `undefined` when none can be read.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function installedVersion (output: string): string | undefined {
+  return /\bversion\s+v?(\d+\.\d+\.\d+)/.exec(output)?.[1]
+}
+
+/**
  * Installs `golangci-lint` at the pinned version, verifying the download against the release's checksums.
  *
  * @remarks
- * Skips when there is no Go project (no `go.work` and no root `go.mod`) or the linter is already installed. Otherwise it downloads the
+ * Skips when there is no Go project (no `go.work` and no root `go.mod`) or the pinned version is already installed. Otherwise it downloads the
  * prebuilt release for this OS and architecture (about a second, against about 70 compiling it),
  * checks its SHA-256 against the release's own checksum file, extracts it with the system `tar` and
  * puts the binary in `GOPATH/bin`. Anything that goes wrong (no prebuilt release for this platform, a
@@ -102,10 +114,16 @@ export async function installGolangciLint (
 
     return 0
   }
-  if (processes.capture('golangci-lint', ['--version']).status === 0) {
-    log('golangci-lint already installed - skipping.')
+  const installed = processes.capture('golangci-lint', ['--version'])
+  if (installed.status === 0 && installedVersion(installed.stdout) === GOLANGCI_LINT_VERSION) {
+    log(`golangci-lint ${GOLANGCI_LINT_VERSION} already installed - skipping.`)
 
     return 0
+  }
+  if (installed.status === 0) {
+    // One on PATH is not enough: a runner image or a devcontainer feature ships its own, and finding it used to
+    // skip the pin, so the version CI verified depended on the machine (#241).
+    log(`golangci-lint ${installedVersion(installed.stdout) ?? 'of an unknown version'} is on PATH, not the pinned ${GOLANGCI_LINT_VERSION} - installing the pin.`)
   }
 
   const version = GOLANGCI_LINT_VERSION
