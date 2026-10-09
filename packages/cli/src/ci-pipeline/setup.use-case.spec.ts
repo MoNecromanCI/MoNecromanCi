@@ -374,13 +374,13 @@ describe('mnci ci setup: Flutter (#269)', () => {
 
     await setup(recorder)
 
-    const sdk = join(home, '.mnci-flutter-3.44.8').replaceAll('\\', '/')
-    expect(ran(recorder)).toContain(`git clone --depth 1 --branch 3.44.8 https://github.com/flutter/flutter.git ${sdk}`)
+    const sdk = join(home, '.mnci-flutter-3.47.7').replaceAll('\\', '/')
+    expect(ran(recorder)).toContain(`git clone --depth 1 --branch 3.47.7 https://github.com/flutter/flutter.git ${sdk}`)
   })
 
   it('reuses an SDK an earlier run left in place, and publishes its bin to PATH', async () => {
     seed('pubspec.yaml')
-    mkdirSync(join(home, '.mnci-flutter-3.44.8'), { recursive: true })
+    mkdirSync(join(home, '.mnci-flutter-3.47.7'), { recursive: true })
     const pathFile = join(home, 'github-path')
     writeFileSync(pathFile, '')
     const recorder = harness()
@@ -388,7 +388,7 @@ describe('mnci ci setup: Flutter (#269)', () => {
     await setup(recorder, { GITHUB_ACTIONS: 'true', GITHUB_PATH: pathFile })
 
     expect(ran(recorder).some(command => command.startsWith('git clone'))).toBe(false)
-    expect(readFileSync(pathFile, 'utf8')).toBe(`${join(home, '.mnci-flutter-3.44.8', 'bin')}\n`)
+    expect(readFileSync(pathFile, 'utf8')).toBe(`${join(home, '.mnci-flutter-3.47.7', 'bin')}\n`)
   })
 
   it('does not publish a PATH entry for an SDK it did not install', async () => {

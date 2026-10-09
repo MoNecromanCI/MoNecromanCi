@@ -2518,10 +2518,10 @@ export const GO_VERSION = '1.27'
  * toolchain under a workspace without warning, so the version is explicit and
  * bumped deliberately.
  *
- * `3.44.8` ships Dart 3.12.2. Exported so tests can assert it and so bumping
- * it is a one-line change.
+ * `3.47.7` ships Dart 3.13.5 (it was `3.44.8` with Dart 3.12.2 until 2026-10-09). Exported so tests can assert
+ * it and so bumping it is a one-line change.
  */
-export const FLUTTER_SDK_VERSION = '3.44.8'
+export const FLUTTER_SDK_VERSION = '3.47.7'
 
 /**
  * The Node major a generated workspace is built and tested against.
@@ -2581,13 +2581,17 @@ export const ACTION_VERSIONS = {
  * machine could — and did — resolve differently, which meant a local check
  * could pass while the thing it was checking was broken for every user.
  *
+ * npm 12 (the pin since 2026-10-09; it was 11) supports Node `^22.22.2 || ^24.15.0 || >=26`, which {@link NODE_VERSION}
+ * satisfies because it pins the major and the agents and the container image resolve the newest 24.x. Lockfiles written
+ * by npm 11.21 and by npm 12 are interchangeable, but one written by an OLDER npm than the pin (the 11.6.2 bundled with
+ * Node 24.12, say) can be rejected by `npm ci` with `Missing: @emnapi/core ... from lock file` (#295).
  * **The MAJOR is pinned, not an exact version.** The risk this guards is a
  * major behavioural change, which is what actually happened; an exact pin would
  * add a version nothing bumps, and a pin that reads as current while being
  * stale is a failure mode this repo has already paid for once (the
  * `@verdaccio/config` → `js-yaml` entry that read as fixed and was not).
  */
-export const NPM_VERSION = '11'
+export const NPM_VERSION = '12'
 
 /**
  * The .NET SDK version a generated workspace's C# projects are built and
