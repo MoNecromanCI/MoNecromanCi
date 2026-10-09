@@ -9,4 +9,5 @@
 
 export { createBaselineTags, type BaselineTagsResult } from './create-baseline-tags.use-case'
 export { locateStrandedReleaseTags } from './locate-stranded-release-tags.use-case'
-export { findStrandedReleaseTags, type StrandedReleaseTag } from './stranded-release-tags.algorithm'
+export { locateRegistryVersions } from './locate-registry-versions.use-case'
+export { findStrandedReleaseTags, tagsBehindRegistry, type StrandedReleaseTag, type TagBehindRegistry } from './stranded-release-tags.algorithm'

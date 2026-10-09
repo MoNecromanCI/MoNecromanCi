@@ -4,7 +4,7 @@ import { adoptDependencies } from '../dependency-adoption'
 import { adoptKinds } from '../kind-adoption'
 import { adoptOverlay } from './adopt-overlay.use-case'
 import { adoptToolchain } from '../toolchain-adoption'
-import { createBaselineTags } from '../release-tag-lineage'
+import { createBaselineTags, locateRegistryVersions, tagsBehindRegistry } from '../release-tag-lineage'
 import { reportAdoption, type AdoptionReport } from '../adoption-report'
 
 /**
@@ -135,6 +135,10 @@ function runBaselineTags (repositoryRoot: string, report: AdoptionReport): void 
   }
   if (result.failed.length > 0) {
     process.exitCode = 1
+  }
+  const behind = tagsBehindRegistry(strandedTags, locateRegistryVersions(repositoryRoot, strandedTags.map(entry => entry.project)))
+  for (const entry of behind) {
+    logger.warn(`${entry.project}: the registry already holds ${entry.published}, above the baseline ${entry.tagged}. The registry refuses a version twice, so tag ${entry.project}@${entry.published} on the same commit instead (git tag ${entry.project}@${entry.published} ${entry.project}@${entry.tagged}).`)
   }
   if (result.created.length > 0) {
     logger.info(`Local only. Publish them when you are ready: git push origin ${result.created.map(tag => JSON.stringify(tag)).join(' ')}`)

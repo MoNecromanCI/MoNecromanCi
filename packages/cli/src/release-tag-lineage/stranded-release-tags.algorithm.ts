@@ -78,3 +78,47 @@ export function findStrandedReleaseTags (projects: readonly string[], tags: read
 
   return stranded
 }
+
+/**
+ * A baseline tag that sits below what the registry already holds.
+ *
+ * @remarks
+ * See {@link tagsBehindRegistry}.
+ * @typeParam None - this interface has no generic type parameters.
+ */
+export interface TagBehindRegistry {
+  /** The project's current name. */
+  project:   string
+  /** The version the baseline tag carries. */
+  tagged:    string
+  /** The newest version the registry reports for the project. */
+  published: string
+}
+
+/**
+ * The baselined projects whose registry is already ahead of their tag.
+ *
+ * @remarks
+ * A registry never takes a version twice (Azure Artifacts not even after a delete), so a baseline
+ * below the published version makes the next release propose versions the feed already holds and
+ * refuses. A tag equal to the published version is fine: the next release bumps above it. So only a
+ * strictly newer published version is reported.
+ *
+ * @param stranded - The baseline tags, from {@link findStrandedReleaseTags}.
+ * @param published - The newest published version per project name; a project the registry does not know is absent.
+ * @returns The projects whose published version is newer than their tag.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function tagsBehindRegistry (stranded: readonly StrandedReleaseTag[], published: ReadonlyMap<string, string>): TagBehindRegistry[] {
+  const behind: TagBehindRegistry[] = []
+  for (const { project, newTag } of stranded) {
+    const tagged = newTag.slice(project.length + 1)
+    const latest = published.get(project)
+    if (latest !== undefined && /^\d+\.\d+\.\d+$/.test(latest) && compareVersions(latest, tagged) > 0) {
+      behind.push({ project, tagged, published: latest })
+    }
+  }
+
+  return behind
+}

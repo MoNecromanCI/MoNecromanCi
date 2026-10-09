@@ -880,7 +880,7 @@ the command while the rest are already on the feed. The release phase runs it th
 failure, `partial-release/` reads nx's "Failed tasks" list and pushes the tags that point at `HEAD` except those of the failed
 projects, so a retry does not re-propose, and fail on, every version that did publish. The failed projects' tags are held back and
 named. A tag that does not name its project (a shared `v1.2.3`) cannot be attributed, so then nothing is pushed. The run still
-fails. Not covered: the GitHub Release for those packages, and a registry that refuses a version it was told to skip.
+fails. The output names the failed projects. `mnci adopt --tags` asks the registry (`npm view`, so the workspace's `.npmrc` decides where) for each baselined project and warns, with the `git tag` that fixes it, when the feed already holds a version above the baseline: a feed never takes a version twice. Not covered: the GitHub Release for those packages, a `mnci doctor` check for the same mismatch (it would need the network), and a registry that refuses a version it was told to skip.
 
 ### Tag-Only Git
 
