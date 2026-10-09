@@ -26,6 +26,7 @@ import { fileExists, readJson } from '../file-system'
 import { logger, printJson } from '../terminal'
 import { checkReactAppOutput } from './check-react-app-output.use-case'
 import { checkReleaseTagsResolve } from './check-release-tags-resolve.use-case'
+import { checkTagsMatchRegistry } from './check-tags-match-registry.use-case'
 import type { Finding } from './finding.contract'
 
 /** The ESLint major this stack supports, derived from the version mnci pins. */
@@ -1314,6 +1315,7 @@ export function collectFindings (workspaceRoot: string): Finding[] {
     checkDependencyRangesNotPreserved(nxJson),
     checkLockfileHasNoLocalRegistry(workspaceRoot),
     checkReleaseTagsResolve(workspaceRoot, nxJson),
+    checkTagsMatchRegistry(workspaceRoot),
     checkReactAppOutput(workspaceRoot),
   ].filter((finding): finding is Finding => finding !== undefined)
 }

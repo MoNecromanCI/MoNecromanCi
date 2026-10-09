@@ -17,7 +17,7 @@ import { runCapture } from '../nx-workspace'
 export function locateRegistryVersions (workspaceRoot: string, projects: readonly string[]): Map<string, string> {
   const versions = new Map<string, string>()
   for (const project of projects) {
-    const viewed = runCapture('npm', ['view', project, 'version'], workspaceRoot)
+    const viewed = runCapture('npm', ['view', project, 'version', '--fetch-retries=0', '--fetch-timeout=15000'], workspaceRoot)
     const version = viewed.stdout.trim()
     if (version !== '' && viewed.status === 0) {
       versions.set(project, version)
