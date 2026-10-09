@@ -20,6 +20,7 @@ export const COMMAND_GROUPS: Readonly<Record<string, CommandGroup>> = {
   up:       'dependencies',
   ci:       'pipeline',
   pipeline: 'pipeline',
+  mcp:      'inspect',
   commands: 'inspect',
   kinds:    'inspect',
   projects: 'inspect',
