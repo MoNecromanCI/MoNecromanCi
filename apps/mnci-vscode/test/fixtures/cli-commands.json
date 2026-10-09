@@ -500,6 +500,60 @@
     "options": []
   },
   {
+    "name": "pipeline",
+    "aliases": [],
+    "group": "pipeline",
+    "description": "Add a ready-made pipeline file to this workspace after it was generated: e2e, package-zip (the dist/drop zips as a build artifact), deploy-pages (a react-app to GitHub Pages) or deploy-azure-function. Written once and yours from then on, so `mnci upgrade` never rewrites it; an existing file is kept unless --force. With no template, lists them",
+    "arguments": [
+      {
+        "name": "template",
+        "description": "the pipeline to add; leave out to list them",
+        "required": false,
+        "variadic": false,
+        "choices": [
+          "e2e",
+          "package-zip",
+          "deploy-pages",
+          "deploy-azure-function"
+        ]
+      }
+    ],
+    "options": [
+      {
+        "name": "project",
+        "flags": "--project <app>",
+        "description": "the app a deploy template builds or deploys (a name under apps/)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "ci",
+        "flags": "--ci <provider>",
+        "description": "the provider to write for (default: the one this workspace uses)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false,
+        "choices": [
+          "azure",
+          "github",
+          "both"
+        ]
+      },
+      {
+        "name": "force",
+        "flags": "--force",
+        "description": "overwrite a pipeline file that already exists",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "sync",
     "aliases": [],
     "group": "dependencies",

@@ -19,6 +19,7 @@ export const COMMAND_GROUPS: Readonly<Record<string, CommandGroup>> = {
   sync:     'dependencies',
   up:       'dependencies',
   ci:       'pipeline',
+  pipeline: 'pipeline',
   commands: 'inspect',
   kinds:    'inspect',
   projects: 'inspect',
