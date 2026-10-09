@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { runFormatter, runNpx, runShell } from '../nx-workspace'
+import { writeMnciAgents } from '../mnci-agents'
 import {
   applyOverlay,
   DEFAULT_STACK,
@@ -298,6 +299,9 @@ export async function runNew (name: string | undefined, options: NewOptions): Pr
     { workspaceName, scope, registry, agent, variableGroup, ci, stack, ...(npmAuth && { npmAuth }) },
     logger.detail,
   )
+  for (const path of writeMnciAgents(workspaceRoot)) {
+    logger.detail(`wrote ${path} (yours from here: upgrade leaves it alone)`)
+  }
 
   // npm honours `overrides` only when it RESOLVES a tree, and by this point
   // `create-nx-workspace` has already installed one and written its lockfile —

@@ -3,6 +3,8 @@
 // as CJS. Nothing here exercises a prompt; every other spec that touches
 // this module mocks it the same way.
 jest.mock('@inquirer/prompts', () => ({ confirm: jest.fn(), input: jest.fn(), select: jest.fn(), checkbox: jest.fn(), Separator: class {} }))
+// The assistants are written to the workspace root, which this spec fakes (/somewhere/demo): nothing here needs them on disk.
+jest.mock('../mnci-agents', () => ({ writeMnciAgents: jest.fn(() => []) }))
 // Type-only, so it is erased before jest hoists the factory below.
 import type * as NodeFs from 'node:fs'
 import type * as Overlay from '../workspace-overlay'
