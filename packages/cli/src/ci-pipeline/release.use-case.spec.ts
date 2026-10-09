@@ -391,3 +391,42 @@ describe('mnci ci release: publish credentials (#269)', () => {
     expect(released(setup)).toBe(false)
   })
 })
+
+describe('mnci ci release: forced versions (#283)', () => {
+  const directive = {
+    'git log --extended-regexp --grep=^(mnci-version|mnci-ver|mnci-force|mnci-v|version|ver|force|v)\\( --format=%H%x09%s': { status: 0, stdout: 'h1\tversion(@x/sdk)[3.0.0]: jump' },
+    'git tag --list':                                                                                                       { status: 0, stdout: '@x/sdk@1.0.0\n' },
+  }
+
+  it('releases the forced project at its version, then the rest', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness({}, directive)
+
+    const status = await release(setup, { NODE_AUTH_TOKEN: 'tok' })
+
+    expect(status).toBe(0)
+    expect(setup.commands.filter(line => line.startsWith('npx nx release'))).toEqual([
+      'npx nx release 3.0.0 --projects=@x/sdk --yes',
+      'npx nx release --projects=!@x/sdk --yes',
+    ])
+  })
+
+  it('skips a directive whose project Nx does not know', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness({}, { ...directive, 'npx nx show projects --json': { status: 0, stdout: '["other"]' } })
+
+    await release(setup, { NODE_AUTH_TOKEN: 'tok' })
+
+    expect(setup.commands.filter(line => line.startsWith('npx nx release'))).toEqual(['npx nx release --yes'])
+    expect(setup.logged.some(line => line.includes('no project has that name'))).toBe(true)
+  })
+
+  it('leaves the directives alone when RELEASE_SPECIFIER is set', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness({}, directive)
+
+    await release(setup, { NODE_AUTH_TOKEN: 'tok', RELEASE_SPECIFIER: '4.0.0' })
+
+    expect(setup.commands.filter(line => line.startsWith('npx nx release'))).toEqual(['npx nx release 4.0.0 --yes'])
+  })
+})

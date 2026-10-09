@@ -11,6 +11,7 @@ import {
 import { DEFAULT_NATIVE_RUNNERS, readNativeBuildConfig } from '../native-build-config'
 import { mergePipeline, phaseEnd, phaseStart, slotMarkers } from '../pipeline-customization'
 import { removeNxAgentScaffolding } from '../nx-agent-scaffolding'
+import { VERSION_DIRECTIVE_TYPES } from '../version-directives'
 
 /**
  * Where a generated monorepo publishes its npm packages.
@@ -921,7 +922,22 @@ export function withReleaseConfig (
  * Conventional commits are the release mechanism's input, so they are
  * enforced at commit time — the one piece Nx itself does not provide.
  */
-export const COMMITLINT_CONFIG = `export default { extends: ['@commitlint/config-conventional'] }
+export const COMMITLINT_CONFIG = `import conventional from '@commitlint/config-conventional'
+
+// \`version(<project>)[<version>]: <message>\` forces a release version (#283), so its types and its
+// \`[<version>]\` part are accepted alongside the conventional ones.
+export default {
+  extends:      ['@commitlint/config-conventional'],
+  parserPreset: {
+    parserOpts: {
+      headerPattern:        /^(\\w*)(?:\\((.*)\\))?(?:\\[(.*)\\])?!?: (.*)$/,
+      headerCorrespondence: ['type', 'scope', 'version', 'subject'],
+    },
+  },
+  rules: {
+    'type-enum': [2, 'always', [...conventional.rules['type-enum'][2], ${VERSION_DIRECTIVE_TYPES.map(type => `'${type}'`).join(', ')}]],
+  },
+}
 `
 
 /**

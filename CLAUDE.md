@@ -887,6 +887,15 @@ projects, so a retry does not re-propose, and fail on, every version that did pu
 named. A tag that does not name its project (a shared `v1.2.3`) cannot be attributed, so then nothing is pushed. The run still
 fails. The output names the failed projects. `mnci adopt --tags` asks the registry (`npm view`, so the workspace's `.npmrc` decides where) for each baselined project and warns, with the `git tag` that fixes it, when the feed already holds a version above the baseline: a feed never takes a version twice. `mnci doctor` makes the same comparison for every tagged publishable package (`checkTagsMatchRegistry`, the one check that calls out; an unreachable registry or unknown package is not a finding, and an untagged package is not looked up). Not covered: the GitHub Release for those packages, a registry that refuses a version it was told to skip.
 
+### A commit can force a version (#283)
+
+`version(<project>)[<version>]: <message>` (aliases in `version-directives/`) is read by `mnci ci release`: `locateVersionDirectives`
+finds the commits by `git log --grep`, drops those reachable from the project's newest tag and those at or below it, and the
+release phase runs `nx release <version> --projects=<project>` for each project first and `nx release --projects=!a,!b` for the
+rest. Nx has no per-project specifier, hence two calls. The generated commitlint config accepts the types and the `[version]` part
+(a custom `headerPattern`). `RELEASE_SPECIFIER` set means the directives are ignored. Not covered: a directive for a project in no
+release group (Nx fails the run), and no check that the version is free on the registry.
+
 ### Tag-Only Git
 
 - `nx release` never commits, only tags

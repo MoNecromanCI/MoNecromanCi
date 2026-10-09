@@ -1867,6 +1867,18 @@ pipeline installs `golangci-lint` itself (see below).
     done yet.
   - Types shared between Go and TypeScript (OpenAPI, generated types) are out of
     scope.
+- **A commit can force a project's version (#283).** A commit whose subject is
+  `version(<project>)[<version>]: <message>` (aliases `mnci-version`, `mnci-ver`,
+  `mnci-force`, `mnci-v`, `ver`, `force`, `v`) makes `mnci ci release` release that
+  project at exactly that version, over what the conventional commits would give.
+  `<project>` is the name its release tags carry (`@scope/name` for a scoped
+  package). The project is released first with an exact specifier, and everything
+  else follows in a second `nx release` call, so the other projects keep their
+  automatic versions. Only the newest such commit since the project's last tag
+  counts, a version at or below the newest tag is ignored, and a name Nx does not
+  know is reported and skipped. `RELEASE_SPECIFIER` wins over all of them. The
+  generated `commitlint.config.mjs` accepts the aliases and the `[<version>]`
+  part (`mnci upgrade` rewrites it).
 - **Releasing a Go app is an opt-in: `mnci add go-app <name> --release`.** The
   app is tagged `release:go`, which `release.projects` selects by tag (as it
   does for a VS Code extension, so `mnci upgrade` keeps it). Without the flag
