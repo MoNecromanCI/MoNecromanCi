@@ -33,6 +33,7 @@ import {
   githubActionsYaml,
   hasNativeGoApp,
   isUnmodifiedMnciEslintConfig,
+  mergeOverrides,
   mnciConfig,
   NODE_VERSION,
   NPM_VERSION,
@@ -2449,6 +2450,26 @@ describe('applyOverlay', () => {
     expect(manifest.devDependencies.nx).toBe('23.0.0')
   })
 
+  it('keeps a key the workspace added inside an override mnci also writes, and refreshes the ones mnci owns (#421)', () => {
+    // Found upgrading a real workspace: its `overrides.nx` carried an extra `undici` pin. A spread replaced the whole
+    // `nx` object with mnci's, so the pin vanished and a high advisory came back.
+    writeFileSync(
+      join(workspaceRoot, 'package.json'),
+      JSON.stringify({ name: 'x', overrides: { nx: { 'brace-expansion': '^5.0.1', 'undici': '^7.29.1' } } }),
+    )
+    overlayWith(DEFAULT_STACK)
+
+    const { overrides } = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+      overrides: Record<string, Record<string, string>>
+    }
+
+    expect(overrides.nx.undici).toBe('^7.29.1')
+    // mnci's own pins win on conflict, so the upgrade still brings them up to date.
+    expect(overrides.nx['brace-expansion']).toBe('^5.0.9')
+    expect(overrides.nx['smol-toml']).toBe('^1.7.1')
+    expect(overrides.nx.axios).toBe('^1.20.0')
+  })
+
   it("merges overrides rather than replacing a workspace's own", () => {
     // A user's `overrides` block is theirs; `mnci upgrade` must not delete it.
     writeFileSync(
@@ -3618,5 +3639,24 @@ describe('what `mnci upgrade` keeps in a pipeline', () => {
 
     expect(read('.github/workflows/ci.yml')).toContain('# mnci:slot after-install')
     expect(lines.some(line => line.includes('written before mnci kept user slots'))).toBe(true)
+  })
+})
+
+describe('mergeOverrides', () => {
+  it('merges one level into an entry both sides have, mnci winning the keys it owns', () => {
+    expect(mergeOverrides({ nx: { a: '1', mine: '9' } }, { nx: { a: '2', b: '3' } })).toEqual({ nx: { a: '2', b: '3', mine: '9' } })
+  })
+
+  it('keeps entries only the workspace has, and adds entries only mnci has', () => {
+    expect(mergeOverrides({ 'left-pad': '1.0.0' }, { 'eslint-plugin-x': { eslint: '$eslint' } })).toEqual({
+      'left-pad':        '1.0.0',
+      'eslint-plugin-x': { eslint: '$eslint' },
+    })
+  })
+
+  it('replaces a value that is not an object on both sides, and works with no existing overrides', () => {
+    expect(mergeOverrides({ a: '1' }, { a: { nested: '2' } })).toEqual({ a: { nested: '2' } })
+    expect(mergeOverrides({ a: { nested: '2' } }, { a: '1' })).toEqual({ a: '1' })
+    expect(mergeOverrides(undefined, { a: '1' })).toEqual({ a: '1' })
   })
 })

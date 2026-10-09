@@ -1290,6 +1290,44 @@ export const ESLINT_PEER_OVERRIDES = {
 } as const
 
 /**
+ * Merges the npm `overrides` mnci writes into a workspace's own.
+ *
+ * @remarks
+ * One level deeper than a spread, because an entry like `nx` is itself an object of overrides for that package's
+ * dependencies. A spread replaced the whole object, so a key the workspace had added under `nx` (a pin of `undici`
+ * after an advisory, found by `mnci upgrade` dropping it and reintroducing the advisory, #421) was lost. Here the keys
+ * mnci owns take mnci's value, which keeps its pins current, and every other key stays. A value that is not an object
+ * on both sides is simply replaced.
+ *
+ * @param existing - The workspace's `overrides`, if it has any.
+ * @param owned - The overrides mnci writes.
+ * @returns The merged overrides.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function mergeOverrides (existing: Record<string, unknown> | undefined, owned: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...existing }
+  for (const [name, value] of Object.entries(owned)) {
+    const current = merged[name]
+    merged[name] = isPlainObject(current) && isPlainObject(value) ? { ...current, ...value } : value
+  }
+
+  return merged
+}
+
+/**
+ * Whether a value is a plain object (not an array, not null).
+ *
+ * @param value - Anything.
+ * @returns True for a non-null, non-array object.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function isPlainObject (value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
  * Security overrides a generated workspace needs to pass its OWN npm audit gate.
  *
  * @remarks
@@ -4254,15 +4292,13 @@ export function applyOverlay (
     }),
     LOCAL_REGISTRY_SCAFFOLDING.devDependency,
   )
-  // Merged, never replaced: a workspace's own overrides must survive an upgrade.
-  const overrides = {
-    ...(manifest.overrides as Record<string, unknown> | undefined),
-    ...ESLINT_PEER_OVERRIDES,
-    ...SECURITY_OVERRIDES,
-    // Static, so it is present before any generator can run an install — see
-    // NX_PEER_OVERRIDES for why the conditional form could never be.
-    ...NX_PEER_OVERRIDES,
-  }
+  // Merged, never replaced: a workspace's own overrides must survive an upgrade, including a key it added INSIDE an
+  // entry mnci also writes (#421). Static, so it is present before any generator can run an install — see
+  // NX_PEER_OVERRIDES for why the conditional form could never be.
+  const overrides = mergeOverrides(
+    manifest.overrides as Record<string, unknown> | undefined,
+    { ...ESLINT_PEER_OVERRIDES, ...SECURITY_OVERRIDES, ...NX_PEER_OVERRIDES },
+  )
   // The root project's own Nx config. Merged the same way, so a workspace that
   // added root targets of its own keeps them — see ROOT_LINT_TARGET for why
   // `includedScripts` must stay empty.
