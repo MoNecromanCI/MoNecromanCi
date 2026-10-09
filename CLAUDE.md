@@ -439,10 +439,15 @@ workspace before it was written, and a kind appears only where it was:
   shows it) and its `build:dev` script. No `dev`: it needs `air`, which mnci does not install. `mnci upgrade` adds the target to an existing
   go-app (cgo included, never over one the team wrote); the root `<name>:build:dev` script is only written by `mnci add`.
 
-Still unbuilt: Python (`watchmedo auto-restart` restarts on every subprocess exit unless given `--no-restart-on-command-exit`,
-and needs `watchdog`), and C# (`dotnet build`/`run` already default to `Debug`, the opposite of the JS convention, so changing
-`build` to `-c Release` would change what is packaged; `dotnet watch run` is the likely `dev`). Until then `mnci dev` runs each
-project's `start`.
+- `python-app`: `dev` only. `python3 -m watchdog.watchmedo auto-restart --directory . --pattern "*.py" --recursive
+  --no-restart-on-command-exit -- python3 main.py` (without that flag `watchmedo` restarts the command every time it exits;
+  measured: an edit restarted it). `watchdog` is added to `requirements-dev.txt` by `mnci add python-app`. No `build:dev`:
+  nothing is compiled.
+- `csharp-app`: `dev` only, `dotnet watch run` (measured: an edit rebuilt and re-ran it). No `build:dev`: `dotnet build` and
+  `dotnet run` already build `Debug`, so `build` is the debug build, and moving it to `-c Release` would change what is packaged.
+
+Not covered: the function-app kinds (no measured watcher for the Functions host), and `mnci upgrade` adding `dev` to an existing
+Python or C# app. `mnci dev` runs each project's `start`.
 
 A future `cli-lib` kind (publishable package that is also invoked like an app) would need the app treatment;
 deferred, since the kind doesn't exist yet.

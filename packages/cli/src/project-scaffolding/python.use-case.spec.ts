@@ -124,6 +124,24 @@ describe('runAdd python', () => {
     expect(rootManifest.scripts['svc:build']).toBe('nx run svc:build')
     expect(rootManifest.scripts['svc:qa']).toBe('nx run svc:lint && nx run svc:test')
     expect(rootManifest.scripts['svc:start']).toBe('nx run svc:start')
+    expect(project.targets.dev).toMatchObject({
+      continuous: true,
+      options:    { command: expect.stringContaining('watchdog.watchmedo auto-restart') as unknown, cwd: 'apps/svc' },
+    })
+    expect(project.targets.dev.options.command).toContain('--no-restart-on-command-exit')
+    expect(rootManifest.scripts['svc:dev']).toBe('nx run svc:dev')
+    expect(rootManifest.scripts['svc:build:dev']).toBeUndefined()
+    expect(requirementsDev).toContain('watchdog')
+  })
+
+  it('adds watchdog to a requirements-dev.txt that predates the dev target, for an app only', async () => {
+    writeFileSync(join(workspaceRoot, 'requirements-dev.txt'), 'build\npytest')
+
+    await runAdd('python-internal-lib', 'core', {})
+    expect(readFileSync(join(workspaceRoot, 'requirements-dev.txt'), 'utf8')).not.toContain('watchdog')
+
+    await runAdd('python-app', 'svc', {})
+    expect(readFileSync(join(workspaceRoot, 'requirements-dev.txt'), 'utf8')).toBe('build\npytest\nwatchdog\n')
   })
 
   it('adds a Python Azure Function: delegates to @mnci/nx-python-pip:function-application, packages the source zip', async () => {
