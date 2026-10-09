@@ -350,10 +350,10 @@ describe('registerProjectCommands', () => {
     expect(scripts()['app:start']).toBe('nx run app:serve')
   })
 
-  it('writes <name>:build:dev and <name>:dev only for a kind that has them, and a background task for dev (#230)', () => {
+  it('writes <name>:build:dev and <name>:dev only for a kind that has them, each with its launch entry (#230, #365)', () => {
     writeFileSync(
       join(workspaceRoot, 'demo.code-workspace'),
-      JSON.stringify({ folders: [], tasks: { version: '2.0.0', tasks: [] } }),
+      JSON.stringify({ folders: [{ path: '.', name: 'demo' }], tasks: { version: '2.0.0', tasks: [] } }),
     )
 
     registerProjectCommands(workspaceRoot, 'api', {
@@ -368,9 +368,8 @@ describe('registerProjectCommands', () => {
     expect(scripts()['api:dev']).toBe('nx run api:serve')
     expect(scripts()['svc:build:dev']).toBe('nx run svc:build-dev')
     expect(scripts()['svc:dev']).toBeUndefined()
-    expect(tasks().find(task => task.label === 'api: dev')).toMatchObject({ script: 'api:dev', isBackground: true })
-    expect(tasks().find(task => task.label === 'api: build:dev')).toMatchObject({ script: 'api:build:dev' })
-    expect(tasks().some(task => task.label === 'svc: dev')).toBe(false)
+    expect(launchNames()).toEqual(expect.arrayContaining(['mnci: api dev', 'mnci: api build:dev', 'mnci: svc build:dev']))
+    expect(launchNames()).not.toContain('mnci: svc dev')
   })
 
   it('preserves scripts already in package.json (both mnci-owned and hand-added)', () => {
@@ -394,51 +393,88 @@ describe('registerProjectCommands', () => {
     expect(scripts()['web:build']).toBeUndefined()
 
     registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
-    expect(Object.keys(scripts()).filter(key => key.startsWith('web:'))).toHaveLength(3)
+    expect(Object.keys(scripts()).filter(key => key.startsWith('web:'))).toHaveLength(5)
     expect(scripts()['web:build']).toBe('nx run web:build')
     expect(scripts()['web:start']).toBe('nx run web:serve')
   })
 
-  describe('the per-project launch entry (#230)', () => {
+  describe('the per-project launch entries (#230, #365)', () => {
     beforeEach(() => {
       writeFileSync(join(workspaceRoot, 'demo.code-workspace'), JSON.stringify({ folders: [{ path: '.', name: 'demo' }], tasks: { version: '2.0.0', tasks: [] } }))
     })
 
-    it('adds one for a project with a start script, driving that script from the workspace folder', () => {
+    it('adds one per script the project has, each driving that script from the workspace folder', () => {
       registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
 
       const file = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as { launch: { version: string, configurations: unknown[] } }
 
       expect(file.launch.version).toBe('0.2.0')
-      expect(file.launch.configurations).toEqual([
+      expect(launchNames()).toEqual(['mnci: web qa', 'mnci: web build', 'mnci: web test', 'mnci: web lint', 'mnci: web start'])
+      expect(file.launch.configurations).toContainEqual(
         expect.objectContaining({ type: 'node-terminal', request: 'launch', name: 'mnci: web start', command: 'npm run web:start', cwd: '${workspaceFolder:demo}' }),
-      ])
+      )
     })
 
-    it('adds none for a library or any project without a start script', () => {
+    it('gives a TypeScript project lint:fix, and no other kind', () => {
+      mkdirSync(join(workspaceRoot, 'packages/lib'), { recursive: true })
+      writeFileSync(join(workspaceRoot, 'packages/lib/package.json'), '{}')
+
       registerProjectCommands(workspaceRoot, 'lib', { build: true })
+      registerProjectCommands(workspaceRoot, 'svc', { build: true })
 
-      expect(launchNames()).toEqual([])
+      expect(scripts()['lib:lint:fix']).toBe('nx run lib:lint --fix')
+      expect(scripts()['svc:lint:fix']).toBeUndefined()
+      expect(launchNames()).toContain('mnci: lib lint:fix')
+      expect(launchNames()).not.toContain('mnci: svc lint:fix')
     })
 
-    it("replaces a project's own entry by name on a repeat call, and leaves the others and hand-written ones alone", () => {
+    it('writes no test or lint script for a kind whose qa is something else', () => {
+      registerProjectCommands(workspaceRoot, 'web-e2e', { build: false, qa: 'nx run web-e2e:e2e' })
+
+      expect(scripts()['web-e2e:test']).toBeUndefined()
+      expect(scripts()['web-e2e:lint']).toBeUndefined()
+      expect(launchNames()).toEqual(['mnci: web-e2e qa'])
+    })
+
+    it('adds a go debug entry next to the scripts for a Go application', () => {
+      registerProjectCommands(workspaceRoot, 'api', { build: true, start: 'nx run api:start', goDebug: 'apps/api' })
+
+      const file = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as { launch: { configurations: Record<string, unknown>[] } }
+      expect(file.launch.configurations).toContainEqual(
+        expect.objectContaining({ type: 'go', request: 'launch', mode: 'debug', name: 'mnci: api debug', program: '${workspaceFolder:demo}/apps/api' }),
+      )
+    })
+
+    it("replaces a project's own entries by name on a repeat call, and leaves the others and hand-written ones alone", () => {
       const mine = { type: 'node', request: 'launch', name: 'debug my thing' }
       registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
-      registerProjectCommands(workspaceRoot, 'api', { build: true, start: 'nx run api:start' })
+      registerProjectCommands(workspaceRoot, 'web-2', { build: false })
       const file = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as { launch: { configurations: unknown[] } }
       file.launch.configurations.push(mine)
       writeFileSync(join(workspaceRoot, 'demo.code-workspace'), JSON.stringify(file))
 
-      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
-
-      expect(launchNames().toSorted((a, b) => a.localeCompare(b))).toEqual(['debug my thing', 'mnci: api start', 'mnci: web start'])
-    })
-
-    it('removes the entry when a project no longer has a start script', () => {
-      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
       registerProjectCommands(workspaceRoot, 'web', { build: true })
 
-      expect(launchNames()).toEqual([])
+      expect(launchNames()).toEqual(expect.arrayContaining(['debug my thing', 'mnci: web-2 qa', 'mnci: web build']))
+      expect(launchNames()).not.toContain('mnci: web start')
+      expect(launchNames().filter(name => name === 'mnci: web qa')).toHaveLength(1)
+    })
+
+    it('keeps a project out of the tasks, which the launch entries replace', () => {
+      registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
+
+      expect(tasks()).toEqual([])
+    })
+
+    it('drops the tasks an earlier mnci wrote for the project', () => {
+      writeFileSync(join(workspaceRoot, 'demo.code-workspace'), JSON.stringify({
+        folders: [{ path: '.', name: 'demo' }],
+        tasks:   { version: '2.0.0', tasks: [{ label: 'web: qa', type: 'npm', script: 'web:qa' }, { label: 'mine', type: 'shell' }] },
+      }))
+
+      registerProjectCommands(workspaceRoot, 'web', { build: true })
+
+      expect(tasks().map(task => task.label)).toEqual(['mine'])
     })
   })
 
@@ -457,45 +493,7 @@ describe('registerProjectCommands', () => {
     )
 
     expect(() => registerProjectCommands(workspaceRoot, 'web', { build: true })).not.toThrow()
-    expect(tasks()).toEqual([
-      { label: 'web: qa', type: 'npm', script: 'web:qa', problemMatcher: [], group: 'qa' },
-      { label: 'web: build', type: 'npm', script: 'web:build', problemMatcher: [], group: 'build' },
-    ])
-  })
-
-  it('appends matching VS Code tasks, grouped by build/test and isBackground for start', () => {
-    writeFileSync(
-      join(workspaceRoot, 'demo.code-workspace'),
-      JSON.stringify({ folders: [], tasks: { version: '2.0.0', tasks: [] } }),
-    )
-
-    registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
-
-    expect(tasks()).toEqual([
-      { label: 'web: qa', type: 'npm', script: 'web:qa', problemMatcher: [], group: 'qa' },
-      { label: 'web: build', type: 'npm', script: 'web:build', problemMatcher: [], group: 'build' },
-      {
-        label:          'web: start',
-        type:           'npm',
-        script:         'web:start',
-        problemMatcher: [],
-        isBackground:   true,
-      },
-    ])
-  })
-
-  it("replaces a project's own tasks on a repeat call without touching another project's", () => {
-    writeFileSync(
-      join(workspaceRoot, 'demo.code-workspace'),
-      JSON.stringify({ folders: [], tasks: { version: '2.0.0', tasks: [] } }),
-    )
-    registerProjectCommands(workspaceRoot, 'lib', { build: true })
-    registerProjectCommands(workspaceRoot, 'web', { build: false })
-
-    registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
-
-    const labels = tasks().map(task => task.label)
-    expect(labels).toEqual(['lib: qa', 'lib: build', 'web: qa', 'web: build', 'web: start'])
+    expect(launchNames()).toContain('mnci: web build')
   })
 
   it('defaults a .code-workspace file with no tasks block to version 2.0.0', () => {
@@ -588,20 +586,16 @@ describe('registerProjectCommands', () => {
     // there, the hand-written one included, is still there unchanged and in order.
     expect(after.launch).toEqual({
       ...before.launch,
-      configurations: [...before.launch.configurations, expect.objectContaining({ name: 'mnci: web start' })],
+      configurations: [
+        ...before.launch.configurations,
+        ...['qa', 'build', 'test', 'lint', 'start'].map(action => expect.objectContaining({ name: `mnci: web ${action}` })),
+      ],
     })
-    // The one key `add` does own: the existing project's tasks survive, and
-    // the new project's are appended, not substituted for them.
-    expect(after.tasks.tasks.map(t => t.label)).toEqual([
-      'lib: qa',
-      'lib: build',
-      'web: qa',
-      'web: build',
-      'web: start',
-    ])
+    // The tasks `add` owns: another project's survive, and the new project adds none (its commands are launch entries, #365).
+    expect(after.tasks.tasks.map(t => t.label)).toEqual(['lib: qa', 'lib: build'])
   })
 
-  it('replaces only its own entries on a second add for the same project, matching by label', () => {
+  it('replaces only its own entries on a second add for the same project, keeping a hand-added comment out of the way', () => {
     writeFileSync(
       join(workspaceRoot, 'demo.code-workspace'),
       [
@@ -616,12 +610,9 @@ describe('registerProjectCommands', () => {
 
     registerProjectCommands(workspaceRoot, 'web', { build: true, start: 'nx run web:serve' })
 
-    const after = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as {
-      folders: unknown
-      tasks:   { tasks: { label: string }[] }
-    }
+    const after = JSON.parse(readFileSync(join(workspaceRoot, 'demo.code-workspace'), 'utf8')) as { folders: unknown }
     expect(after.folders).toEqual([{ path: '.', name: 'demo' }])
-    expect(after.tasks.tasks.map(t => t.label)).toEqual(['web: qa', 'web: build', 'web: start'])
+    expect(launchNames()).toEqual(['mnci: web qa', 'mnci: web build', 'mnci: web test', 'mnci: web lint', 'mnci: web start'])
   })
 })
 

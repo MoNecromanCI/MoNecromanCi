@@ -1995,27 +1995,53 @@ export function launchConfigurations (workspaceName: string): Record<string, unk
 }
 
 /**
- * The launch configuration for one project's `start` script.
+ * The launch configuration for one of a project's scripts (`start` by default; also `qa`, `build`, `test`, `lint`, ...).
  *
  * @remarks
- * Written by `registerProjectCommands` for every kind that has a `start`, and merged by its exact name
- * (`mnci: <project> start`) so adding a second project, or an upgrade, replaces only this entry. It drives the
+ * Written by `registerProjectCommands`, one per script the kind has (#365), and merged by its exact name
+ * (`mnci: <project> <action>`) so adding a second project, or an upgrade, replaces only this project's entries. It drives the
  * workspace's own `<project>:start` npm script, like the workspace-level entries, and uses `node-terminal` for the
  * same reason: `start` runs through `nx run`, which spawns the program as a child process.
  *
  * @param workspaceName - The VS Code folder name, used to scope `${workspaceFolder}`.
  * @param projectName - The Nx project name.
+ * @param action - Which script it runs: the suffix of `<project>:<action>`.
  * @returns One launch configuration.
  * @throws Never - pure.
  * @typeParam None - this function has no generic type parameters.
  */
-export function projectLaunchConfiguration (workspaceName: string, projectName: string): Record<string, unknown> {
+export function projectLaunchConfiguration (workspaceName: string, projectName: string, action = 'start'): Record<string, unknown> {
   return {
     type:         'node-terminal',
     request:      'launch',
-    name:         `${LAUNCH_CONFIG_PREFIX}${projectName} start`,
-    command:      `npm run ${projectName}:start`,
+    name:         `${LAUNCH_CONFIG_PREFIX}${projectName} ${action}`,
+    command:      `npm run ${projectName}:${action}`,
     cwd:          `\${workspaceFolder:${workspaceName}}`,
+    presentation: { group: 'mnci projects' },
+  }
+}
+
+/**
+ * The launch configuration that debugs a Go application with the Go extension's debugger (#365).
+ *
+ * @remarks
+ * The script entries run through `node-terminal`, which binds breakpoints in Node. Go needs the `go` debug type, which drives
+ * Delve (`dlv`); the Go extension offers to install it, and `mnci add go-app` says so when it is missing.
+ *
+ * @param workspaceName - The VS Code folder name, used to scope `${workspaceFolder}`.
+ * @param projectName - The Nx project name.
+ * @param projectDirectory - The application's workspace-relative directory, e.g. `apps/api`.
+ * @returns One launch configuration.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function goDebugLaunchConfiguration (workspaceName: string, projectName: string, projectDirectory: string): Record<string, unknown> {
+  return {
+    type:         'go',
+    request:      'launch',
+    mode:         'debug',
+    name:         `${LAUNCH_CONFIG_PREFIX}${projectName} debug`,
+    program:      `\${workspaceFolder:${workspaceName}}/${projectDirectory}`,
     presentation: { group: 'mnci projects' },
   }
 }

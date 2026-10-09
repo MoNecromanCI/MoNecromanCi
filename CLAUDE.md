@@ -419,15 +419,16 @@ Nx plugin where none does:
 `registerProjectCommands` (`project-scaffolding/post-generation.use-case.ts`) runs at the end of every
 `mnci add` and writes, per project:
 
-- **`<name>:qa`** (lint and test), **`<name>:build`** (a kind with a `build` target) and **`<name>:start`**
-  (a kind with a local run story: what `nx run <name>:start` or `:serve` does) as root npm scripts, plus a VS Code
-  task for each.
-- **A launch configuration `mnci: <name> start`** for every project that has a `start`: `node-terminal`
-  (not `node`, so breakpoints bind inside `nx run`'s child processes), driving `npm run <name>:start` (never a
-  path into `node_modules`, which is version-dependent), with `cwd` scoped by folder **name**
-  (`${workspaceFolder:<name>}`).
+- **`<name>:qa`** (lint then test), **`<name>:test`**, **`<name>:lint`** (and **`<name>:lint:fix`** for a TypeScript project, whose lint is ESLint's),
+  **`<name>:build`** (a kind with a `build` target) and **`<name>:start`** (a kind with a local run story: what `nx run <name>:start` or `:serve` does) as root
+  npm scripts. A kind whose `qa` is something else (the end-to-end project) has no `test`/`lint`.
+- **A launch configuration `mnci: <name> <action>` per script** (#365), not a task: `node-terminal` (not `node`, so breakpoints bind inside `nx run`'s child
+  processes), driving `npm run <name>:<action>` (never a path into `node_modules`, which is version-dependent), with `cwd` scoped by folder **name**
+  (`${workspaceFolder:<name>}`). The Run and Debug panel is where they are run; `registerProjectCommands` no longer writes per-project tasks (it drops the ones an
+  earlier version wrote for the project it is re-registering; the four workspace-level tasks stay). A **Go application** also gets `mnci: <name> debug`, a `go`
+  launch (Delve) with `program` at its directory; `mnci add go-app` warns, with the install command, when `dlv` is not on `PATH`.
 - **The launch array is merged by exact name**, both ways: `registerProjectCommands` replaces only its own
-  project's entry, and `vscodeWorkspace` (the overlay, on `mnci upgrade`) replaces only the four workspace-level
+  project's entries (matched by the `mnci: <name> ` prefix), and `vscodeWorkspace` (the overlay, on `mnci upgrade`) replaces only the four workspace-level
   entries (`mnci: build|test|lint|typecheck`). Every other entry survives: a hand-written one, and every other
   project's. The old `startsWith('mnci: ')` match deleted the per-project entries on each upgrade.
 - What `start` is differs by kind, and nothing yet makes it uniform: React and Node apps map it to `serve` (a
