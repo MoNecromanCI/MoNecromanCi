@@ -900,6 +900,17 @@ target builds, such as a `.dmg`). It copies to `dist/release-assets/<app>/` and 
 cache keys are untouched. Measured with a fake `gh` in a scratch workspace. Not covered: validating the config in `mnci doctor`, and the
 `mnci` pipelines' own steps (they only call the script).
 
+### Pipeline templates (#293)
+
+`mnci pipeline [template] [--project <app>] [--ci azure|github|both] [--force]` (`pipeline-templates/`) writes a ready-made pipeline file
+after the workspace was generated: `e2e`, `package-zip`, `deploy-pages` (GitHub only) and `deploy-azure-function`, as `.github/workflows/<name>.yml`
+and/or `azure-pipelines/<name>.yml` (an Azure file is registered as its own pipeline). Written once and the team's from then on: `mnci upgrade`
+never rewrites them, and an existing file is kept without `--force`. With no template it lists them. The project name must be a name under `apps/`
+and a plain word (it ends up in YAML and shell). Release and package publishing are not templates: they are the generated pipeline's `release` phase.
+The actions the templates add (`configure-pages`, `upload-pages-artifact`, `deploy-pages`, `functions-action`) are pinned in `TEMPLATE_ACTION_VERSIONS`.
+Verified: every file parses as YAML and the command writes them; **never run on a real GitHub or Azure pipeline**, and the two deploy templates
+need the repository variables or service connection their header names.
+
 ### A commit can force a version (#283)
 
 `version(<project>)[<version>]: <message>` (aliases in `version-directives/`) is read by `mnci ci release`: `locateVersionDirectives`

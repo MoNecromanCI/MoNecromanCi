@@ -78,6 +78,12 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "mnci.pipeline",
+        "title": "Add a pipeline from a template",
+        "category": "MNCI",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "mnci.refresh",
         "title": "Refresh",
         "category": "MNCI",

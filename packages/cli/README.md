@@ -1867,6 +1867,12 @@ pipeline installs `golangci-lint` itself (see below).
     done yet.
   - Types shared between Go and TypeScript (OpenAPI, generated types) are out of
     scope.
+- **`mnci pipeline`: more pipelines after the first (#293).** `mnci pipeline` lists the templates;
+  `mnci pipeline e2e`, `package-zip`, `deploy-pages --project <app>` and
+  `deploy-azure-function --project <app>` write the file for the workspace's CI provider (or `--ci`),
+  as `.github/workflows/<name>.yml` and/or `azure-pipelines/<name>.yml`. They are yours from then
+  on: `mnci upgrade` never rewrites them, and an existing file is kept unless `--force`. Releasing
+  to GitHub Releases and publishing a package are already the generated pipeline's `release` phase.
 - **A commit can force a project's version (#283).** A commit whose subject is
   `version(<project>)[<version>]: <message>` (aliases `mnci-version`, `mnci-ver`,
   `mnci-force`, `mnci-v`, `ver`, `force`, `v`) makes `mnci ci release` release that

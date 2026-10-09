@@ -2,6 +2,7 @@ import { Argument, Command, Option } from 'commander'
 import { CI_PHASES, runCiPhase, type CiPhase } from './ci-pipeline'
 import { PROJECT_KINDS, runAdd, runKinds, type AddOptions, type KindsOptions, type ProjectKind } from './project-scaffolding'
 import { runDev, type DevOptions } from './dev-servers'
+import { addPipelineTemplate, listPipelineTemplates, PIPELINE_TEMPLATES, type AddPipelineTemplateOptions } from './pipeline-templates'
 import { runDoctor, type DoctorOptions } from './workspace-diagnostics'
 import { runAdopt, type AdoptOptions } from './repository-adoption'
 import { runCommands, type CommandsOptions } from './command-catalog'
@@ -161,6 +162,24 @@ export function buildProgram (cliVersion: string): Command {
     )
     .action(async (phase: CiPhase) => {
       process.exitCode = await runCiPhase(phase, process.cwd())
+    })
+
+  program
+    .command('pipeline')
+    .addArgument(new Argument('[template]', 'the pipeline to add; leave out to list them').choices(PIPELINE_TEMPLATES.map(each => each.name)))
+    .description(
+      'Add a ready-made pipeline file to this workspace after it was generated: e2e, package-zip (the dist/drop zips as a build artifact), deploy-pages (a react-app to GitHub Pages) or deploy-azure-function. Written once and yours from then on, so `mnci upgrade` never rewrites it; an existing file is kept unless --force. With no template, lists them',
+    )
+    .option('--project <app>', 'the app a deploy template builds or deploys (a name under apps/)')
+    .addOption(new Option('--ci <provider>', 'the provider to write for (default: the one this workspace uses)').choices(['azure', 'github', 'both']))
+    .option('--force', 'overwrite a pipeline file that already exists')
+    .action((template: string | undefined, options: AddPipelineTemplateOptions) => {
+      if (template === undefined) {
+        listPipelineTemplates()
+
+        return
+      }
+      addPipelineTemplate(process.cwd(), template, options)
     })
 
   program
