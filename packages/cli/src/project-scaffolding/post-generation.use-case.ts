@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored } from '../workspace-overlay'
+import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored, projectLaunchConfiguration } from '../workspace-overlay'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 
@@ -1006,7 +1006,9 @@ export function registerProjectCommands (
   }
   const workspaceFile =
     readCodeWorkspace<{
-      tasks?: { version?: string; tasks?: Record<string, unknown>[] }
+      folders?: { name?: string }[]
+      tasks?:   { version?: string; tasks?: Record<string, unknown>[] }
+      launch?:  { version?: string; configurations?: Record<string, unknown>[] }
     }>(codeWorkspacePath) ?? {}
   const label = (task: Record<string, unknown>): string => (task.label as string | undefined) ?? ''
   const existingTasks = (workspaceFile.tasks?.tasks ?? []).filter(
@@ -1018,6 +1020,14 @@ export function registerProjectCommands (
     ...(commands.start ? [projectTask(name, 'start')] : []),
     ...Object.keys(commands.extra ?? {}).map(suffix => projectTask(name, suffix)),
   ]
+  // A launch entry per project with a `start`, replaced by its exact name so a second `add`, or an upgrade, leaves
+  // every other project's entry (and any hand-written one) alone (#230).
+  const folderName = workspaceFile.folders?.[0]?.name ?? basename(codeWorkspacePath, '.code-workspace')
+  const launchName = projectLaunchConfiguration(folderName, name).name
+  const launchConfigurations = [
+    ...(workspaceFile.launch?.configurations ?? []).filter(configuration => configuration.name !== launchName),
+    ...(commands.start ? [projectLaunchConfiguration(folderName, name)] : []),
+  ]
   writeFileEnsured(
     codeWorkspacePath,
     toJson({
@@ -1025,6 +1035,10 @@ export function registerProjectCommands (
       tasks: {
         version: workspaceFile.tasks?.version ?? '2.0.0',
         tasks:   [...existingTasks, ...newTasks],
+      },
+      launch: {
+        version:        workspaceFile.launch?.version ?? '0.2.0',
+        configurations: launchConfigurations,
       },
     }),
   )
