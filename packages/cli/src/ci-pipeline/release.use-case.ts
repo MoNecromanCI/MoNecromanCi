@@ -1,5 +1,5 @@
 import { existsSync, globSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join, matchesGlob } from 'node:path'
 import { runCapture, runShell, runTee } from '../nx-workspace'
 import {
   GO_RELEASE_TAG,
@@ -60,6 +60,36 @@ function hasTag (workspaceRoot: string, relativePath: string, tag: string): bool
 }
 
 /**
+ * The Python packages `nx release` would publish: `python-packages/*` less the ones `release.projects` excludes (#432).
+ *
+ * @remarks
+ * Only an exclusion written as a path (`!python-packages/tool`, a glob of one) or a bare project directory name (`!tool`) is
+ * understood; a tag exclusion is not, and leaves the package counted, which only costs the token check.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative `pyproject.toml` paths of the packages that are released.
+ * @throws Never - an unreadable `nx.json` excludes nothing.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function releasedPythonManifests (workspaceRoot: string): string[] {
+  let excluded: string[] = []
+  try {
+    const nx = JSON.parse(readFileSync(join(workspaceRoot, 'nx.json'), 'utf8')) as { release?: { projects?: unknown } }
+    const projects = nx.release?.projects
+    const patterns = Array.isArray(projects) ? projects : [projects]
+    excluded = patterns.filter((pattern): pattern is string => typeof pattern === 'string' && pattern.startsWith('!')).map(pattern => pattern.slice(1))
+  } catch {
+    excluded = []
+  }
+
+  return globSync('python-packages/*/pyproject.toml', { cwd: workspaceRoot }).filter((file) => {
+    const directory = dirname(file).replaceAll('\\', '/')
+
+    return excluded.every(pattern => !(pattern === basename(directory) || matchesGlob(directory, pattern)))
+  })
+}
+
+/**
  * Counts the releasable projects of each ecosystem, the way the inline guard does.
  *
  * @remarks
@@ -76,7 +106,7 @@ function releasableCounts (workspaceRoot: string): ReleasableCounts {
   return {
     npm:    globSync('packages/*/package.json', { cwd: workspaceRoot }).length,
     csharp: globSync('packages/*/*.csproj', { cwd: workspaceRoot }).length,
-    python: globSync('python-packages/*/pyproject.toml', { cwd: workspaceRoot }).length,
+    python: releasedPythonManifests(workspaceRoot).length,
     dart:   globSync('packages/*/pubspec.yaml', { cwd: workspaceRoot }).length,
     vscode: globSync('apps/*/package.json', { cwd: workspaceRoot }).filter(path => hasTag(workspaceRoot, path, VSCODE_EXTENSION_TAG)).length,
     go:     globSync('apps/*/project.json', { cwd: workspaceRoot }).filter(path => hasTag(workspaceRoot, path, GO_RELEASE_TAG)).length,
@@ -189,7 +219,7 @@ async function pypiPreflight (
   log: (message: string) => void,
   fetchStatus: (url: string) => Promise<number>,
 ): Promise<number> {
-  const files = globSync('python-packages/*/pyproject.toml', { cwd: workspaceRoot })
+  const files = releasedPythonManifests(workspaceRoot)
   if (registryKind !== 'npm' || files.length === 0) {
     return 0
   }
