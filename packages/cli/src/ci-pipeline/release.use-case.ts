@@ -1,6 +1,6 @@
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { runCapture, runShell } from '../nx-workspace'
+import { runCapture, runShell, runTee } from '../nx-workspace'
 import {
   GO_RELEASE_TAG,
   VSCODE_EXTENSION_TAG,
@@ -12,6 +12,7 @@ import {
 import { detectCiHost, groupEnd, groupStart } from './ci-environment.client'
 import type { CiDependencies, CiProcesses } from './phase.contract'
 import { listGoLibraryDirectories, releaseGoLibraries } from '../go-module-release'
+import { pushSurvivingTags } from '../partial-release'
 
 /** How many releasable projects of each ecosystem the workspace has. */
 interface ReleasableCounts {
@@ -306,23 +307,25 @@ function applyPublishCredentials (
  * @param environment - The environment, mutated with publish credentials.
  * @param processes - The process runner.
  * @param log - The logger.
- * @returns The release command's status, 0 on a clean skip, or 1 on a bad specifier / missing credential.
+ * @param tee - Runs a command streaming its output and keeping a copy; absent, the output is not kept.
+ * @returns The release command's status (0 on a clean skip, 1 on a bad specifier / missing credential) and its output.
  * @throws Never - a failing command is a status.
  * @typeParam None - this function has no generic type parameters.
  */
-function runReleaseCommand (
+async function runReleaseCommand (
   workspaceRoot: string,
   registry: RegistryConfig,
   counts: ReleasableCounts,
   environment: NodeJS.ProcessEnv,
   processes: CiProcesses,
   log: (message: string) => void,
-): number {
+  tee: ((command: string, arguments_: string[]) => Promise<{ status: number, output: string }>) | undefined,
+): Promise<{ status: number, output: string }> {
   const total = counts.npm + counts.python + counts.csharp + counts.dart + counts.vscode + counts.go
   if (total === 0) {
     log('Nothing to release - skipping.')
 
-    return 0
+    return { status: 0, output: '' }
   }
 
   const specifier = environment.RELEASE_SPECIFIER ?? ''
@@ -331,22 +334,26 @@ function runReleaseCommand (
     if (!SPECIFIER.test(specifier)) {
       log("RELEASE_SPECIFIER value '" + specifier + "' is invalid - use major, minor, patch, or an exact version like 1.2.3.")
 
-      return 1
+      return { status: 1, output: '' }
     }
     if (/^(?:major|minor|patch)$/.test(specifier) && total > 1) {
       log("RELEASE_SPECIFIER is a keyword ('" + specifier + "') but this workspace has " + total + ' releasable packages - a keyword under-bumps interdependent packages, because nx computes the dependency-bump pass from a stale cached version. Set RELEASE_SPECIFIER to an exact version instead, or clear it.')
 
-      return 1
+      return { status: 1, output: '' }
     }
     extra.push(specifier)
   }
 
   const credentials = applyPublishCredentials(workspaceRoot, registry, counts, environment, log)
   if (credentials !== 0) {
-    return credentials
+    return { status: credentials, output: '' }
+  }
+  const command = ['nx', 'release', ...extra, '--yes']
+  if (tee === undefined) {
+    return { status: processes.run('npx', command), output: '' }
   }
 
-  return processes.run('npx', ['nx', 'release', ...extra, '--yes'])
+  return await tee('npx', command)
 }
 
 /**
@@ -467,6 +474,7 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
   const processes = dependencies.processes ?? {
     run:     (command, arguments_) => runShell(command, arguments_, workspaceRoot),
     capture: (command, arguments_) => runCapture(command, arguments_, workspaceRoot),
+    tee:     async (command, arguments_) => await runTee(command, arguments_, workspaceRoot),
   }
   const log = dependencies.log ?? ((message: string) => { console.log(message) })
   const fetchStatus = dependencies.fetchStatus ?? (async (url: string) => {
@@ -500,9 +508,12 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
     return close(pypi)
   }
 
-  const released = runReleaseCommand(workspaceRoot, registry, releasableCounts(workspaceRoot), environment, processes, log)
-  if (released !== 0) {
-    return close(released)
+  const released = await runReleaseCommand(workspaceRoot, registry, releasableCounts(workspaceRoot), environment, processes, log, processes.tee)
+  if (released.status !== 0) {
+    // Per package, not all or nothing: what published keeps its tag, so a retry does not republish it.
+    pushSurvivingTags(released.output, processes, log)
+
+    return close(released.status)
   }
   const libraries = tagGoLibraries(workspaceRoot, processes, log)
   if (libraries !== 0) {

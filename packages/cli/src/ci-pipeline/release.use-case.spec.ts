@@ -259,6 +259,21 @@ describe('mnci ci release: after the release (#269, #259)', () => {
     expect(setup.commands).not.toContain('git push origin --tags')
   })
 
+  it('still pushes the tags of the packages that published when only some failed to publish', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness({}, { 'git tag --points-at HEAD': { status: 0, stdout: '@x/sdk@1.0.1\n@x/bad@0.0.6\n' } })
+    setup.processes.tee = async (command, arguments_) => {
+      setup.commands.push([command, ...arguments_].join(' '))
+
+      return { status: 1, output: 'Failed tasks:\n- @x/bad:nx-release-publish\n' }
+    }
+
+    expect(await release(setup, { NODE_AUTH_TOKEN: 'tok' })).toBe(1)
+
+    expect(setup.commands).toContain('git push origin refs/tags/@x/sdk@1.0.1')
+    expect(setup.commands).not.toContain('git push origin --tags')
+  })
+
   it('fails the run when attaching the Go zips failed', async () => {
     seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
     seed('tools/go-app-release.cjs', '')
