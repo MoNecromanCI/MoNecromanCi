@@ -55,6 +55,26 @@ function warnIfNoGolangciLint (workspaceRoot: string): void {
 }
 
 /**
+ * Warns when Delve is not installed, which Go debugging in VS Code needs (#365).
+ *
+ * @remarks
+ * Not fatal and not installed for the person: the Go extension offers to install it too, and where it goes (a global
+ * `GOBIN`) is the developer's choice. The generated `mnci: <app> debug` launch configuration works once it is there.
+ *
+ * @param workspaceRoot - Absolute path to the workspace (cwd for the probe).
+ * @returns Nothing.
+ * @throws Never - a missing debugger only produces a warning.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function warnIfNoDelve (workspaceRoot: string): void {
+  if (runShell('dlv', ['version'], workspaceRoot) !== 0) {
+    logger.warn(
+      'dlv (Delve) not found - debugging a Go app in VS Code needs it. Install: go install github.com/go-delve/delve/cmd/dlv@latest',
+    )
+  }
+}
+
+/**
  * The `@nx-go/nx-go` package spec to install.
  *
  * @remarks
@@ -970,7 +990,9 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
     start:    `nx run ${name}:start`,
     buildDev: `nx run ${name}:build-dev`,
     dev:      `nx run ${name}:dev`,
+    goDebug:  `apps/${name}`,
   })
+  warnIfNoDelve(workspaceRoot)
   if (cgo) {
     logger.warn(
       `${name} needs a C toolchain, so CI builds it on a runner of each OS. Run \`mnci upgrade\` to add the native job to your pipeline, and add the -dev packages it links to the Linux prerequisites step.`,

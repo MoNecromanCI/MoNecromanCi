@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored, projectLaunchConfiguration } from '../workspace-overlay'
+import { LAUNCH_CONFIG_PREFIX, NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored, goDebugLaunchConfiguration, projectLaunchConfiguration } from '../workspace-overlay'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 
@@ -518,6 +518,11 @@ export interface ProjectCommands {
    * kind has no such mechanism that has been measured (#230).
    */
   dev?:      string
+  /**
+   * A Go application's directory (`apps/<name>`), for which a `go` debug launch configuration is written next to the
+   * script ones: breakpoints in Go need the Go extension's debugger and `dlv`, which a `node-terminal` cannot give (#365).
+   */
+  goDebug?:  string
 }
 
 /**
@@ -545,29 +550,20 @@ function findCodeWorkspaceFile (workspaceRoot: string): string | undefined {
 }
 
 /**
- * One VS Code task for a project's script, matching its root `package.json` entry.
+ * Whether a project is a TypeScript one, which has ESLint and so a `lint --fix`.
  *
  * @remarks
- * `start` tasks run a dev server that never exits on its own, so they are
- * marked `isBackground` (VS Code won't wait for them to finish) rather than
- * given a `group` — `build`/`qa` do exit, so they get the matching group
- * VS Code's Command Palette/Tasks menu groups them under.
+ * Told by its manifest: TypeScript projects (libraries, apps, the extension) carry a `package.json` under `apps`, `packages` or
+ * `libs`, while Go, Python, C# and Flutter projects are described by `project.json` or their own manifest.
  *
- * @param name - The project name.
- * @param kind - Which of the three commands this task runs.
- * @returns The VS Code task object.
- * @throws Never - pure object construction.
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param name - The project name, which is its folder.
+ * @returns True when `<apps|packages|libs>/<name>/package.json` exists.
+ * @throws Never - a missing folder is not TypeScript.
  * @typeParam None - this function has no generic type parameters.
  */
-function projectTask (name: string, kind: string): Record<string, unknown> {
-  const script = `${name}:${kind}`
-  const base = { label: `${name}: ${kind}`, type: 'npm', script, problemMatcher: [] }
-
-  if (kind === 'start' || kind === 'dev') {
-    return { ...base, isBackground: true }
-  }
-
-  return kind === 'build' || kind === 'qa' ? { ...base, group: kind } : base
+function isTypeScriptProject (workspaceRoot: string, name: string): boolean {
+  return PROJECT_MANIFEST_ROOTS.some(root => existsSync(join(workspaceRoot, root, name, 'package.json')))
 }
 
 /**
@@ -997,6 +993,15 @@ export function registerProjectCommands (
   if (commands.build) {
     scripts[`${name}:build`] = `nx run ${name}:build`
   }
+  // The checks `qa` is made of, one by one, so the Run and Debug panel can run each alone (#365). A kind whose `qa`
+  // is not lint then test has not both targets, so it gets neither. `lint:fix` is ESLint's, so TypeScript projects only.
+  if (commands.qa === undefined) {
+    scripts[`${name}:test`] = `nx run ${name}:test`
+    scripts[`${name}:lint`] = `nx run ${name}:lint`
+    if (isTypeScriptProject(workspaceRoot, name)) {
+      scripts[`${name}:lint:fix`] = `nx run ${name}:lint --fix`
+    }
+  }
   if (commands.start) {
     scripts[`${name}:start`] = commands.start
   }
@@ -1049,21 +1054,17 @@ export function registerProjectCommands (
   const existingTasks = (workspaceFile.tasks?.tasks ?? []).filter(
     task => !label(task).startsWith(`${name}: `),
   )
-  const newTasks = [
-    projectTask(name, 'qa'),
-    ...(commands.build ? [projectTask(name, 'build')] : []),
-    ...(commands.start ? [projectTask(name, 'start')] : []),
-    ...(commands.buildDev ? [projectTask(name, 'build:dev')] : []),
-    ...(commands.dev ? [projectTask(name, 'dev')] : []),
-    ...Object.keys(commands.extra ?? {}).map(suffix => projectTask(name, suffix)),
-  ]
-  // A launch entry per project with a `start`, replaced by its exact name so a second `add`, or an upgrade, leaves
-  // every other project's entry (and any hand-written one) alone (#230).
+  // One launch configuration per script the project has, not a task (#365): the Run and Debug panel is where they
+  // are run, and a task per script duplicated every one of them in a second list. Replaced by exact name, so a second
+  // `add`, or an upgrade, leaves every other project's entries (and any hand-written one) alone (#230).
   const folderName = workspaceFile.folders?.[0]?.name ?? basename(codeWorkspacePath, '.code-workspace')
-  const launchName = projectLaunchConfiguration(folderName, name).name
+  const actions = Object.keys(scripts).map(script => script.slice(name.length + 1))
+  const owned = (configuration: Record<string, unknown>): boolean =>
+    typeof configuration.name === 'string' && configuration.name.startsWith(`${LAUNCH_CONFIG_PREFIX}${name} `)
   const launchConfigurations = [
-    ...(workspaceFile.launch?.configurations ?? []).filter(configuration => configuration.name !== launchName),
-    ...(commands.start ? [projectLaunchConfiguration(folderName, name)] : []),
+    ...(workspaceFile.launch?.configurations ?? []).filter(configuration => !owned(configuration)),
+    ...actions.map(action => projectLaunchConfiguration(folderName, name, action)),
+    ...(commands.goDebug === undefined ? [] : [goDebugLaunchConfiguration(folderName, name, commands.goDebug)]),
   ]
   writeFileEnsured(
     codeWorkspacePath,
@@ -1071,7 +1072,7 @@ export function registerProjectCommands (
       ...workspaceFile,
       tasks: {
         version: workspaceFile.tasks?.version ?? '2.0.0',
-        tasks:   [...existingTasks, ...newTasks],
+        tasks:   existingTasks,
       },
       launch: {
         version:        workspaceFile.launch?.version ?? '0.2.0',
