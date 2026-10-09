@@ -145,13 +145,18 @@ committing an upgrade.
   sample into one starter slice (`libs/<name>/<pkg>/<snake>_use_case.go`).
   The plugin's `test`/`lint` executors already run `./...` from the project
   root (measured, #233), so every slice package is covered with no target change.
-- `go-lib` is **excluded from `release.projects`** via `!tag:type:go-lib` — for now.
-  The original reason (a `go-lib` had no per-project manifest, so Nx's default
-  `versionActions` looked for a `package.json` that wasn't there and aborted the whole
-  release graph) no longer holds under multi-module: a `go-lib` now has its own `go.mod`
-  and module path. Releasing it properly means Go **nested-module tags**
-  (`libs/<name>/v1.2.3`), which is the remaining #289 work; until that lands it stays
-  excluded so `nx release` doesn't trip on it.
+- `go-lib` is **excluded from `release.projects`** via `!tag:type:go-lib`: it has no
+  `package.json`, so Nx's default `versionActions` would abort the whole release graph.
+  It is released **by tag** instead (#359), in the `release` CI phase after `nx release`,
+  by the `go-module-release/` slice (`tagGoLibraries` in `ci-pipeline/release.use-case.ts`).
+  Go finds a version of a nested module by a tag named `<directory>/vX.Y.Z`
+  (`packages/<name>/v1.2.3`), so the tags are the only state. The next version comes from the
+  conventional commits that touched the directory since its latest tag: none yet means
+  `v0.0.1` on the first commit; before 1.0 a `feat` or `fix` is a patch and a breaking change
+  a minor (what `nx release` does for npm packages); from 1.0 it is major / minor / patch;
+  `docs`, `chore`, `test`, `ci`, `refactor`, `build` and `style` release nothing. Each tag is
+  lightweight and pushed as it is made. Not covered: a GitHub Release or changelog per
+  module, and propagation (a `go-lib` that requires another has its `require` bumped by hand).
 
 ### VS Code extensions (`vscode-extension`)
 
@@ -358,9 +363,9 @@ Nx plugin where none does:
   `<host>/<org>/<repo>/<dir>` from the git origin — mnci writes the `go.mod` module line
   itself, since `@nx-go/nx-go@4.1.1` names a module after its directory alone. Targets are
   written explicitly by `project-scaffolding/go.use-case.ts` and override the plugin's inferred
-  ones; `golangci-lint`, not the plugin's `go fmt` default. `go-lib` stays excluded from
-  `release.projects` (`!tag:type:go-lib`) for now — releasing it via Go nested-module tags
-  (`libs/<name>/v1.2.3`) is the remaining #289 work. An adopted flat repo (existing root
+  ones; `golangci-lint`, not the plugin's `go fmt` default. `go-lib` is excluded from
+  `release.projects` (`!tag:type:go-lib`) and released by nested-module tag
+  (`packages/<name>/v1.2.3`) from the `release` phase (#359). An adopted flat repo (existing root
   `go.mod`, no `go.work`) is left single-module until migrated.
 - **Flutter** — `@mnci/nx-flutter`, a first-party plugin built on a **Dart pub
   workspace**: one root `pubspec.yaml`, every member with `resolution: workspace` and
