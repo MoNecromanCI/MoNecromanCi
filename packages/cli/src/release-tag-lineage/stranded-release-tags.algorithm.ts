@@ -111,12 +111,54 @@ export interface TagBehindRegistry {
  * @typeParam None - this function has no generic type parameters.
  */
 export function tagsBehindRegistry (stranded: readonly StrandedReleaseTag[], published: ReadonlyMap<string, string>): TagBehindRegistry[] {
+  const tagged = new Map(stranded.map(({ project, newTag }) => [project, newTag.slice(project.length + 1)]))
+
+  return versionsBehindRegistry(tagged, published)
+}
+
+/**
+ * The newest plain version each project is tagged with, under its own name.
+ *
+ * @remarks
+ * Tags that are not a plain `major.minor.patch` (a prerelease, a label) are ignored.
+ *
+ * @param projects - Current project names.
+ * @param tags - Every tag of the repository.
+ * @returns The newest `major.minor.patch` tag version per project; a project with no such tag is absent.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function latestTaggedVersions (projects: readonly string[], tags: readonly string[]): Map<string, string> {
+  const latest = new Map<string, string>()
+  for (const project of projects) {
+    const newest = versionsOf(tags, project).sort(compareVersions).at(-1)
+    if (newest !== undefined) {
+      latest.set(project, newest)
+    }
+  }
+
+  return latest
+}
+
+/**
+ * The projects whose registry holds a version newer than the one their newest tag carries.
+ *
+ * @remarks
+ * The next release resolves its base from the tag, so it proposes a version the registry already
+ * has and refuses (an Azure Artifacts feed refuses it even after a delete).
+ *
+ * @param tagged - The newest tagged version per project.
+ * @param published - The newest published version per project; an unknown project is absent.
+ * @returns The projects whose published version is strictly newer than their tag.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function versionsBehindRegistry (tagged: ReadonlyMap<string, string>, published: ReadonlyMap<string, string>): TagBehindRegistry[] {
   const behind: TagBehindRegistry[] = []
-  for (const { project, newTag } of stranded) {
-    const tagged = newTag.slice(project.length + 1)
+  for (const [project, version] of tagged) {
     const latest = published.get(project)
-    if (latest !== undefined && /^\d+\.\d+\.\d+$/.test(latest) && compareVersions(latest, tagged) > 0) {
-      behind.push({ project, tagged, published: latest })
+    if (latest !== undefined && /^\d+\.\d+\.\d+$/.test(latest) && compareVersions(latest, version) > 0) {
+      behind.push({ project, tagged: version, published: latest })
     }
   }
 
