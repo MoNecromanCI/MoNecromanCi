@@ -1,4 +1,4 @@
-import { reactAppE2eSpec, reactAppExampleFiles, withNodeTypes } from './react-app-example.algorithm'
+import { reactAppE2eSpec, reactAppEmptyFiles, reactAppExampleFiles, withNodeTypes } from './react-app-example.algorithm'
 
 describe('reactAppExampleFiles', () => {
   const files = reactAppExampleFiles('web')
@@ -72,5 +72,20 @@ describe('withNodeTypes', () => {
 
   it('ends with a newline, like every file mnci writes', () => {
     expect(withNodeTypes('{}').endsWith('\n')).toBe(true)
+  })
+})
+
+describe('reactAppEmptyFiles', () => {
+  it('is the app slice alone, rendering an empty main, with its spec', () => {
+    const files = reactAppEmptyFiles()
+
+    expect(Object.keys(files).toSorted((a, b) => a.localeCompare(b))).toEqual(['app/app.component.spec.tsx', 'app/app.component.tsx'])
+    expect(files['app/app.component.tsx']).toContain('<main />')
+    expect(files['app/app.component.tsx']).not.toContain('greeting')
+  })
+
+  it('has an end-to-end test that only checks the page renders', () => {
+    expect(reactAppE2eSpec('web', true)).toContain("locator('main')")
+    expect(reactAppE2eSpec('web', true)).not.toContain('Hello')
   })
 })

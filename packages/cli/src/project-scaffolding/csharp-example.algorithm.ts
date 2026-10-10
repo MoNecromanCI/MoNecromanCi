@@ -76,3 +76,28 @@ public class GreetUseCaseTests
 }
 `
 }
+
+/**
+ * The one test of a C# project scaffolded with `--empty`: the test project runs.
+ *
+ * @remarks
+ * `dotnet test` over a test project with no tests is a warning in some SDK versions and a failure in others, and a test
+ * project that is wired to nothing would not be noticed until the first real test. This is the smallest honest test, and
+ * the first real one replaces it (#330).
+ *
+ * @param None - this function takes no parameters.
+ * @returns The text of `SmokeTests.cs`.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function csharpEmptyTest (): string {
+  return `public class SmokeTests
+{
+    [Fact]
+    public void TheTestProjectRuns()
+    {
+        Assert.True(true);
+    }
+}
+`
+}

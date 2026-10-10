@@ -1,4 +1,6 @@
 import {
+  PYTHON_EMPTY_BARREL,
+  pythonEmptyTest,
   pythonModuleDirectory,
   pythonPyprojectToml,
   pythonReadme,
@@ -196,5 +198,19 @@ describe('pythonSampleModule + pythonSampleTest', () => {
     expect(barrel).toContain('from .pycore_use_case import greet')
     expect(barrel).toContain('from .pycore_contract import Greeting')
     expect(barrel).toContain('__all__ = ["Greeting", "greet"]')
+  })
+})
+
+describe('the --empty variant', () => {
+  it('has a barrel with no public names, declared so the first export is one line', () => {
+    expect(PYTHON_EMPTY_BARREL).toBe('__all__: list[str] = []' + String.fromCodePoint(10))
+  })
+
+  it('has one test that imports the package and names no example', () => {
+    const test = pythonEmptyTest('core')
+
+    expect(test).toContain('import core')
+    expect(test).toContain('def test_package_imports')
+    expect(test).not.toContain('greet')
   })
 })

@@ -209,6 +209,31 @@ function enforce (label, ok, detail = '') {
 }
 
 /**
+ * Records that a freshly generated project is a slice with a worked example (#330), not the generator's bucket.
+ *
+ * @remarks
+ * Each pattern is a glob relative to the project directory and must match at least one file, so the check names the
+ * roles the example is made of (a contract, a use case, its test) without fixing the project's own names.
+ */
+function enforceSliceExample (label, projectDirectory, patterns) {
+  const missing = patterns.filter(pattern => globSync(pattern, { cwd: projectDirectory }).length === 0)
+  enforce(`${label}: the scaffold is a slice with a worked example`, missing.length === 0, `no file matches ${missing.join(', ')} under ${projectDirectory}`)
+}
+
+/**
+ * Records that a project scaffolded with `--empty` holds no greeting example (#330).
+ *
+ * @remarks
+ * Reads every source file under the directory and fails naming those that still mention a greeting, which is what the
+ * worked example of every kind is built around.
+ */
+function enforceNoGreeting (label, directory, pattern) {
+  const files = findFiles(directory, name => /\.(?:ts|tsx|py|go|cs|dart)$/.test(name))
+  const offenders = files.filter(file => pattern.test(readFileSync(path.join(directory, file), 'utf8')))
+  enforce(`empty: ${label} holds no greeting example`, offenders.length === 0, offenders.join(', '))
+}
+
+/**
  * Records a section that could not run because its toolchain is absent.
  *
  * @remarks
@@ -1252,6 +1277,7 @@ section('js stack', [], () => {
 
   console.log('\n▸ mnci add react-app web')
   run(`node ${CLI} add react-app web`, workspace)
+  enforceSliceExample('react-app', path.join(workspace, 'apps/web/src'), ['greeting/*.contract.ts', 'greeting/*.use-case.ts', 'greeting/*.use-case.spec.ts', 'greeting/*.component.tsx'])
 
   // A browser bundle inlines everything by default (same direction as a function
   // app's self-contained deploy), so wire the same private-lib + real-external
@@ -1287,6 +1313,7 @@ section('js stack', [], () => {
 
   console.log('\n▸ mnci add node-app svc')
   run(`node ${CLI} add node-app svc`, workspace)
+  enforceSliceExample('node-app', path.join(workspace, 'apps/svc/src'), ['hello/*.contract.ts', 'hello/*.use-case.ts', 'hello/*.use-case.spec.ts', 'hello/index.ts'])
 
   // @nx/node:application (--bundle=false) never inlines anything — every import
   // (workspace lib or npm package) stays a real `require`, resolved from
@@ -1312,6 +1339,7 @@ section('js stack', [], () => {
 
   console.log('\n▸ mnci add node-function-app api')
   run(`node ${CLI} add node-function-app api`, workspace)
+  enforceSliceExample('node-function-app', path.join(workspace, 'apps/api/src'), ['hello/*.contract.ts', 'hello/*.use-case.ts', 'hello/index.ts'])
 
   // The generator + overlay need no Azure Functions Core Tools at all (unlike
   // the removed @nxazure/func plugin, which shelled out to `func` even at
@@ -2082,6 +2110,7 @@ section('python', ['alt stack'], () => {
   run(`node ${CLI} add python-app pysvc`, altWorkspace)
   run(`node ${CLI} add python-function-app pyfunc`, altWorkspace)
   run(`node ${CLI} add python-lib pyshared`, altWorkspace)
+  enforceSliceExample('python-lib', path.join(altWorkspace, 'python-packages/pyshared'), ['**/*_contract.py', '**/*_use_case.py', '**/__init__.py'])
   run(`node ${CLI} add python-internal-lib pycore`, altWorkspace)
 
   const altPythonManifest = JSON.parse(
@@ -2116,6 +2145,16 @@ section('python', ['alt stack'], () => {
     pythonToolchainInstall.ok,
     pythonToolchainInstall.output,
   )
+
+  // `--empty` (#330): a bare package and one smoke test, which still lint and pass as generated.
+  run(`node ${CLI} add python-lib pybare --empty`, altWorkspace)
+  run(`node ${CLI} add python-function-app pyfn --empty`, altWorkspace)
+  enforceNoGreeting('python-lib', path.join(altWorkspace, 'python-packages/pybare'), /greet/i)
+  enforceNoGreeting('python-function-app', path.join(altWorkspace, 'apps/pyfn'), /greet/i)
+  if (pythonToolchainInstall.ok) {
+    const bareVerify = tryRunCapture('npx nx run-many -t lint,test --projects=pybare,pyfn', altWorkspace)
+    enforce('empty: the Python library and function app lint and pass their smoke test as generated', bareVerify.ok, bareVerify.output.slice(-2000))
+  }
 
   const pysharedProjectPath = path.join(altWorkspace, 'python-packages/pyshared/project.json')
   const pysharedProject = existsSync(pysharedProjectPath)
@@ -3410,6 +3449,62 @@ section('node esm apps', [], () => {
     skip('a CommonJS app loading an ESM-only library', `Node ${process.versions.node} has no unflagged require(esm); it arrives in 22.12`)
   }
 })
+section('empty scaffolds', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add <kind> --empty` (#330): every kind but container and vscode-extension
+   * can be scaffolded bare. What it must still be is a project that lints, tests and
+   * builds as generated, and one with no greeting in it. Each ecosystem is gated on its
+   * toolchain, like its own section.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'empties')
+  run(`node ${CLI} new empties --yes --registry npm --scope @bare`, temporary)
+
+  run(`node ${CLI} add react-app web --empty`, root)
+  run(`node ${CLI} add node-app plain --empty`, root)
+  run(`node ${CLI} add node-app xpress --framework express --empty`, root)
+  enforceNoGreeting('react-app', path.join(root, 'apps/web/src'), /greet/i)
+  enforceNoGreeting('node-app', path.join(root, 'apps/plain/src'), /greet/i)
+  const plainSources = findFiles(path.join(root, 'apps/plain/src'), name => name.endsWith('.ts'))
+  enforce('empty: node-app --empty has only its entry point as source', plainSources.join(',') === 'main.ts', plainSources.join(','))
+  const refused = tryRunCapture(`node ${CLI} add node-app nestling --framework nest --empty`, root)
+  enforce('empty: --empty is refused for a framework whose layout is mandated, naming the options', !refused.ok && /express, koa or none/.test(refused.output), refused.output.slice(-400))
+  const refusedContainer = tryRunCapture(`node ${CLI} add container img --app web --empty`, root)
+  enforce('empty: --empty is refused for a kind with no skeleton variant', !refusedContainer.ok && /--empty applies to/.test(refusedContainer.output), refusedContainer.output.slice(-400))
+  const jsVerify = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=web,plain,xpress', root)
+  enforce('empty: react-app and node-app lint, typecheck, test and build as generated', jsVerify.ok, jsVerify.output.slice(-2500))
+
+  if (hasGo()) {
+    run('git remote add origin https://github.com/mnci-e2e/empties.git', root)
+    run(`node ${CLI} add go-app gobare --empty`, root)
+    run(`node ${CLI} add go-lib golib --empty`, root)
+    enforceNoGreeting('go-app', path.join(root, 'apps/gobare'), /greet/i)
+    enforceNoGreeting('go-lib', path.join(root, 'packages/golib'), /greet/i)
+    enforce('empty: go-app --empty holds main.go and go.mod only', readdirSync(path.join(root, 'apps/gobare')).filter(name => name.endsWith('.go')).join(',') === 'main.go')
+    const goVerify = tryRunCapture('npx nx run-many -t test,build --projects=gobare,golib', root)
+    enforce('empty: the Go app and library test and build as generated', goVerify.ok, goVerify.output.slice(-2000))
+    if (hasGolangciLint()) {
+      const goLint = tryRunCapture('npx nx run-many -t lint --projects=gobare,golib', root)
+      enforce('empty: the Go app and library pass lint and the slice check as generated', goLint.ok, goLint.output.slice(-2000))
+    }
+  } else {
+    skip('empty: Go kinds', 'no Go toolchain')
+  }
+
+  if (hasDotnet()) {
+    run(`node ${CLI} add csharp-lib csbare --empty`, root)
+    run(`node ${CLI} add csharp-app csapp --empty`, root)
+    run(`node ${CLI} add csharp-function-app csfn --empty`, root)
+    enforceNoGreeting('csharp-lib', path.join(root, 'packages/csbare'), /greet/i)
+    enforceNoGreeting('csharp-function-app', path.join(root, 'apps/csfn'), /greet/i)
+    const csBuild = tryRunCapture('npx nx run-many -t build --projects=csbare,csapp,csfn,csbare-tests,csapp-tests,csfn-tests', root)
+    enforce('empty: the C# projects and their test projects build as generated', csBuild.ok, csBuild.output.slice(-2000))
+    const csTest = tryRunCapture('npx nx run-many -t test --projects=csbare-tests,csapp-tests,csfn-tests', root)
+    enforce('empty: the C# test projects pass their smoke test', csTest.ok, csTest.output.slice(-2000))
+  } else {
+    skip('empty: C# kinds', 'no .NET SDK')
+  }
+})
+
 section('react e2e project', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add react-app web --e2e` (#301): a paired Playwright project. What CI
@@ -3703,6 +3798,7 @@ section('csharp', ['alt stack'], () => {
     run(`node ${CLI} add csharp-app csapp`, altWorkspace)
     run(`node ${CLI} add csharp-internal-lib csutil`, altWorkspace)
     run(`node ${CLI} add csharp-lib cslib`, altWorkspace)
+    enforceSliceExample('csharp-lib', path.join(altWorkspace, 'packages/cslib'), ['Greeting.cs', 'GreetUseCase.cs'])
     run(`node ${CLI} add csharp-function-app csfn`, altWorkspace)
 
     // @nx/dotnet writes NO project.json at all — every target it contributes
@@ -3866,7 +3962,16 @@ section('flutter', [], () => {
     console.log('\n▸ mnci add flutter-app / flutter-lib / flutter-internal-lib')
     run(`node ${CLI} add flutter-app hello`, altWorkspace)
     run(`node ${CLI} add flutter-lib dartshared`, altWorkspace)
+    enforceSliceExample('flutter-lib', path.join(altWorkspace, 'packages/dartshared'), ['lib/src/**/greeting_contract.dart', 'lib/src/**/greet_use_case.dart', 'test/src/**/*_test.dart'])
     run(`node ${CLI} add flutter-internal-lib dartcore`, altWorkspace)
+
+    // `--empty` (#330): a bare entry and one smoke test, no counter sample, which still analyze and pass as generated.
+    run(`node ${CLI} add flutter-app fapp --empty`, altWorkspace)
+    run(`node ${CLI} add flutter-lib flib --empty`, altWorkspace)
+    enforceNoGreeting('flutter-lib', path.join(altWorkspace, 'packages/flib/lib'), /greet/i)
+    enforce('empty: flutter-app --empty has no counter sample', !readFileSync(path.join(altWorkspace, 'apps/fapp/lib/main.dart'), 'utf8').includes('Counter') && !existsSync(path.join(altWorkspace, 'apps/fapp/test/widget_test.dart')))
+    const dartBareVerify = tryRunCapture('npx nx run-many -t lint,test --projects=fapp,flib', altWorkspace)
+    enforce('empty: the Flutter app and library analyze and test as generated', dartBareVerify.ok, dartBareVerify.output.slice(-2000))
 
     const flutterManifest = JSON.parse(
       readFileSync(path.join(altWorkspace, 'package.json'), 'utf8'),

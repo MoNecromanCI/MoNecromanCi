@@ -6,7 +6,12 @@ import {
   type ProjectConfiguration,
   type Tree,
 } from '@nx/devkit'
-import { dartLibraryExampleFiles, dartLibraryPlaceholderFiles } from './dart-library-example.algorithm'
+import {
+  dartAppEmptyFiles,
+  dartLibraryEmptyFiles,
+  dartLibraryExampleFiles,
+  dartLibraryPlaceholderFiles,
+} from './dart-library-example.algorithm'
 import { dartPackageName } from './dart-package-name.algorithm'
 import { runFlutter } from './flutter.client'
 import { withWorkspaceResolution } from './pubspec.algorithm'
@@ -46,6 +51,8 @@ export interface FlutterProjectOptions {
   buildable?:   boolean
   /** Adds a project-level `versionActions` override so `nx release` can version it. */
   publishable?: boolean
+  /** Scaffolds with no sample code (`--empty`): a bare entry and one smoke test. */
+  empty?:       boolean
   /**
    * The `type:<kind>` tag recorded on the project.
    *
@@ -202,13 +209,20 @@ function flutterCreateTask (
 
     // `flutter create --template package` leaves a `Calculator`. A library gets a contract
     // and a use case instead; an app keeps Flutter's own counter sample.
+    const projectRoot = join(workspaceRoot, options.directory)
     if (!options.buildable) {
-      const projectRoot = join(workspaceRoot, options.directory)
       for (const placeholder of dartLibraryPlaceholderFiles(packageName)) {
         rmSync(join(projectRoot, placeholder), { force: true })
       }
-      const example = dartLibraryExampleFiles(packageName)
+      const example = options.empty ? dartLibraryEmptyFiles(packageName) : dartLibraryExampleFiles(packageName)
       for (const [relative, contents] of Object.entries(example)) {
+        mkdirSync(dirname(join(projectRoot, relative)), { recursive: true })
+        writeFileSync(join(projectRoot, relative), contents)
+      }
+    } else if (options.empty) {
+      // The counter sample and its widget test go; the entry point and one smoke test replace them.
+      rmSync(join(projectRoot, 'test/widget_test.dart'), { force: true })
+      for (const [relative, contents] of Object.entries(dartAppEmptyFiles())) {
         mkdirSync(dirname(join(projectRoot, relative)), { recursive: true })
         writeFileSync(join(projectRoot, relative), contents)
       }

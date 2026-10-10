@@ -183,7 +183,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
 
 /** The kinds a registry publishes: a workspace with no registry releases none of them. */
 const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
@@ -245,6 +245,12 @@ export async function runAdd (
   if (options.empty === true && !EMPTY_KINDS.has(resolvedKind)) {
     throw new Error(`--empty applies to ${[...EMPTY_KINDS].join(', ')}, not ${resolvedKind}.`)
   }
+  if (resolvedKind === 'node-app' && options.empty === true && (options.framework === 'fastify' || options.framework === 'nest')) {
+    throw new Error(`--empty is not supported with --framework ${options.framework}: its layout (autoloaded routes, controllers and modules) is mandated by the framework, so there is no bare variant. Use express, koa or none.`)
+  }
+  if (options.empty === true && options.web !== undefined) {
+    throw new Error('--empty and --web cannot be combined: --web writes the app\'s main.go and the embedded page itself.')
+  }
   if (options.esm === true) {
     if (resolvedKind !== 'node-app' && resolvedKind !== 'node-function-app') {
       throw new Error(`--esm applies to node-app and node-function-app, not ${resolvedKind}.`)
@@ -292,7 +298,7 @@ export async function runAdd (
 
   switch (resolvedKind) {
     case 'react-app': {
-      addReactApp(workspaceRoot, resolvedName, stack, options.e2e === true)
+      addReactApp(workspaceRoot, resolvedName, stack, options.e2e === true, options.empty === true)
       break
     }
     case 'react-lib': {
@@ -304,7 +310,7 @@ export async function runAdd (
       break
     }
     case 'node-app': {
-      addNodeApp(workspaceRoot, resolvedName, stack, options.framework, options.esm === true)
+      addNodeApp(workspaceRoot, resolvedName, stack, options.framework, options.esm === true, options.empty === true)
       break
     }
     case 'node-function-app': {
@@ -340,19 +346,19 @@ export async function runAdd (
       break
     }
     case 'python-app': {
-      addPythonApp(workspaceRoot, resolvedName)
+      addPythonApp(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'python-function-app': {
-      addPythonFunctionApp(workspaceRoot, resolvedName)
+      addPythonFunctionApp(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'python-lib': {
-      addPythonLib(workspaceRoot, resolvedName)
+      addPythonLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'python-internal-lib': {
-      addPythonInternalLib(workspaceRoot, resolvedName)
+      addPythonInternalLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'container': {
@@ -360,39 +366,39 @@ export async function runAdd (
       break
     }
     case 'go-app': {
-      addGoApp(workspaceRoot, resolvedName, { release: options.release, cgo: options.cgo, web: options.web })
+      addGoApp(workspaceRoot, resolvedName, { release: options.release, cgo: options.cgo, web: options.web, empty: options.empty === true })
       break
     }
     case 'go-function-app': {
-      addGoFunctionApp(workspaceRoot, resolvedName)
+      addGoFunctionApp(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'go-lib': {
-      addGoLib(workspaceRoot, resolvedName)
+      addGoLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'go-internal-lib': {
-      addGoInternalLib(workspaceRoot, resolvedName)
+      addGoInternalLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'flutter-app': {
-      addFlutterApp(workspaceRoot, resolvedName)
+      addFlutterApp(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'flutter-lib': {
-      addFlutterLib(workspaceRoot, resolvedName)
+      addFlutterLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'flutter-internal-lib': {
-      addFlutterInternalLib(workspaceRoot, resolvedName)
+      addFlutterInternalLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'csharp-app': {
-      addCsharpApp(workspaceRoot, resolvedName)
+      addCsharpApp(workspaceRoot, resolvedName, undefined, options.empty === true)
       break
     }
     case 'csharp-function-app': {
-      addCsharpFunctionApp(workspaceRoot, resolvedName)
+      addCsharpFunctionApp(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'csharp-lib': {
@@ -400,7 +406,7 @@ export async function runAdd (
       break
     }
     case 'csharp-internal-lib': {
-      addCsharpInternalLib(workspaceRoot, resolvedName)
+      addCsharpInternalLib(workspaceRoot, resolvedName, options.empty === true)
       break
     }
     case 'vscode-extension': {

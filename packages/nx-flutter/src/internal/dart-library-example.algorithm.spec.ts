@@ -1,4 +1,4 @@
-import { dartLibraryExampleFiles, dartLibraryPlaceholderFiles } from './dart-library-example.algorithm'
+import { dartAppEmptyFiles, dartLibraryEmptyFiles, dartLibraryExampleFiles, dartLibraryPlaceholderFiles } from './dart-library-example.algorithm'
 
 describe('dartLibraryExampleFiles', () => {
   const files = dartLibraryExampleFiles('core')
@@ -23,5 +23,31 @@ describe('dartLibraryExampleFiles', () => {
 
   it('replaces the placeholder test flutter create writes', () => {
     expect(dartLibraryPlaceholderFiles('core')).toEqual(['test/core_test.dart'])
+  })
+})
+
+describe('dartLibraryEmptyFiles', () => {
+  const files = dartLibraryEmptyFiles('core')
+
+  it('keeps the slice folder and its barrel with nothing exported, and one test', () => {
+    expect(Object.keys(files).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'lib/core.dart',
+      'lib/src/core/core.dart',
+      'test/src/core/core_test.dart',
+    ])
+    expect(files['lib/src/core/core.dart']).not.toContain('export')
+  })
+
+  it('has a test that imports nothing, so the analyser has no unused import to report', () => {
+    expect(files['test/src/core/core_test.dart']).not.toContain("import 'package:core")
+  })
+})
+
+describe('dartAppEmptyFiles', () => {
+  it('replaces the counter sample with an entry point that shows nothing, and one test', () => {
+    const files = dartAppEmptyFiles()
+
+    expect(Object.keys(files).toSorted((a, b) => a.localeCompare(b))).toEqual(['lib/main.dart', 'test/main_test.dart'])
+    expect(files['lib/main.dart']).toContain('SizedBox.shrink()')
   })
 })

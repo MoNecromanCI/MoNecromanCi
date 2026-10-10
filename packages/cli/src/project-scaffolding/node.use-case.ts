@@ -2,7 +2,7 @@ import { convertAppToEsm } from '../esm-conversion'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
-import { nodeAppExampleFiles } from './node-app-example.algorithm'
+import { nodeAppEmptyFiles, nodeAppExampleFiles } from './node-app-example.algorithm'
 import { logger } from '../terminal'
 import {
   addNxTargets,
@@ -221,6 +221,8 @@ function nodeAppPackageTarget (name: string): Record<string, unknown> {
  * @param name - The project name (already validated).
  * @param stack - The workspace's chosen linter/test runner.
  * @param framework - The HTTP framework to scaffold (defaults to `none`, a bare Node app).
+ * @param esm - Convert the app to ES modules (`--esm`).
+ * @param empty - Write only the entry point, no `hello` slice (`--empty`).
  * @returns Nothing.
  * @throws Error when the generator or a required install fails.
  * @typeParam None - this function has no generic type parameters.
@@ -231,12 +233,13 @@ export function addNodeApp (
   stack: WorkspaceStack,
   framework: NodeFramework = 'none',
   esm = false,
+  empty = false,
 ): void {
   runNodeApp(workspaceRoot, name, stack, framework)
   // A `hello` slice (use case + contract + spec, and a handler where the framework has
   // a transport) replaces the generator's one-file sample. Fastify and Nest keep the
   // layout their framework mandates.
-  const example = nodeAppExampleFiles(framework)
+  const example = empty ? nodeAppEmptyFiles(framework) : nodeAppExampleFiles(framework)
   if (example !== null) {
     for (const [relative, contents] of Object.entries(example)) {
       writeFileEnsured(join(workspaceRoot, 'apps', name, 'src', relative), contents)
@@ -248,6 +251,8 @@ export function addNodeApp (
   ensureAdmZip(workspaceRoot)
   addNxTargets(join(workspaceRoot, 'apps', name, 'package.json'), {
     package: nodeAppPackageTarget(name),
+    // With no spec the runner exits non-zero; an empty scaffold must still pass `nx test`.
+    ...(empty && { test: { options: { passWithNoTests: true } } }),
   })
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
   registerProjectCommands(workspaceRoot, name, {

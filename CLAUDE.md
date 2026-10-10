@@ -534,9 +534,8 @@ Flutter app keeps `flutter create`'s own counter sample. The Go kinds (`go-examp
 library's starter slice (the use case keeps its `<stem>_use_case.go` name, which the e2e's
 `affected` checks use) and, for apps, a `hello` package behind a `main.go` that only wires
 (skipped under `--web`, which replaces `main.go`). No slice lint covers C# or Flutter (#232; Go has `slice-check`), so their layout is
-not enforced anywhere. Still open on
-#290 (see #330): `--empty` for the kinds other than the
-TypeScript libraries and `node-function-app`, and e2e assertions for the skeletons.
+not enforced anywhere. The e2e asserts, for one kind per family (react-app, node-app, node-function-app, python-lib, csharp-lib, flutter-lib), that the generated
+project holds the roles of its worked example (`enforceSliceExample`, #330), and the `empty scaffolds` section that every `--empty` variant lints, tests and builds as generated.
 
 The default `npm-lib`/`internal-lib` scaffold is a **worked example of two roles**
 (`writeWorkedExample`): `<name>.contract.ts` (a `Greeting`), `<name>.use-case.ts`
@@ -550,7 +549,14 @@ already a realistic front-end example.
 keeps the slice folder with only an `index.ts` (`export {}`) and drops the sample and
 its spec. With no spec the runner exits non-zero, so it also sets
 `nx.targets.test.options.passWithNoTests` (Nx turns that into
-`jest --passWithNoTests=true`). The flag is refused on any other kind, not ignored.
+`jest --passWithNoTests=true`). The flag is refused on `container` and `vscode-extension`, not ignored (#330 extended it to every other kind).
+What bare means differs by kind, and each is the smallest thing that still builds and tests: `react-app` renders an empty `main` (`app/` slice and its spec only);
+`node-app` keeps `main.ts` alone (`export {}`, or the Express/Koa server with no route; **refused for Fastify and Nest**, whose mandated layout has no bare
+variant, and with `--web` on a Go app, which writes `main.go` itself); `go-app`/`go-function-app` get a `main.go` that does nothing and the libraries a
+`doc.go` slice package; the four Python kinds an empty `__init__.py` (`__all__: list[str] = []`) and one import smoke test, because pytest exits 5 on no tests;
+the four C# kinds no example types (a class library has no source file, an app keeps the template's `Program.cs`, the function app has no `Hello.cs`) and one
+`SmokeTests.cs` in the xunit project; Flutter libraries a barrel with nothing exported and an import-free test, the app an entry point showing a
+`SizedBox.shrink()` and one test in place of the counter sample. The plugins take it as an `--empty` generator option (`@mnci/nx-python-pip`, `@mnci/nx-flutter`).
 
 Two traps from doing it: Nx writes **double quotes and semicolons** and the formatter
 only normalises them after the reshape runs, so a specifier rewrite must match both

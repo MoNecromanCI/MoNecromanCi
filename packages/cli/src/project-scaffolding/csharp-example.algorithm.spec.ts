@@ -1,4 +1,4 @@
-import { csharpConsoleProgram, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
+import { csharpConsoleProgram, csharpEmptyTest, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
 
 describe('csharpExampleFiles', () => {
   const files = csharpExampleFiles('Demo.Sdk')
@@ -30,5 +30,12 @@ describe('csharpExampleTest', () => {
     expect(test).toContain('using Demo.Sdk;')
     expect(test).toContain('[Fact]')
     expect(test).toContain('Hello, world!')
+  })
+})
+
+describe('csharpEmptyTest', () => {
+  it('is one smoke test that names no example type', () => {
+    expect(csharpEmptyTest()).toContain('[Fact]')
+    expect(csharpEmptyTest()).not.toContain('GreetUseCase')
   })
 })

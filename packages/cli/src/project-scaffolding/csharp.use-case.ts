@@ -4,7 +4,7 @@ import { runShell } from '../nx-workspace'
 import { DOTNET_SDK_VERSION, NUGET_AZURE_SOURCE, nugetConfigContent, readMnciConfig } from '../workspace-overlay'
 import { promptText } from '../terminal'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
-import { csharpConsoleProgram, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
+import { csharpConsoleProgram, csharpEmptyTest, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
 import { logger } from '../terminal'
 import {
   addProjectJsonTargets,
@@ -152,6 +152,7 @@ function scaffoldDotnetProject (
  * @param absoluteRoot - Absolute path to the scaffolded project.
  * @param identity - The project's PascalCase identity, which is its root namespace.
  * @param kind - Whether the project is a class library or an app built from the given template.
+ * @param empty - Write no example types (`--empty`): a library holds no source file, an app keeps its template entry point.
  * @returns Nothing.
  * @throws Propagates any `fs` error writing or removing the files.
  * @typeParam None - this function has no generic type parameters.
@@ -160,9 +161,14 @@ function writeCsharpExample (
   absoluteRoot: string,
   identity: string,
   kind: 'classlib' | DotnetTemplate,
+  empty = false,
 ): void {
   if (kind === 'classlib') {
     rmSync(join(absoluteRoot, 'Class1.cs'), { force: true })
+  }
+  if (empty) {
+    // `--empty`: the template's own entry point stays (a console app's Program.cs), and the example types are not written.
+    return
   }
   const files = csharpExampleFiles(identity)
   for (const [file, contents] of Object.entries(files)) {
@@ -189,16 +195,21 @@ function writeCsharpExample (
  * @param workspaceRoot - Absolute path to the workspace.
  * @param projectRoot - Workspace-relative directory of the project under test.
  * @param identity - The project under test's PascalCase identity.
+ * @param empty - Write one smoke test instead of the example's test (`--empty`).
  * @returns Nothing.
  * @throws Error when `dotnet new xunit` or `dotnet add reference` fails.
  * @typeParam None - this function has no generic type parameters.
  */
-function addCsharpTestProject (workspaceRoot: string, projectRoot: string, identity: string): void {
+function addCsharpTestProject (workspaceRoot: string, projectRoot: string, identity: string, empty = false): void {
   const name = basename(projectRoot)
   const testRoot = `tests/${name}`
   scaffoldDotnetProject(workspaceRoot, testRoot, `${identity}.Tests`, 'xunit')
   rmSync(join(workspaceRoot, testRoot, 'UnitTest1.cs'), { force: true })
-  writeFileEnsured(join(workspaceRoot, testRoot, 'GreetUseCaseTests.cs'), csharpExampleTest(identity))
+  if (empty) {
+    writeFileEnsured(join(workspaceRoot, testRoot, 'SmokeTests.cs'), csharpEmptyTest())
+  } else {
+    writeFileEnsured(join(workspaceRoot, testRoot, 'GreetUseCaseTests.cs'), csharpExampleTest(identity))
+  }
   writeFileEnsured(
     join(workspaceRoot, testRoot, 'project.json'),
     toJson({ name: `${name}-tests`, tags: ['type:csharp-test'] }),
@@ -345,6 +356,7 @@ export function addCsharpDevTargets (workspaceRoot: string): string[] {
  * @param name - The project name (already validated).
  * @param template - The `dotnet new` template (defaults to a bare console app,
  * mirroring `node-app`'s `none`-by-default framework choice).
+ * @param empty - Scaffold with no example types and one smoke test (`--empty`).
  * @returns Nothing.
  * @throws Error when the SDK is missing, or the plugin install/scaffold fails.
  * @typeParam None - this function has no generic type parameters.
@@ -353,6 +365,7 @@ export function addCsharpApp (
   workspaceRoot: string,
   name: string,
   template: DotnetTemplate = 'console',
+  empty = false,
 ): void {
   ensureDotnet(workspaceRoot)
   ensurePlugin(workspaceRoot, '@nx/dotnet')
@@ -360,8 +373,8 @@ export function addCsharpApp (
 
   const projectRoot = `apps/${name}`
   scaffoldDotnetProject(workspaceRoot, projectRoot, pascalCase(name), template)
-  writeCsharpExample(join(workspaceRoot, projectRoot), pascalCase(name), template)
-  addCsharpTestProject(workspaceRoot, projectRoot, pascalCase(name))
+  writeCsharpExample(join(workspaceRoot, projectRoot), pascalCase(name), template, empty)
+  addCsharpTestProject(workspaceRoot, projectRoot, pascalCase(name), empty)
   addProjectJsonTargets(join(workspaceRoot, projectRoot, 'project.json'), {
     package: csharpAppPackageTarget('csharp-app', projectRoot, name),
     start:   csharpAppStartTarget(projectRoot),
@@ -731,8 +744,8 @@ export async function addCsharpLib (
   const projectRoot = `packages/${name}`
   const identity = `${pascalScope(scope)}.${pascalCase(name)}`
   scaffoldDotnetProject(workspaceRoot, projectRoot, identity, 'classlib')
-  writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib')
-  addCsharpTestProject(workspaceRoot, projectRoot, identity)
+  writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib', options.empty === true)
+  addCsharpTestProject(workspaceRoot, projectRoot, identity, options.empty === true)
   addInitialVersion(join(workspaceRoot, projectRoot, `${identity}.csproj`))
   writeCsharpVersionActions(workspaceRoot)
   addProjectJsonReleaseVersionActions(join(workspaceRoot, projectRoot, 'project.json'))
@@ -775,15 +788,15 @@ export async function addCsharpLib (
  * @throws Error when the SDK is missing, or the plugin install/scaffold fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addCsharpInternalLib (workspaceRoot: string, name: string): void {
+export function addCsharpInternalLib (workspaceRoot: string, name: string, empty = false): void {
   ensureDotnet(workspaceRoot)
   ensurePlugin(workspaceRoot, '@nx/dotnet')
 
   const projectRoot = `libs/${name}`
   const identity = pascalCase(name)
   scaffoldDotnetProject(workspaceRoot, projectRoot, identity, 'classlib')
-  writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib')
-  addCsharpTestProject(workspaceRoot, projectRoot, identity)
+  writeCsharpExample(join(workspaceRoot, projectRoot), identity, 'classlib', empty)
+  addCsharpTestProject(workspaceRoot, projectRoot, identity, empty)
   registerProjectCommands(workspaceRoot, name, { build: false })
   logger.step(
     `Reference it from a consumer with: dotnet add <consumer>.csproj reference ${projectRoot}/${identity}.csproj`,
@@ -981,7 +994,7 @@ function csharpFunctionAppStartTarget (projectRoot: string): Record<string, unkn
  * @throws Error when the SDK is missing, or the plugin/scaffold/restore fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addCsharpFunctionApp (workspaceRoot: string, name: string): void {
+export function addCsharpFunctionApp (workspaceRoot: string, name: string, empty = false): void {
   ensureDotnet(workspaceRoot)
   ensurePlugin(workspaceRoot, '@nx/dotnet')
   ensureAdmZip(workspaceRoot)
@@ -993,18 +1006,20 @@ export function addCsharpFunctionApp (workspaceRoot: string, name: string): void
   const absoluteRoot = join(workspaceRoot, projectRoot)
   writeFileEnsured(join(absoluteRoot, `${identity}.csproj`), csharpFunctionAppCsproj())
   writeFileEnsured(join(absoluteRoot, 'Program.cs'), CSHARP_FUNCTION_APP_PROGRAM)
-  writeFileEnsured(join(absoluteRoot, 'Hello.cs'), csharpFunctionAppHello(identity))
-  // The handler adapts the transport; the use case and its contract are the example.
-  const example = csharpExampleFiles(identity)
-  for (const [file, contents] of Object.entries(example)) {
-    writeFileEnsured(join(absoluteRoot, file), contents)
+  if (!empty) {
+    writeFileEnsured(join(absoluteRoot, 'Hello.cs'), csharpFunctionAppHello(identity))
+    // The handler adapts the transport; the use case and its contract are the example.
+    const example = csharpExampleFiles(identity)
+    for (const [file, contents] of Object.entries(example)) {
+      writeFileEnsured(join(absoluteRoot, file), contents)
+    }
   }
   writeFileEnsured(join(absoluteRoot, 'host.json'), CSHARP_FUNCTION_APP_HOST_JSON)
 
   if (runShell('dotnet', ['restore', projectRoot], workspaceRoot) !== 0) {
     throw new Error(`dotnet restore failed for ${projectRoot}`)
   }
-  addCsharpTestProject(workspaceRoot, projectRoot, identity)
+  addCsharpTestProject(workspaceRoot, projectRoot, identity, empty)
 
   addProjectJsonTargets(join(absoluteRoot, 'project.json'), {
     package: csharpAppPackageTarget('csharp-function-app', projectRoot, name),

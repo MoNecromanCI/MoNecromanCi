@@ -93,6 +93,40 @@ describe('App', () => {
 }
 
 /**
+ * What `mnci add react-app --empty` writes over Nx's welcome page: the `app` slice only.
+ *
+ * @remarks
+ * No feature and no greeting: `App` renders an empty `main` and its spec checks that it renders. `main.tsx` still imports
+ * `App` from `app/`, so the app builds, runs and tests as it is, and a feature folder is the first thing you add (#330).
+ *
+ * @param None - this function takes no parameters.
+ * @returns The files to write, keyed by path under `src/`.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function reactAppEmptyFiles (): Record<string, string> {
+  return {
+    'app/app.component.tsx': `export function App () {
+  return <main />
+}
+
+export default App
+`,
+    'app/app.component.spec.tsx': `import { render } from '@testing-library/react'
+
+import App from './app.component'
+
+describe('App', () => {
+  it('should render successfully', () => {
+    const { baseElement } = render(<App />)
+    expect(baseElement).toBeTruthy()
+  })
+})
+`,
+  }
+}
+
+/**
  * The end-to-end test of a React app's paired Playwright project.
  *
  * @remarks
@@ -100,11 +134,22 @@ describe('App', () => {
  * feature does not render. This checks what the app does show: the greeting for its own name.
  *
  * @param name - The React app's project name, which is also the name it greets.
+ * @param empty - The app was scaffolded with `--empty`: it greets no one, so the test only checks the page renders.
  * @returns The text of `src/greeting.e2e.spec.ts`.
  * @throws Never - pure.
  * @typeParam None - this function has no generic type parameters.
  */
-export function reactAppE2eSpec (name: string): string {
+export function reactAppE2eSpec (name: string, empty = false): string {
+  if (empty) {
+    return `import { expect, test } from '@playwright/test'
+
+test('renders the app', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('main')).toBeAttached()
+})
+`
+  }
+
   return `import { expect, test } from '@playwright/test'
 
 test('shows the greeting', async ({ page }) => {

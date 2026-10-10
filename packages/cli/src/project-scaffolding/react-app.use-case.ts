@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { separateReactAppOutput } from '../react-app-output'
-import { reactAppE2eSpec, reactAppExampleFiles, withNodeTypes } from './react-app-example.algorithm'
+import { reactAppE2eSpec, reactAppEmptyFiles, reactAppExampleFiles, withNodeTypes } from './react-app-example.algorithm'
 import {
   addNxTargets,
   ensureAdmZip,
@@ -142,7 +142,7 @@ function allowEnvFiles (workspaceRoot: string): void {
  * @throws Error when the generator or a required install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addReactApp (workspaceRoot: string, name: string, stack: WorkspaceStack, e2e = false): void {
+export function addReactApp (workspaceRoot: string, name: string, stack: WorkspaceStack, e2e = false, empty = false): void {
   ensurePlugin(workspaceRoot, '@nx/react')
   runNx(
     [
@@ -172,7 +172,7 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
   // Nx's 850-line welcome page is a demo, not a template. A greeting feature (contract,
   // use case, component, specs) composed by App replaces it.
   rmSync(join(reactAppRoot, 'src/app/nx-welcome.component.tsx'), { force: true })
-  const example = reactAppExampleFiles(name)
+  const example = empty ? reactAppEmptyFiles() : reactAppExampleFiles(name)
   for (const [relative, contents] of Object.entries(example)) {
     writeFileEnsured(join(reactAppRoot, 'src', relative), contents)
   }
@@ -186,7 +186,7 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
     dev:      `nx run ${name}:serve`,
   })
   if (e2e) {
-    pairE2eProject(workspaceRoot, name)
+    pairE2eProject(workspaceRoot, name, empty)
   }
 }
 
@@ -205,11 +205,11 @@ export function addReactApp (workspaceRoot: string, name: string, stack: Workspa
  * @throws Propagates any `fs` error.
  * @typeParam None - this function has no generic type parameters.
  */
-function pairE2eProject (workspaceRoot: string, name: string): void {
+function pairE2eProject (workspaceRoot: string, name: string, empty: boolean): void {
   const e2eName = `${name}-e2e`
   const e2eRoot = join(workspaceRoot, 'apps', e2eName)
   rmSync(join(e2eRoot, 'src/example.spec.ts'), { force: true })
-  writeFileEnsured(join(e2eRoot, 'src/greeting.e2e.spec.ts'), reactAppE2eSpec(name))
+  writeFileEnsured(join(e2eRoot, 'src/greeting.e2e.spec.ts'), reactAppE2eSpec(name, empty))
   // Its config file needs Node's types, which a project only gets by naming them (#410).
   const tsconfigPath = join(e2eRoot, 'tsconfig.json')
   if (fileExists(tsconfigPath)) {

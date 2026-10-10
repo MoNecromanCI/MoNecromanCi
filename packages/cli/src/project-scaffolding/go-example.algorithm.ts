@@ -85,6 +85,23 @@ export function goLibraryExampleFiles (packageName: string, fileStem: string): R
 }
 
 /**
+ * What `mnci add go-app --empty` writes: a `main.go` that does nothing yet.
+ *
+ * @remarks
+ * No `hello` package and no test; the app builds and runs as it is (#330). `go test ./...` reports no test files and passes.
+ *
+ * @param None - this function takes no parameters.
+ * @returns The files to write, keyed by path relative to the app.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function goAppEmptyFiles (): Record<string, string> {
+  return {
+    'main.go': ['package main', '', 'func main() {}', ''].join('\n'),
+  }
+}
+
+/**
  * The worked example for a Go app, as paths under the app's directory to contents.
  *
  * @remarks

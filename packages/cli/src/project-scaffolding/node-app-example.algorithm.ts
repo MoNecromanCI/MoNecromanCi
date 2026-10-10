@@ -33,6 +33,61 @@ const SLICE: Record<string, string> = {
 }
 
 /**
+ * What `mnci add node-app --empty` writes, as paths under `src/` to contents: the entry point and nothing else.
+ *
+ * @remarks
+ * `none` gets an empty module, `express` and `koa` the server bootstrap with no route or middleware, so the app builds,
+ * starts and answers (404) as it is, and the first slice is yours to add (#330). `fastify` and `nest` return `null`: their
+ * layout is mandated by the framework, so there is no bare variant of it to write.
+ *
+ * @param framework - The HTTP framework the app was scaffolded with.
+ * @returns The files to write, or `null` when the framework's own layout cannot be made bare.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function nodeAppEmptyFiles (framework: NodeFramework): Record<string, string> | null {
+  switch (framework) {
+    case 'none': {
+      return { 'main.ts': 'export {}\n' }
+    }
+    case 'express': {
+      return {
+        'main.ts': `import express from 'express'
+
+const host = process.env.HOST ?? 'localhost'
+const port = process.env.PORT ? Number(process.env.PORT) : 3000
+
+const app = express()
+
+app.listen(port, host, () => {
+  console.log('[ ready ] http://' + host + ':' + String(port))
+})
+`,
+      }
+    }
+    case 'koa': {
+      return {
+        'main.ts': `import Koa from 'koa'
+
+const host = process.env.HOST ?? 'localhost'
+const port = process.env.PORT ? Number(process.env.PORT) : 3000
+
+const app = new Koa()
+
+app.listen(port, host, () => {
+  console.log('[ ready ] http://' + host + ':' + String(port))
+})
+`,
+      }
+    }
+    case 'fastify':
+    case 'nest': {
+      return null
+    }
+  }
+}
+
+/**
  * The worked example `mnci add node-app` writes, as paths under `src/` to contents.
  *
  * @remarks

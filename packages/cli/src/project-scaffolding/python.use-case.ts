@@ -409,7 +409,7 @@ function pythonFunctionAppPackageTarget (
  * @throws Error when Python is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addPythonApp (workspaceRoot: string, name: string): void {
+export function addPythonApp (workspaceRoot: string, name: string, empty = false): void {
   ensurePython(workspaceRoot)
   ensurePythonPipPlugin(workspaceRoot)
   ensureRequirementsDev(workspaceRoot)
@@ -417,7 +417,7 @@ export function addPythonApp (workspaceRoot: string, name: string): void {
   ensureAdmZip(workspaceRoot)
 
   runNx(
-    ['g', '@mnci/nx-python-pip:application', name, `--directory=apps/${name}`, '--no-interactive'],
+    ['g', '@mnci/nx-python-pip:application', name, `--directory=apps/${name}`, '--no-interactive', ...(empty ? ['--empty'] : [])],
     workspaceRoot,
   )
   writeFileEnsured(join(workspaceRoot, 'apps', name, 'main.py'), pythonAppMain(name))
@@ -443,7 +443,7 @@ export function addPythonApp (workspaceRoot: string, name: string): void {
  * @throws Error when Python is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addPythonFunctionApp (workspaceRoot: string, name: string): void {
+export function addPythonFunctionApp (workspaceRoot: string, name: string, empty = false): void {
   ensurePython(workspaceRoot)
   ensurePythonPipPlugin(workspaceRoot)
   ensureRequirementsDev(workspaceRoot)
@@ -456,6 +456,7 @@ export function addPythonFunctionApp (workspaceRoot: string, name: string): void
       name,
       `--directory=apps/${name}`,
       '--no-interactive',
+      ...(empty ? ['--empty'] : []),
     ],
     workspaceRoot,
   )
@@ -482,7 +483,7 @@ export function addPythonFunctionApp (workspaceRoot: string, name: string): void
  * @throws Error when Python is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addPythonLib (workspaceRoot: string, name: string): void {
+export function addPythonLib (workspaceRoot: string, name: string, empty = false): void {
   ensurePython(workspaceRoot)
   ensurePythonPipPlugin(workspaceRoot)
   ensureRequirementsDev(workspaceRoot)
@@ -494,6 +495,7 @@ export function addPythonLib (workspaceRoot: string, name: string): void {
       name,
       `--directory=python-packages/${name}`,
       '--no-interactive',
+      ...(empty ? ['--empty'] : []),
     ],
     workspaceRoot,
   )
@@ -515,7 +517,7 @@ export function addPythonLib (workspaceRoot: string, name: string): void {
  * @throws Error when Python is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addPythonInternalLib (workspaceRoot: string, name: string): void {
+export function addPythonInternalLib (workspaceRoot: string, name: string, empty = false): void {
   ensurePython(workspaceRoot)
   ensurePythonPipPlugin(workspaceRoot)
   ensureRequirementsDev(workspaceRoot)
@@ -527,6 +529,7 @@ export function addPythonInternalLib (workspaceRoot: string, name: string): void
       name,
       `--directory=libs/${name}`,
       '--no-interactive',
+      ...(empty ? ['--empty'] : []),
     ],
     workspaceRoot,
   )

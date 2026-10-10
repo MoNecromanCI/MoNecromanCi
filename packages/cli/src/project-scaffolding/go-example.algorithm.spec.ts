@@ -1,4 +1,4 @@
-import { goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
+import { goAppEmptyFiles, goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
 
 describe('goLibraryExampleFiles', () => {
   const files = goLibraryExampleFiles('markdownworkspace', 'markdown_workspace')
@@ -43,5 +43,12 @@ describe('goAppExampleFiles', () => {
       'main.go',
     ]))
     expect(files['hello/greet_use_case.go']).toMatch(/^package hello$/m)
+  })
+})
+
+describe('goAppEmptyFiles', () => {
+  it('is a main.go that does nothing and no package or test', () => {
+    expect(Object.keys(goAppEmptyFiles())).toEqual(['main.go'])
+    expect(goAppEmptyFiles()['main.go']).toContain('func main() {}')
   })
 })
