@@ -190,6 +190,44 @@ expect(run.calls.map(c => c.name)).toEqual(['FetchArticle'])   // order matters
 Stated rather than discovered later: timers complete immediately, so a retry's
 back-off is not observable.
 
+## Entities
+
+A durable entity is a named piece of state with operations. `defineEntity` registers it and keeps
+its state and operation types, so a caller is checked against what each operation declares.
+
+```ts
+const counter = defineEntity('Counter', {
+  initialState: () => 0,
+  operations: {
+    add: (state: number, amount: number) => ({ state: state + amount, result: state + amount }),
+    reset: (_state: number, _input: undefined) => ({ state: 0 }),
+  },
+})
+
+// in an orchestration
+signalEntity(context, counter, 'visits', 'reset', undefined)           // sent, not awaited
+const total = yield * callEntity(context, counter, 'visits', 'add', 2) // total: number
+
+// in a client (HTTP or queue trigger)
+await signalEntityFromClient(client, counter, 'visits', 'add', 10)
+const state = await readEntityState(client, counter, 'visits')         // number | undefined
+```
+
+- An operation returns `{ state, result?, destroy? }`. The state is explicit because a counter is a
+  bare number and cannot be mutated in place; `destroy` deletes the entity when the operation ends.
+- `entityTask` is the un-yielded form of `callEntity`, for `all` and `any`.
+- The entity name is a literal and is **global to the Function App along with every function name,
+  compared without regard to case**: an HTTP function called `counter` beside an entity called
+  `Counter` stops the host at startup (measured).
+- Test an entity with `runEntity(entity, [{ operation: 'add', input: 2 }])`, which drives its real
+  handler and reports the state and each step's result. Test an orchestration that calls one with the
+  `entities` stub of `runWorkflow`, keyed `<entity>.<operation>`; `calls` records each call with its
+  `entityKey`, and a signal with `signal: true`.
+- Run on a real host (Core Tools and Azurite): an orchestration's signal and call, a client signal,
+  `readEntityState` and `destroy` all behave as typed (`test/real-host`).
+- Not covered: entity locks (`context.df.lock`), signalling another entity from inside an operation,
+  a scheduled signal time, and entities in the harness's `Task.any` races.
+
 ## Lint rules
 
 ```js
@@ -228,4 +266,4 @@ type information the rule deliberately does not depend on.
   generators.
 - **Not a fork or a patch.** Every call goes through the public SDK surface;
   nothing here reads an undocumented internal.
-- **Entity functions are not covered.**
+- **Entity locks and entity-to-entity signals are not covered.** See Entities.

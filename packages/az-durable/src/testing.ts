@@ -1,4 +1,6 @@
 import type { OrchestrationContext, Task } from 'durable-functions'
+import type { EntityContext } from 'durable-functions'
+import type { EntityOperations, TypedEntity } from './entity.js'
 import type { TypedOrchestration } from './types.js'
 
 /**
@@ -14,9 +16,13 @@ import type { TypedOrchestration } from './types.js'
  */
 export interface RecordedCall {
   /** The activity or orchestration name, as scheduled. */
-  readonly name:  string
+  readonly name:       string
   /** The input it was scheduled with. */
-  readonly input: unknown
+  readonly input:      unknown
+  /** For an entity call or signal, the key of the entity instance it went to. */
+  readonly entityKey?: string
+  /** True for `signalEntity`: sent, not awaited, so no stub is consulted. */
+  readonly signal?:    boolean
   /**
    * How many attempts the call made, present only when it was scheduled with a retry policy.
    *
@@ -24,7 +30,7 @@ export interface RecordedCall {
    * A stub that keeps returning an `Error` is called `maxNumberOfAttempts` times and then throws inside the
    * orchestration; one that succeeds on the third try reports `3`.
    */
-  attempts?:      number
+  attempts?:           number
 }
 
 /**
@@ -55,6 +61,14 @@ export interface WorkflowStub {
    * retry-exhaustion paths become testable.
    */
   readonly activities:  Record<string, (input: unknown) => StubResult>
+  /**
+   * Result per entity operation, keyed `<entity name>.<operation>`, called with the input and the entity key.
+   *
+   * @remarks
+   * Optional: only an orchestration that waits on `callEntity` needs it. An `Error` made throws inside the
+   * orchestration, as for an activity. To test the entity itself, use {@link runEntity}.
+   */
+  readonly entities?:   Record<string, (input: unknown, key: string) => StubResult>
   /** Fixed clock, so time-dependent output is deterministic. Defaults to the epoch. */
   readonly now?:        Date
   /** Instance id the orchestration sees. Defaults to `test-instance`. */
@@ -122,15 +136,17 @@ interface ThrowRequest {
 
 /** A task the fake context hands back; carries what was scheduled. */
 interface FakeTask extends Task {
-  readonly __name:    string
-  readonly __input:   unknown
+  readonly __name:       string
+  /** Present on an entity call: the key of the instance. */
+  readonly __entityKey?: string
+  readonly __input:      unknown
   /** Total attempts a retry policy allows; absent when the call has none. */
-  readonly __retry?:  number
+  readonly __retry?:     number
   /** The recorded call, so the attempts made can be written onto it. */
-  readonly __record?: RecordedCall
+  readonly __record?:    RecordedCall
   /** Present on timers only. Set by `cancel()`. */
-  isCanceled?:        boolean
-  cancel?:            () => void
+  isCanceled?:           boolean
+  cancel?:               () => void
 }
 
 /**
@@ -175,8 +191,10 @@ export function runWorkflow<TInput, TOutput> (
   let continuedAsNew: TInput | undefined
   const clock = stub.now ?? new Date(0)
 
-  const schedule = (name: string, scheduledInput: unknown, retry?: unknown): FakeTask => {
-    const record: RecordedCall = { name, input: scheduledInput }
+  const schedule = (name: string, scheduledInput: unknown, retry?: unknown, entityKey?: string): FakeTask => {
+    const record: RecordedCall = entityKey === undefined
+      ? { name, input: scheduledInput }
+      : { name, input: scheduledInput, entityKey }
     calls.push(record)
     const attempts = (retry as { maxNumberOfAttempts?: unknown } | undefined)?.maxNumberOfAttempts
 
@@ -185,6 +203,7 @@ export function runWorkflow<TInput, TOutput> (
       isFaulted:   false,
       __name:      name,
       __input:     scheduledInput,
+      ...(entityKey !== undefined && { __entityKey: entityKey }),
       ...((typeof attempts === 'number') && { __retry: attempts, __record: record }),
     }
   }
@@ -200,11 +219,16 @@ export function runWorkflow<TInput, TOutput> (
       callSubOrchestratorWithRetry: (name: string, retry: unknown, i: unknown) =>
         schedule(name, i, retry),
       waitForExternalEvent: (name: string) => schedule(name, undefined),
+      callEntity:           (id: { name: string, key: string }, operation: string, i: unknown) =>
+        schedule(`${id.name}.${operation}`, i, undefined, id.key),
+      signalEntity: (id: { name: string, key: string }, operation: string, i: unknown) => {
+        calls.push({ name: `${id.name}.${operation}`, input: i, entityKey: id.key, signal: true })
+      },
       // Timers complete immediately: there is no real time to wait for, and a
       // harness that blocked on one would be useless. `cancel` is real,
       // because an orchestration that correctly cancels its losing timer must
       // not crash in a test for doing the right thing.
-      createTimer:          (fireAt: Date) => {
+      createTimer: (fireAt: Date) => {
         const timer = schedule('__timer', fireAt.toISOString())
         timer.isCanceled = false
         timer.cancel = () => {
@@ -269,9 +293,18 @@ function resolve (task: Task, stub: WorkflowStub): unknown {
   if (race !== undefined) {
     return resolveRace(race, stub)
   }
-  const { __name: name, __input: input, __retry: retry, __record: record } = task as FakeTask
+  const { __name: name, __input: input, __retry: retry, __record: record, __entityKey: entityKey } = task as FakeTask
   if (name === '__timer') {
     return undefined
+  }
+  const entityStub = entityKey === undefined ? undefined : stub.entities?.[name]
+  if (entityKey !== undefined) {
+    if (entityStub === undefined) {
+      throw new Error(`No stub registered for entity operation '${name}'. Add it to stub.entities to run this workflow.`)
+    }
+    const outcome = entityStub(input, entityKey)
+
+    return outcome instanceof Error ? { __throw: outcome } : outcome
   }
   const activity = stub.activities[name]
   if (activity === undefined) {
@@ -348,4 +381,93 @@ function resolveRace (candidates: Task[], stub: WorkflowStub): Task {
  */
 function isThrowRequest (value: unknown): value is ThrowRequest {
   return typeof value === 'object' && value !== null && '__throw' in value
+}
+
+/**
+ * One operation to run against an entity: its name and input.
+ *
+ * @remarks
+ * The step list of {@link runEntity}.
+ *
+ * @typeParam None - this interface has no generic type parameters.
+ */
+export interface EntityStep {
+  /** The operation name. */
+  readonly operation: string
+  /** The input the operation receives. */
+  readonly input?:    unknown
+}
+
+/**
+ * What {@link runEntity} reports.
+ *
+ * @remarks
+ * Results are positional, one per step run.
+ *
+ * @typeParam TState - The entity's state type.
+ */
+export interface EntityRun<TState> {
+  /** The state after the last step, or `undefined` when an operation destroyed the entity. */
+  readonly state:     TState | undefined
+  /** The result of each step, in order (`undefined` for a step that returned none). */
+  readonly results:   unknown[]
+  /** True when an operation asked for the entity to be deleted. */
+  readonly destroyed: boolean
+}
+
+/**
+ * Runs an entity's operations in order against a fake entity context, with no Azure running.
+ *
+ * @remarks
+ * The entity's real handler is driven, so a missing operation, the initial state and the result hand-back behave as on
+ * the host. Each step sees the state the previous one stored. Signalling another entity from inside an operation is not
+ * part of this package's entity API, so it is not simulated.
+ *
+ * @param entity - The entity to run.
+ * @param steps - The operations to run, in order.
+ * @param initial - A state to start from instead of the entity's initial state.
+ * @returns The final state and each step's result.
+ * @throws Error naming an operation the entity does not have.
+ * @typeParam TState - The entity's state type.
+ * @typeParam TOperations - The entity's operations.
+ */
+export function runEntity<TState, TOperations extends EntityOperations<TState>> (
+  entity: TypedEntity<TState, TOperations>,
+  steps: readonly EntityStep[],
+  initial?: TState,
+): EntityRun<TState> {
+  let state: TState | undefined = initial
+  let destroyed = false
+  const results: unknown[] = []
+  for (const step of steps) {
+    let returned: unknown
+    const context = {
+      df: {
+        operationName: step.operation,
+        getState:      (initializer?: () => TState) => {
+          state ??= initializer?.()
+
+          return state
+        },
+        setState: (next: TState) => {
+          state = next
+        },
+        getInput: () => step.input,
+        return:   (value: unknown) => {
+          returned = value
+        },
+        destructOnExit: () => {
+          destroyed = true
+        },
+      },
+    } as unknown as EntityContext<TState>
+    entity.handler(context)
+    results.push(returned)
+    if (destroyed) {
+      state = undefined
+      break
+    }
+  }
+
+  return { state, results, destroyed }
 }

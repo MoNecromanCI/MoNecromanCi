@@ -49,6 +49,18 @@ async function main () {
   out.parsedOk = await finish(await start('parsed', { name: 'edu' }))
   out.parsedBad = await finish(await start('parsed', { nope: 1 }))
 
+  const key = `k${Date.now()}`
+  const counterState = async () => (await (await fetch(`${BASE}/counter/${key}`)).json()).state
+  out.entityBefore = await counterState()
+  out.tally = await finish(await start('tally', { key }))
+  out.entityAfterTally = await counterState()
+  await fetch(`${BASE}/signal/${key}/add`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '10' })
+  await sleep(3000)
+  out.entityAfterClientSignal = await counterState()
+  await fetch(`${BASE}/signal/${key}/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  await sleep(3000)
+  out.entityAfterStop = await counterState()
+
   console.log(JSON.stringify(out, null, 1))
 }
 main().catch(error => { console.error(error); process.exit(1) })

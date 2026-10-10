@@ -28,7 +28,7 @@ const registered = new Map<string, string>()
  * @throws Error when `name` has already been registered.
  * @typeParam None - this function has no generic type parameters.
  */
-export function claimName (kind: 'activity' | 'orchestration', name: string): void {
+export function claimName (kind: 'activity' | 'entity' | 'orchestration', name: string): void {
   const previous = registered.get(name)
   if (previous !== undefined) {
     throw new Error(
