@@ -1,7 +1,13 @@
 import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { goAppEmptyFiles, goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
+import {
+  goAppEmptyFiles,
+  goAppExampleFiles,
+  goFunctionAppEmptyFiles,
+  goFunctionAppExampleFiles,
+  goLibraryExampleFiles,
+} from './go-example.algorithm'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { GO_SLICE_CHECK_PATH, GO_SLICE_CHECK_SCRIPT, goSliceCheckTarget } from '../go-slice-check'
 import { logger } from '../terminal'
@@ -298,14 +304,17 @@ function pinGoDirective (workspaceRoot: string, projectDir: string): void {
  * @throws Propagates any `fs` error writing or removing the files.
  * @typeParam None - this function has no generic type parameters.
  */
-function writeGoAppExample (workspaceRoot: string, projectDir: string, empty = false): void {
+function writeGoAppExample (workspaceRoot: string, projectDir: string, empty = false, functionApp = false): void {
   const goModPath = join(workspaceRoot, projectDir, 'go.mod')
   const modulePath = fileExists(goModPath) ? /^module\s+(\S+)/m.exec(readFileSync(goModPath, 'utf8'))?.[1] : undefined
   if (modulePath === undefined) {
     return
   }
   rmSync(join(workspaceRoot, projectDir, 'main_test.go'), { force: true })
-  const example = empty ? goAppEmptyFiles() : goAppExampleFiles(modulePath)
+  let example = empty ? goAppEmptyFiles() : goAppExampleFiles(modulePath)
+  if (functionApp) {
+    example = empty ? goFunctionAppEmptyFiles() : goFunctionAppExampleFiles(modulePath)
+  }
   for (const [relative, contents] of Object.entries(example)) {
     writeFileEnsured(join(workspaceRoot, projectDir, relative), contents)
   }
@@ -757,6 +766,27 @@ export function addGoSliceChecks (workspaceRoot: string): string[] {
 }
 
 /**
+ * The `start` target for a Go function app: build the custom handler, then `func start`.
+ *
+ * @remarks
+ * The executable is `handler` on every OS (the name `host.json` gives), built into the app directory, where the host looks
+ * for it, and ignored by the app's own `.gitignore`. It is not `dist/apps/<name>`: the host reads `host.json` and the function
+ * folders from the directory it starts in.
+ *
+ * @param name - The Go function app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function goFunctionAppStartTarget (name: string): Record<string, unknown> {
+  return {
+    executor:   'nx:run-commands',
+    continuous: true,
+    options:    { command: 'go build -o handler . && func start', cwd: `apps/${name}` },
+  }
+}
+
+/**
  * The `start` target for a Go app: `go run .`, locally.
  *
  * @remarks
@@ -1015,12 +1045,13 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
  * left to the user: AWS Lambda, Google Cloud Functions and Azure each want a
  * different signature, and mnci does not pick one for you.
  *
- * No `start` target, unlike `node-function-app`/`python-function-app`:
- * `func start` needs a `host.json` (and, for the custom-handler model Go
- * would use, a matching `customHandler` config), and this kind writes
- * neither — an honest known gap, not an oversight papered over with a
- * command that would just fail. `go-app`'s `go run .` doesn't apply either,
- * since there is no Functions host to dispatch triggers to it.
+ * The app is an Azure Functions **custom handler** (#314): `host.json` names the
+ * built `handler` executable and forwards HTTP requests to it, `main.go` is a
+ * small server on `FUNCTIONS_CUSTOMHANDLER_PORT` that routes to the `hello`
+ * slice, and `hello/function.json` declares the function. `start` builds the
+ * handler and runs `func start` (measured with Core Tools 4.14 on Windows).
+ * Not covered: `package` still zips the binary alone, so a deployable zip needs
+ * `host.json` and the function folders added by hand.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
@@ -1045,16 +1076,17 @@ export function addGoFunctionApp (workspaceRoot: string, name: string, empty = f
   )
   setGoModulePath(workspaceRoot, `apps/${name}`)
   pinGoDirective(workspaceRoot, `apps/${name}`)
-  writeGoAppExample(workspaceRoot, `apps/${name}`, empty)
+  writeGoAppExample(workspaceRoot, `apps/${name}`, empty, true)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
+    'start':       goFunctionAppStartTarget(name),
     'test':        goTestTarget(),
     ...goLintTargets(workspaceRoot, `apps/${name}`),
     'package':     goPackageTarget('go-function-app', name),
     'build-all':   goBuildAllTarget(name),
     'package-all': goPackageAllTarget('go-function-app', name),
   })
-  registerProjectCommands(workspaceRoot, name, { build: true })
+  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
 }
 
 /**

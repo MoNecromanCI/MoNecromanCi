@@ -17,6 +17,14 @@ export interface RecordedCall {
   readonly name:  string
   /** The input it was scheduled with. */
   readonly input: unknown
+  /**
+   * How many attempts the call made, present only when it was scheduled with a retry policy.
+   *
+   * @remarks
+   * A stub that keeps returning an `Error` is called `maxNumberOfAttempts` times and then throws inside the
+   * orchestration; one that succeeds on the third try reports `3`.
+   */
+  attempts?:      number
 }
 
 /**
@@ -114,11 +122,15 @@ interface ThrowRequest {
 
 /** A task the fake context hands back; carries what was scheduled. */
 interface FakeTask extends Task {
-  readonly __name:  string
-  readonly __input: unknown
+  readonly __name:    string
+  readonly __input:   unknown
+  /** Total attempts a retry policy allows; absent when the call has none. */
+  readonly __retry?:  number
+  /** The recorded call, so the attempts made can be written onto it. */
+  readonly __record?: RecordedCall
   /** Present on timers only. Set by `cancel()`. */
-  isCanceled?:      boolean
-  cancel?:          () => void
+  isCanceled?:        boolean
+  cancel?:            () => void
 }
 
 /**
@@ -136,9 +148,13 @@ interface FakeTask extends Task {
  * callable. The alternative — reading the name off `task.action.functionName` —
  * is an undocumented SDK internal the package's non-goals forbid.
  *
- * **Limits, stated rather than discovered later.** Retry policies are not
- * simulated: a stub returning an `Error` throws once, it does not exhaust
- * attempts. `Task.any` resolves to the FIRST task in the list, since there is
+ * **Retries.** A call scheduled with a retry policy calls its stub again after
+ * each `Error`, up to `maxNumberOfAttempts`, and reports the attempts made on
+ * the recorded call. Exhaustion throws the last error inside the orchestration.
+ * The retry intervals are not waited for.
+ *
+ * **Limits, stated rather than discovered later.** `Task.any` resolves to the
+ * FIRST task in the list unless `raceWinner` says otherwise, since there is
  * no real concurrency to race. Timers complete immediately.
  *
  * @param orchestration - The orchestration to run.
@@ -159,10 +175,18 @@ export function runWorkflow<TInput, TOutput> (
   let continuedAsNew: TInput | undefined
   const clock = stub.now ?? new Date(0)
 
-  const schedule = (name: string, scheduledInput: unknown): FakeTask => {
-    calls.push({ name, input: scheduledInput })
+  const schedule = (name: string, scheduledInput: unknown, retry?: unknown): FakeTask => {
+    const record: RecordedCall = { name, input: scheduledInput }
+    calls.push(record)
+    const attempts = (retry as { maxNumberOfAttempts?: unknown } | undefined)?.maxNumberOfAttempts
 
-    return { isCompleted: false, isFaulted: false, __name: name, __input: scheduledInput }
+    return {
+      isCompleted: false,
+      isFaulted:   false,
+      __name:      name,
+      __input:     scheduledInput,
+      ...((typeof attempts === 'number') && { __retry: attempts, __record: record }),
+    }
   }
 
   const context = {
@@ -171,10 +195,10 @@ export function runWorkflow<TInput, TOutput> (
       isReplaying:                  false,
       currentUtcDateTime:           clock,
       callActivity:                 schedule,
-      callActivityWithRetry:        (name: string, _retry: unknown, i: unknown) => schedule(name, i),
+      callActivityWithRetry:        (name: string, retry: unknown, i: unknown) => schedule(name, i, retry),
       callSubOrchestrator:          (name: string, i: unknown) => schedule(name, i),
-      callSubOrchestratorWithRetry: (name: string, _retry: unknown, i: unknown) =>
-        schedule(name, i),
+      callSubOrchestratorWithRetry: (name: string, retry: unknown, i: unknown) =>
+        schedule(name, i, retry),
       waitForExternalEvent: (name: string) => schedule(name, undefined),
       // Timers complete immediately: there is no real time to wait for, and a
       // harness that blocked on one would be useless. `cancel` is real,
@@ -245,7 +269,7 @@ function resolve (task: Task, stub: WorkflowStub): unknown {
   if (race !== undefined) {
     return resolveRace(race, stub)
   }
-  const { __name: name, __input: input } = task as FakeTask
+  const { __name: name, __input: input, __retry: retry, __record: record } = task as FakeTask
   if (name === '__timer') {
     return undefined
   }
@@ -257,7 +281,18 @@ function resolve (task: Task, stub: WorkflowStub): unknown {
       `No stub registered for '${name}'. Add it to stub.activities to run this workflow.`,
     )
   }
-  const result = activity(input)
+  // A call with a retry policy is attempted up to its limit, as the host does: the stub is called again after each
+  // `Error`, so one that fails twice and then succeeds is testable, and one that never succeeds exhausts the policy.
+  const limit = Math.max(1, retry ?? 1)
+  let result = activity(input)
+  let attempts = 1
+  while (result instanceof Error && attempts < limit) {
+    result = activity(input)
+    attempts += 1
+  }
+  if (record !== undefined) {
+    record.attempts = attempts
+  }
   if (result instanceof Error) {
     // A returned Error becomes a THROWN error inside the orchestration, which
     // is what makes failure branches testable at all. Handed back as a request

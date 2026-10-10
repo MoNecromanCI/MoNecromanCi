@@ -6,6 +6,7 @@ import { any } from './parallel.js'
 import { timerTask } from './time.js'
 import { defineStatuses, setStatus } from './status.js'
 import { resetRegistryForTests } from './registry.js'
+import { retryPolicy } from './retry.js'
 import { runWorkflow } from './testing.js'
 
 const STATUSES = defineStatuses({ validating: 'Validating', storing: 'Storing', done: 'Done' })
@@ -46,6 +47,25 @@ function buildWorkflow () {
   )
 
   return { articleWorkflow }
+}
+
+/** One workflow that retries a flaky activity and records what the catch saw. */
+function buildRetryingWorkflow () {
+  resetRegistryForTests()
+  const flaky = defineActivity('flaky', (input: { id: string }): { ok: boolean } => ({ ok: input.id !== '' }))
+
+  return defineOrchestration('retrying', function * (context, input: { id: string }) {
+    try {
+      yield * callActivity(context, flaky, input, retryPolicy({
+        firstRetryIntervalInMilliseconds: 1000,
+        maxNumberOfAttempts:              3,
+      }))
+
+      return 'succeeded'
+    } catch {
+      return 'exhausted'
+    }
+  })
 }
 
 describe('runWorkflow', () => {
@@ -169,5 +189,52 @@ describe('runWorkflow', () => {
       now:        new Date('2020-01-01T00:00:00.000Z'),
     })
     expect(run.result).toBe('2020-01-01T00:00:00.000Z')
+  })
+
+  describe('retry policies', () => {
+    it('calls a failing stub up to the attempt limit and throws into the orchestration', () => {
+      const workflow = buildRetryingWorkflow()
+      let attempts = 0
+      const run = runWorkflow(workflow, { id: 'a' }, {
+        activities: {
+          flaky: () => {
+            attempts += 1
+
+            return new Error('down')
+          },
+        },
+      })
+      expect(run.result).toBe('exhausted')
+      expect(attempts).toBe(3)
+      expect(run.calls).toEqual([{ name: 'flaky', input: { id: 'a' }, attempts: 3 }])
+    })
+
+    it('stops retrying when the stub succeeds and reports the attempts made', () => {
+      const workflow = buildRetryingWorkflow()
+      let attempts = 0
+      const run = runWorkflow(workflow, { id: 'a' }, {
+        activities: {
+          flaky: () => {
+            attempts += 1
+
+            return attempts < 3 ? new Error('down') : { ok: true }
+          },
+        },
+      })
+      expect(run.result).toBe('succeeded')
+      expect(run.calls[0]?.attempts).toBe(3)
+    })
+
+    it('leaves a call with no retry policy at a single attempt and no attempts field', () => {
+      const { articleWorkflow } = buildWorkflow()
+      const run = runWorkflow(articleWorkflow, { title: 'x' }, {
+        activities: {
+          validate: () => ({ ok: true }),
+          store:    () => ({ id: 'i' }),
+          finalise: () => ({ url: 'u' }),
+        },
+      })
+      expect(run.calls.every(call => call.attempts === undefined)).toBe(true)
+    })
   })
 })

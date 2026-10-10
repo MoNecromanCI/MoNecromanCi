@@ -479,6 +479,17 @@ function hasFlutter () {
   }
 }
 
+/** Whether Azure Functions Core Tools (`func`) is on the PATH, which the Go function app's `start` needs. */
+function hasFunctionsHost () {
+  try {
+    execSync('func --version', { stdio: 'ignore' })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Whether the Go toolchain is available to drive the Go section. */
 function hasGo () {
   try {
@@ -2660,15 +2671,49 @@ section('go', ['alt stack'], () => {
       )
     }
 
-    // A documented, deliberate gap rather than an oversight: go-function-app writes
-    // no host.json/custom-handler config, so a `:start` script would just fail.
+    // A Go function app is an Azure Functions custom handler (#314): host.json names the built `handler`, `start` builds
+    // it and runs the host, and the hello function is reachable at /api/hello.
     const goFunctionAppProject = JSON.parse(
       readFileSync(path.join(altWorkspace, 'apps/gofn/project.json'), 'utf8'),
     )
     enforce(
-      'go: go-function-app deliberately has NO start target, unlike go-app',
-      !goFunctionAppProject.targets?.start,
+      'go: go-function-app has a start target that builds the handler and runs the Functions host',
+      goFunctionAppProject.targets?.start?.options?.command === 'go build -o handler . && func start',
+      JSON.stringify(goFunctionAppProject.targets?.start),
     )
+    const goFunctionAppHost = JSON.parse(readFileSync(path.join(altWorkspace, 'apps/gofn/host.json'), 'utf8'))
+    enforce(
+      'go: go-function-app host.json forwards HTTP to the built handler',
+      goFunctionAppHost.customHandler?.description?.defaultExecutablePath === 'handler' &&
+        goFunctionAppHost.customHandler?.enableForwardingHttpRequest === true,
+      JSON.stringify(goFunctionAppHost),
+    )
+    enforce(
+      'go: go-function-app declares its hello function',
+      existsSync(path.join(altWorkspace, 'apps/gofn/hello/function.json')),
+    )
+    if (hasFunctionsHost()) {
+      const functionLog = path.join(temporary, 'go-function-start.log')
+      const functionLogDescriptor = openSync(functionLog, 'w')
+      const host = spawn(process.execPath, [CLI, 'dev', 'gofn'], { cwd: altWorkspace, stdio: ['ignore', functionLogDescriptor, functionLogDescriptor], detached: process.platform !== 'win32' })
+      try {
+        const hello = tryRunCapture(fetchScript('http://localhost:7071/api/hello'), altWorkspace)
+        enforce(
+          'go: `mnci dev gofn` runs the Functions host and /api/hello answers from the Go handler',
+          hello.ok && hello.output.startsWith('200 ') && hello.output.includes('Hello'),
+          `${hello.output}
+${readFileSync(functionLog, 'utf8').slice(-2500)}`,
+        )
+      } finally {
+        if (process.platform === 'win32') {
+          spawnSync('taskkill', ['/pid', String(host.pid), '/T', '/F'], { stdio: 'ignore' })
+        } else {
+          process.kill(-host.pid, 'SIGTERM')
+        }
+      }
+    } else {
+      skip('go: `func start` of the go-function-app', 'Azure Functions Core Tools (`func`) not on PATH')
+    }
 
     const goLibProject = JSON.parse(
       readFileSync(path.join(altWorkspace, 'packages/gocore/project.json'), 'utf8'),
