@@ -650,14 +650,14 @@ describe('runAdd go', () => {
     const { targets } = readProjectJson('apps/handler')
     expect(JSON.stringify(targets.package)).toContain('dist/drop/go-function-app-handler.zip')
 
-    // No `start` target: there is no Azure Functions custom-handler wiring
-    // for Go yet, so `func start` would just fail — a known gap, not a script.
-    expect(targets.start).toBeUndefined()
+    // `start` builds the custom handler and runs the Functions host (#314).
+    expect(targets.start.options).toEqual({ command: 'go build -o handler . && func start', cwd: 'apps/handler' })
+    expect(JSON.stringify(targets.start)).toContain('"continuous":true')
     const rootManifest = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>
     }
     expect(rootManifest.scripts['handler:build']).toBe('nx run handler:build')
-    expect(rootManifest.scripts['handler:start']).toBeUndefined()
+    expect(rootManifest.scripts['handler:start']).toBe('nx run handler:start')
   })
 
   it('packages a Go function app per platform under its own drop basename', async () => {

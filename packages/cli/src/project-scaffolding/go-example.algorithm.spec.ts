@@ -1,4 +1,10 @@
-import { goAppEmptyFiles, goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
+import {
+  goAppEmptyFiles,
+  goAppExampleFiles,
+  goFunctionAppEmptyFiles,
+  goFunctionAppExampleFiles,
+  goLibraryExampleFiles,
+} from './go-example.algorithm'
 
 describe('goLibraryExampleFiles', () => {
   const files = goLibraryExampleFiles('markdownworkspace', 'markdown_workspace')
@@ -50,5 +56,44 @@ describe('goAppEmptyFiles', () => {
   it('is a main.go that does nothing and no package or test', () => {
     expect(Object.keys(goAppEmptyFiles())).toEqual(['main.go'])
     expect(goAppEmptyFiles()['main.go']).toContain('func main() {}')
+  })
+})
+
+describe('goFunctionAppExampleFiles', () => {
+  const files = goFunctionAppExampleFiles('github.com/acme/demo/apps/fn')
+
+  it('names the built handler in host.json and forwards HTTP to it', () => {
+    const host = JSON.parse(files['host.json']) as {
+      customHandler: { description: { defaultExecutablePath: string }, enableForwardingHttpRequest: boolean }
+    }
+
+    expect(host.customHandler.description.defaultExecutablePath).toBe('handler')
+    expect(host.customHandler.enableForwardingHttpRequest).toBe(true)
+  })
+
+  it('serves the hello slice at the route its function.json declares', () => {
+    expect(files['main.go']).toContain('FUNCTIONS_CUSTOMHANDLER_PORT')
+    expect(files['main.go']).toContain('mux.HandleFunc("/api/hello"')
+    expect(files['main.go']).toContain('"github.com/acme/demo/apps/fn/hello"')
+    expect(JSON.parse(files['hello/function.json'])).toEqual({
+      bindings: expect.arrayContaining([expect.objectContaining({ type: 'httpTrigger', authLevel: 'anonymous' })]),
+    })
+  })
+
+  it('keeps the local build out of git and names the custom runtime in the local settings', () => {
+    expect(files['.gitignore']).toMatch(/^handler$/m)
+    expect(files['.gitignore']).toMatch(/^handler\.exe$/m)
+    expect(files['.gitignore']).not.toMatch(/local\.settings/)
+    expect(JSON.parse(files['local.settings.json']).Values.FUNCTIONS_WORKER_RUNTIME).toBe('custom')
+  })
+})
+
+describe('goFunctionAppEmptyFiles', () => {
+  it('is a server with no route, no function and no slice package', () => {
+    const files = goFunctionAppEmptyFiles()
+
+    expect(Object.keys(files).sort((a, b) => a.localeCompare(b))).toEqual(['.gitignore', 'host.json', 'local.settings.json', 'main.go'])
+    expect(files['main.go']).not.toContain('HandleFunc')
+    expect(files['main.go']).toContain('server.ListenAndServe()')
   })
 })

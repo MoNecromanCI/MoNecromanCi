@@ -504,13 +504,17 @@ did:
 | `node-function-app`, `python-function-app` | `nx run <name>:start` → `func start` (Azure Functions Core Tools, install separately — never a prerequisite for `add` itself)         |
 | `python-app`                               | `nx run <name>:start` → `python3 main.py` — mnci writes a runnable `main.py`, since the plugin's own sample module has no entry point |
 | `go-app`                                   | `nx run <name>:start` → `go run .`                                                                                                    |
+| `go-function-app`                          | `nx run <name>:start` → `go build -o handler . && func start` (an Azure Functions custom handler, see below)                         |
 | `flutter-app`                              | `nx run <name>:start` → `flutter run -d chrome` (web is the only platform this plugin builds for)                                     |
-| every library, `go-function-app`           | no `:start` at all — see below                                                                                                        |
+| every library                              | no `:start` at all                                                                                                                    |
 
-**`go-function-app` is a known gap, not an oversight**: unlike the Node and
-Python function-app kinds, it writes no `host.json`/custom-handler config, so
-there is nothing for `func start` to attach to. Shipping a `:start` script
-that would just fail felt worse than being upfront that it doesn't exist yet.
+**`go-function-app` is an Azure Functions custom handler.** `host.json` names the
+built `handler` executable and forwards HTTP requests to it, `main.go` is a small
+server on `FUNCTIONS_CUSTOMHANDLER_PORT` that routes `/api/hello` to the `hello`
+slice, and `hello/function.json` declares the function. `:start` builds the
+handler into the app directory (ignored by the app's own `.gitignore`) and runs
+`func start`. Not covered: `package` zips the binary alone, so a deployable zip
+needs `host.json` and the function folders added by hand.
 
 ## What `new` actually does
 
@@ -1725,7 +1729,7 @@ pipeline installs `golangci-lint` itself (see below).
 | Kind              | Location          | Build / deploy                                                                                                                                                                                                |
 | ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `go-app`          | `apps/<name>`     | `go build` binary into `dist/apps/<name>/`, zipped by mnci into `dist/drop/go-app-<name>.zip`; `build-all` / `package-all` cross-compile six platforms into `dist/platforms/<name>/<goos>-<goarch>/` and zip each (`VERSION` env stamps `main.version`)                                                                                                                 |
-| `go-function-app` | `apps/<name>`     | same build; zipped into `dist/drop/go-function-app-<name>.zip`. The handler body is yours to write — AWS Lambda, Google Cloud Functions and Azure each want a different signature, and mnci does not pick one |
+| `go-function-app` | `apps/<name>`     | same build; zipped into `dist/drop/go-function-app-<name>.zip`. Scaffolded as an Azure Functions custom handler (an HTTP server behind `host.json`); the handler body is yours to change |
 | `go-lib`          | `packages/<name>` | publishable **by git tag** — see below; lint + test targets only                                                                                                                                              |
 | `go-internal-lib` | `libs/<name>`     | private shared code, lint + test only — a non-`main` package produces no binary                                                                                                                               |
 

@@ -459,7 +459,7 @@ workspace before it was written, and a kind appears only where it was:
 
 `mnci upgrade` adds `dev` to existing Python and C# apps too (`addPythonDevTargets`, with `watchdog` in `requirements-dev.txt`; `addCsharpDevTargets`), by what the folder holds (a `main.py` and `pyproject.toml` with no `function_app.py`; a `.csproj` with no `host.json`), never over a `dev` the team has, and without the root `<name>:dev` script, which only `mnci add` writes.
 
-Not covered: the function-app kinds (no measured watcher for the Functions host). `mnci dev` runs each project's `start`.
+Not covered: the function-app kinds (no measured watcher for the Functions host). `go-function-app` has `start` (#314): it is a custom handler, so `host.json` names the `handler` executable built into the app directory, `main.go` serves `/api/hello` on `FUNCTIONS_CUSTOMHANDLER_PORT`, and `start` is `go build -o handler . && func start` (measured with Core Tools 4.14 on Windows; the e2e starts the host where `func` exists). Its `package` zips the binary alone. `mnci dev` runs each project's `start`.
 
 A future `cli-lib` kind (publishable package that is also invoked like an app) would need the app treatment;
 deferred, since the kind doesn't exist yet.
