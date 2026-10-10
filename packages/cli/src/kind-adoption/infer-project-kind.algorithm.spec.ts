@@ -11,6 +11,7 @@ describe('inferProjectKind (npm)', () => {
     ['an Azure Functions app', { dependencies: { '@azure/functions': '^4' } }, [], 'node-function-app', 'certain'],
     ['a React app', { dependencies: { react: '^19' } }, ['index.html'], 'react-app', 'certain'],
     ['an Angular app', { dependencies: { '@angular/core': '^22' } }, ['index.html'], 'angular-app', 'certain'],
+    ['a Vue app', { dependencies: { vue: '^3' } }, ['index.html'], 'vue-app', 'certain'],
     ['a publishable React library', { peerDependencies: { react: '^19' } }, [], 'react-lib', 'certain'],
     ['a private React library', { private: true, peerDependencies: { react: '^19' } }, [], 'react-internal-lib', 'certain'],
     ['an express server', { dependencies: { express: '^4' } }, [], 'node-app', 'certain'],

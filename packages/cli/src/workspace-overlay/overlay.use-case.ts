@@ -1228,6 +1228,8 @@ export const ROOT_LINT_TARGET = {
  */
 export const NX_PEER_OVERRIDES = {
   '@nx/react': { express: '>=4.0.0 <6.0.0' },
+  // `@nx/vue` peers on `vue-tsc` 2, which cannot read TypeScript 6's `tsc.js`; a Vue app is checked with 3 (`vue-app`).
+  '@nx/vue':   { 'vue-tsc': '>=2.0.0 <4.0.0' },
 } as const
 
 /**
