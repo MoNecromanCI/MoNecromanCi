@@ -836,7 +836,9 @@ describe('azurePipelinesYaml', () => {
     // The range is not invented here: it is @nx/node@23.2.1's own declared
     // `peerOptional express`, and @nx/node is the package that scaffolds the
     // express app. Both majors satisfy it, which is what lets this be static.
-    expect(NX_PEER_OVERRIDES).toEqual({ '@nx/react': { express: '>=4.0.0 <6.0.0' } })
+    expect(NX_PEER_OVERRIDES['@nx/react']).toEqual({ express: '>=4.0.0 <6.0.0' })
+    // `@nx/vue` peers on vue-tsc 2, which cannot read TypeScript 6; a vue-app installs 3.
+    expect(NX_PEER_OVERRIDES['@nx/vue']).toEqual({ 'vue-tsc': '>=2.0.0 <4.0.0' })
   })
 
   it('is UNCONDITIONAL, because the conditional form could only be written too late', () => {
