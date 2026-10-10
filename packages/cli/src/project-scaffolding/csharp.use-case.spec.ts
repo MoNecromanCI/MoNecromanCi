@@ -473,6 +473,9 @@ describe('runAdd csharp-function-app', () => {
     expect(readFileSync(join(workspaceRoot, 'apps/api/host.json'), 'utf8')).toContain(
       'extensionBundle',
     )
+    const settings = JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/local.settings.json'), 'utf8'))
+
+    expect(settings.Values.FUNCTIONS_WORKER_RUNTIME).toBe('dotnet-isolated')
   })
 
   it('adds a package target zipping the isolated-worker publish output, and a dotnet run start target', async () => {
