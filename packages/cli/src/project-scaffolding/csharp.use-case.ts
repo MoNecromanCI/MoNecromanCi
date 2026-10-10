@@ -6,6 +6,7 @@ import { promptText } from '../terminal'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { csharpConsoleProgram, csharpEmptyTest, csharpExampleFiles, csharpExampleTest } from './csharp-example.algorithm'
 import { logger } from '../terminal'
+import { functionAppLocalSettings } from './function-app-local-settings.algorithm'
 import {
   addProjectJsonTargets,
   defaultScope,
@@ -1015,6 +1016,8 @@ export function addCsharpFunctionApp (workspaceRoot: string, name: string, empty
     }
   }
   writeFileEnsured(join(absoluteRoot, 'host.json'), CSHARP_FUNCTION_APP_HOST_JSON)
+  // Without the runtime named, `dotnet run` (and `func start`) stops with "Worker runtime cannot be 'None'" (measured, Core Tools 4.14).
+  writeFileEnsured(join(absoluteRoot, 'local.settings.json'), functionAppLocalSettings('dotnet-isolated'))
 
   if (runShell('dotnet', ['restore', projectRoot], workspaceRoot) !== 0) {
     throw new Error(`dotnet restore failed for ${projectRoot}`)

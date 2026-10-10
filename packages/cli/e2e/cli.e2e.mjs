@@ -3955,6 +3955,12 @@ section('csharp', ['alt stack'], () => {
       )
     }
 
+    const csfnSettings = JSON.parse(readFileSync(path.join(altWorkspace, 'apps/csfn/local.settings.json'), 'utf8'))
+    enforce(
+      'csharp: the function app names its worker runtime, which `dotnet run` and `func start` need to know the folder',
+      csfnSettings.Values?.FUNCTIONS_WORKER_RUNTIME === 'dotnet-isolated',
+    )
+
     // The one NuGet lib is scoped to the workspace's own scope, PackageId-style:
     // dotnet new classlib -n Alt.Cslib sets assembly name, namespace AND the
     // default PackageId in one step — no post-generation manifest repair, unlike
