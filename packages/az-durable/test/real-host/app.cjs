@@ -97,7 +97,22 @@ const parsed = az.defineOrchestration('Parsed', function * (context, input) { re
   },
 })
 
-const ORCHESTRATIONS = { replay, exhaust, approval, timer, parent, looping, parsed }
+// ---- 8. entities ----
+const counter = az.defineEntity('Counter', {
+  initialState: () => 0,
+  operations:   {
+    add:  (state, amount) => ({ state: state + amount, result: state + amount }),
+    stop: (state) => ({ state, result: 'stopped', destroy: true }),
+  },
+})
+const tally = az.defineOrchestration('Tally', function * (context, input) {
+  az.signalEntity(context, counter, input.key, 'add', 5)
+  const total = yield * az.callEntity(context, counter, input.key, 'add', 2)
+
+  return { total }
+})
+
+const ORCHESTRATIONS = { replay, exhaust, approval, timer, parent, looping, parsed, tally }
 
 app.http('start', {
   route:       'start/{name}',
@@ -131,4 +146,20 @@ app.http('status', {
 
     return { jsonBody: { runtimeStatus: s?.runtimeStatus, output: s?.output, createdTime: s?.createdTime, lastUpdatedTime: s?.lastUpdatedTime } }
   },
+})
+app.http('signal', {
+  route:       'signal/{key}/{operation}',
+  methods:     ['POST'],
+  extraInputs: [df.input.durableClient()],
+  handler:     async (request, context) => {
+    await az.signalEntityFromClient(df.getClient(context), counter, request.params.key, request.params.operation, await request.json())
+
+    return { status: 202 }
+  },
+})
+app.http('counterState', {
+  route:       'counter/{key}',
+  methods:     ['GET'],
+  extraInputs: [df.input.durableClient()],
+  handler:     async (request, context) => ({ jsonBody: { state: (await az.readEntityState(df.getClient(context), counter, request.params.key)) ?? null } }),
 })

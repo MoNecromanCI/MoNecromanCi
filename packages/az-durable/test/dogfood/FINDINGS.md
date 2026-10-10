@@ -186,6 +186,14 @@ What the real host showed that the harness could not:
 Still unverified: entity functions (the package has none), a host restart in the middle of an orchestration (replay
 after a real process restart), and a real storage account instead of Azurite.
 
+## 10. Entities on a real host (2026-10-10)
+
+`defineEntity`, `callEntity`, `signalEntity`, `signalEntityFromClient` and `readEntityState` were run on Core Tools 4.14 and
+Azurite (`test/real-host`): an orchestration that signals `add 5` and then calls `add 2` returns `7` and leaves the entity at 7;
+a client signal of `add 10` makes it 17; an operation returning `destroy` leaves `readEntityState` undefined. One trap found
+by running it: an HTTP function named `counter` beside an entity named `Counter` fails host startup with "Method overloads are
+not supported", since function names are global and compared without regard to case.
+
 ## What is still not verified
 
 These reconstructions were written by the same author as the API, so they
