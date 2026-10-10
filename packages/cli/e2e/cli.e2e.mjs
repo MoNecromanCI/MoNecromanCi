@@ -3634,6 +3634,16 @@ section('react e2e project', [], () => {
   }
 })
 /**
+ * A command that polls the Functions host's hello route until its body holds some text.
+ *
+ * @param {string} text - What the body must contain.
+ * @returns {string} The shell command, printing the body or `no answer`.
+ */
+function waitForHelloBody (text) {
+  return `node -e "const t=process.argv[1];(async()=>{for(let i=0;i<60;i++){try{const r=await fetch('http://localhost:7071/api/hello?name=a');const b=await r.text();if(b.includes(t)){console.log(b);return}}catch{}await new Promise(r=>setTimeout(r,2000))}console.log('no answer');process.exit(1)})()" ${text}`
+}
+
+/**
  * The command that polls a URL until it answers, then prints the status and the body.
  *
  * @param url - What to fetch.
@@ -3766,6 +3776,54 @@ section('dev up', [], () => {
   const closed = tryRunCapture('node -e "(async()=>{for(let i=0;i<30;i++){const answers=await Promise.all([\'http://localhost:3000/\',\'http://localhost:4200/\'].map(u=>fetch(u).then(()=>true,()=>false)));if(!answers.includes(true)){console.log(\'freed\');return}await new Promise(r=>setTimeout(r,1000))}console.log(\'still answering\');process.exit(1)})()"', root)
   enforce('dev up: stopping the command stops both servers, so both ports are free again', closed.ok && closed.output.includes('freed'), closed.output)
 })
+section('function app dev', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `<name>:dev` of a Node function app (#443): a build watcher beside `func start`,
+   * which reloads the worker when the build changes. Real run, gated on Core Tools:
+   * the app answers, a source edit is rebuilt, and the next request is answered
+   * from the new code with the host never restarted.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'fndev')
+  run(`node ${CLI} new fndev --yes --registry npm --scope @fnd`, temporary)
+  run(`node ${CLI} add node-function-app dfn`, root)
+  const manifest = JSON.parse(readFileSync(path.join(root, 'apps/dfn/package.json'), 'utf8'))
+  const localSettings = JSON.parse(readFileSync(path.join(root, 'apps/dfn/local.settings.json'), 'utf8'))
+  enforce(
+    'function app dev: local.settings.json names the runtime, which func start needs to know the folder',
+    localSettings.Values?.FUNCTIONS_WORKER_RUNTIME === 'node',
+  )
+  enforce(
+    'function app dev: has a dev target that watches the build beside func start',
+    manifest.nx?.targets?.dev?.options?.commands?.includes('func start') === true,
+    JSON.stringify(manifest.nx?.targets?.dev),
+  )
+  if (!hasFunctionsHost()) {
+    skip('function app dev: the running reload', 'Azure Functions Core Tools (`func`) not on PATH')
+
+    return
+  }
+  const log = path.join(temporary, 'fndev.log')
+  const logDescriptor = openSync(log, 'w')
+  const child = spawn('npx', ['nx', 'run', 'dfn:dev'], { cwd: root, stdio: ['ignore', logDescriptor, logDescriptor], detached: process.platform !== 'win32', shell: process.platform === 'win32' })
+  const stop = () => {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    } else {
+      process.kill(-child.pid, 'SIGTERM')
+    }
+  }
+  try {
+    const first = tryRunCapture(waitForHelloBody('Hello'), root)
+    enforce('function app dev: the host answers from the built function', first.ok && first.output.includes('Hello, a!'), `${first.output}\n${readFileSync(log, 'utf8').slice(-2500)}`)
+    const source = path.join(root, 'apps/dfn/src/hello/greet.use-case.ts')
+    writeFileSync(source, readFileSync(source, 'utf8').replace('Hello, ', 'Howdy, '))
+    const reloaded = tryRunCapture(waitForHelloBody('Howdy'), root)
+    enforce('function app dev: a source edit is rebuilt and the running host answers from the new code', reloaded.ok && reloaded.output.includes('Howdy, a!'), `${reloaded.output}\n${readFileSync(log, 'utf8').slice(-2500)}`)
+  } finally {
+    stop()
+  }
+})
+
 section('web-api preset', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci new <name> --preset web-api` (#303): a React frontend and an Express API

@@ -2,6 +2,7 @@ import { convertAppToEsm } from '../esm-conversion'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
+import { functionAppLocalSettings } from './function-app-local-settings.algorithm'
 import { nodeAppEmptyFiles, nodeAppExampleFiles } from './node-app-example.algorithm'
 import { logger } from '../terminal'
 import {
@@ -576,6 +577,35 @@ function nodeFunctionAppStartTarget (name: string): Record<string, unknown> {
 }
 
 /**
+ * The `dev` target for a Node Azure Function: rebuild on every change, beside `func start`.
+ *
+ * @remarks
+ * Core Tools restarts the worker when the built files change (measured on 4.14: an edit, a rebuild, and the next request
+ * answered from the new code, no restart of the host), so a build watcher beside it is the whole loop. `--skipTypeCheck`
+ * because the executor's watch mode type-checks with options its own `tsc` rejects (`TS5069`, measured); `lint` and
+ * `typecheck` are their own targets. `--deleteOutputPath=false` because the watch otherwise empties `dist` while the host is
+ * loading it, and the first worker dies on a missing `main.js` (measured: it only recovered on the first edit). The one build before the watch (`dependsOn`) is what makes `dist` exist when the host
+ * starts.
+ *
+ * @param name - The function app's project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function nodeFunctionAppDevTarget (name: string): Record<string, unknown> {
+  return {
+    executor:   'nx:run-commands',
+    dependsOn:  ['build'],
+    continuous: true,
+    options:    {
+      commands: [`nx run ${name}:build:development --watch --skipTypeCheck --deleteOutputPath=false`, 'func start'],
+      parallel: true,
+      cwd:      `apps/${name}`,
+    },
+  }
+}
+
+/**
  * Adds a Node Azure Function: `@nx/node:application` plus the Azure Functions v4 shape.
  *
  * @remarks
@@ -622,6 +652,7 @@ export function addNodeFunctionApp (
     writeFileEnsured(join(slice, 'index.ts'), NODE_FUNCTION_APP_HELLO_BARREL)
   }
   writeFileEnsured(join(nodeFunctionAppRoot, 'host.json'), NODE_FUNCTION_APP_HOST_JSON)
+  writeFileEnsured(join(nodeFunctionAppRoot, 'local.settings.json'), functionAppLocalSettings('node'))
   repairNodeFunctionAppManifest(nodeFunctionAppRoot, workspaceRoot)
   if (esm) {
     convertAppToEsm(nodeFunctionAppRoot)
@@ -631,9 +662,10 @@ export function addNodeFunctionApp (
     package: nodeFunctionAppPackageTarget(name),
     prune:   nodeFunctionAppPruneTarget(name),
     start:   nodeFunctionAppStartTarget(name),
+    dev:     nodeFunctionAppDevTarget(name),
     // With no spec the runner exits non-zero; an empty scaffold must still pass `nx test`.
     ...(empty && { test: { options: { passWithNoTests: true } } }),
   })
   removeGeneratedEslintConfig(workspaceRoot, `apps/${name}`)
-  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start` })
+  registerProjectCommands(workspaceRoot, name, { build: true, start: `nx run ${name}:start`, dev: `nx run ${name}:dev` })
 }

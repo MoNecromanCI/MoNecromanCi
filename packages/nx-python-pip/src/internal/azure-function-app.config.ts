@@ -43,6 +43,15 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 `
 
 /**
+ * The `local.settings.json` of a Python function app: names the worker runtime.
+ *
+ * @remarks
+ * Without it `func start` stops with "Worker runtime cannot be 'None'" (measured on Core Tools 4.14). No secret in it.
+ */
+export const PYTHON_FUNCTION_APP_LOCAL_SETTINGS = `${JSON.stringify({ IsEncrypted: false, Values: { FUNCTIONS_WORKER_RUNTIME: 'python' } }, null, 2)}
+`
+
+/**
  * The `host.json` written into a generated Python function app.
  *
  * @remarks

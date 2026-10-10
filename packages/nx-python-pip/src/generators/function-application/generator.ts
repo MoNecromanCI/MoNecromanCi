@@ -1,6 +1,7 @@
 import { addProjectConfiguration, formatFiles, type Tree } from '@nx/devkit'
 import {
   PYTHON_FUNCTION_APP_HOST_JSON,
+  PYTHON_FUNCTION_APP_LOCAL_SETTINGS,
   PYTHON_FUNCTION_APP_MAIN_EMPTY,
   PYTHON_FUNCTION_APP_REQUIREMENTS,
   pythonFunctionAppGreetingTest,
@@ -45,6 +46,7 @@ export default async function functionAppGenerator (
   })
 
   tree.write(`${root}/host.json`, PYTHON_FUNCTION_APP_HOST_JSON)
+  tree.write(`${root}/local.settings.json`, PYTHON_FUNCTION_APP_LOCAL_SETTINGS)
   tree.write(`${root}/requirements.txt`, PYTHON_FUNCTION_APP_REQUIREMENTS)
   if (options.empty) {
     tree.write(`${root}/function_app.py`, PYTHON_FUNCTION_APP_MAIN_EMPTY)
