@@ -299,13 +299,32 @@ describe('runAdd node-function-app', () => {
       options:    { command: 'func start', cwd: 'apps/api' },
     })
 
-    // The root package.json gets the discoverable <name>:build/:qa/:start scripts.
+    // `func start` cannot tell what the folder is without the runtime setting (measured), and `dev` is a build watcher
+    // beside the host, which reloads the worker on a rebuild (#443).
+    const localSettings = JSON.parse(readFileSync(join(workspaceRoot, 'apps/api/local.settings.json'), 'utf8')) as unknown
+    expect(localSettings).toEqual({
+      IsEncrypted: false,
+      Values:      { FUNCTIONS_WORKER_RUNTIME: 'node' },
+    })
+    expect(manifest.nx.targets.dev).toMatchObject({
+      executor:   'nx:run-commands',
+      dependsOn:  ['build'],
+      continuous: true,
+      options:    {
+        commands: ['nx run api:build:development --watch --skipTypeCheck --deleteOutputPath=false', 'func start'],
+        parallel: true,
+        cwd:      'apps/api',
+      },
+    })
+
+    // The root package.json gets the discoverable <name>:build/:qa/:start/:dev scripts.
     const rootManifest = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>
     }
     expect(rootManifest.scripts['api:build']).toBe('nx run api:build')
     expect(rootManifest.scripts['api:qa']).toBe('nx run api:lint && nx run api:test')
     expect(rootManifest.scripts['api:start']).toBe('nx run api:start')
+    expect(rootManifest.scripts['api:dev']).toBe('nx run api:dev')
   })
 
   it('skips the @azure/functions install when it is already a dependency', async () => {

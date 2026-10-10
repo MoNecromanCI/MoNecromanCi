@@ -1,3 +1,5 @@
+import { functionAppLocalSettings } from './function-app-local-settings.algorithm'
+
 /**
  * The contract of the Go worked example: the data a greeting call returns.
  *
@@ -177,7 +179,7 @@ export const GO_FUNCTION_APP_HELLO_FUNCTION_JSON = JSON.stringify({
  */
 export const GO_FUNCTION_APP_HOST_FILES: Record<string, string> = {
   'host.json':           GO_FUNCTION_APP_HOST_JSON,
-  'local.settings.json': JSON.stringify({ IsEncrypted: false, Values: { FUNCTIONS_WORKER_RUNTIME: 'custom' } }, null, 2) + '\n',
+  'local.settings.json': functionAppLocalSettings('custom'),
   '.gitignore':          ['handler', 'handler.exe', ''].join('\n'),
 }
 

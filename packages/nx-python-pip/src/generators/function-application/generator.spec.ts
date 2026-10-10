@@ -22,6 +22,7 @@ describe('functionAppGenerator', () => {
     expect(functionApp).toContain('func.FunctionApp(')
     expect(functionApp).toContain('from api.greet_use_case import greet')
     expect(tree.read('apps/api/host.json', 'utf8')).toContain('extensionBundle')
+    expect(JSON.parse(tree.read('apps/api/local.settings.json', 'utf8') as string).Values.FUNCTIONS_WORKER_RUNTIME).toBe('python')
     expect(tree.read('apps/api/requirements.txt', 'utf8')).toContain('azure-functions')
     expect(tree.read('apps/api/api/greet_use_case.py', 'utf8')).toContain('def greet')
     expect(tree.read('apps/api/tests/test_greet_use_case.py', 'utf8')).toContain(
