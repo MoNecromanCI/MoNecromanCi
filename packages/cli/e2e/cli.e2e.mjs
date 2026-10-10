@@ -3550,6 +3550,38 @@ section('empty scaffolds', [], () => {
   }
 })
 
+section('dependency updates', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci up` (#310): needs the registry, so it is gated like the toolchain sections
+   * and reported SKIPPED, never silently dropped, when offline. One package is
+   * pinned old in ONE project; the report must name it and the project, `--check`
+   * must write nothing, and `--yes` must move that declaration and no other.
+   * ------------------------------------------------------------------------- */
+  if (!tryRunCapture('npm view ms version', temporary).ok) {
+    skip('the dependency updates section', 'the npm registry is not reachable')
+
+    return
+  }
+  const root = path.join(temporary, 'upwork')
+  run(`node ${CLI} new upwork --yes --registry npm --scope @upw`, temporary)
+  run(`node ${CLI} add npm-lib core`, root)
+  run(`node ${CLI} i -w core ms@2.0.0`, root)
+  const manifestPath = path.join(root, 'packages/core/package.json')
+  const rootManifestPath = path.join(root, 'package.json')
+  const before = readFileSync(manifestPath, 'utf8')
+  enforce('up: the pinned old version is declared by the project', /"ms":\s*"\^?2\.0\.0"/.test(before), before)
+
+  const report = tryRunCapture(`node ${CLI} up --check --ecosystem npm`, root)
+  enforce('up --check: names the outdated package and the project that declares it', report.ok && /^\s+ms\s/m.test(report.output) && /core/.test(report.output), report.output.slice(-1500))
+  enforce('up --check: writes nothing', readFileSync(manifestPath, 'utf8') === before)
+
+  const applied = tryRunCapture(`node ${CLI} up --yes --ecosystem npm --no-install`, root)
+  const after = readFileSync(manifestPath, 'utf8')
+  enforce('up --yes: moves the project declaration past the pinned version', applied.ok && !/"ms":\s*"\^?2\.0\.0"/.test(after) && /"ms":/.test(after), `${applied.output.slice(-1500)}
+${after}`)
+  enforce('up --yes: the root manifest gains no declaration of it', !/"ms":/.test(readFileSync(rootManifestPath, 'utf8')))
+})
+
 section('react e2e project', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add react-app web --e2e` (#301): a paired Playwright project. What CI

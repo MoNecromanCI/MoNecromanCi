@@ -16,6 +16,7 @@ import {
   UPDATE_KINDS,
   UPDATE_KIND_LABELS,
   classify,
+  compareVersions,
   highestSpec,
   isNewer,
   rangeOperator,
@@ -95,6 +96,17 @@ function currentVersion (
   workspaceRoot: string,
   sites: readonly DependencySite[],
 ): string | undefined {
+  if (sites[0].ecosystem === 'npm') {
+    // Each declaration's own install, oldest first: a workspace that pins a package below the hoisted copy has a nested
+    // install the root `node_modules` does not show, and reading only the root reported it as current.
+    const installedBySite = sites
+      .map(site => resolvedVersion(workspaceRoot, 'npm', site.name, dirname(site.manifestPath)))
+      .filter((version): version is string => version !== undefined)
+      .toSorted(compareVersions)
+    if (installedBySite.length > 0) {
+      return installedBySite[0]
+    }
+  }
   const installed = resolvedVersion(workspaceRoot, sites[0].ecosystem, sites[0].name)
   if (installed) {
     return installed
@@ -565,7 +577,8 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
     return
   }
 
-  const readOnly = options.check ?? !process.stdout.isTTY
+  // `--yes` is the non-interactive way to write, so a pipe (CI, a script) must not turn it back into a report.
+  const readOnly = options.check ?? (options.yes ? false : !process.stdout.isTTY)
   if (readOnly) {
     reportOutdated(outdated)
     logger.info('')

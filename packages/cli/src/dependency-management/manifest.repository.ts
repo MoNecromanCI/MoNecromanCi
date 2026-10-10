@@ -1,5 +1,5 @@
 import { globSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { runCapture } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { listGoModuleDirectories } from '../go-workspace'
@@ -1124,6 +1124,7 @@ export function isAliasedInstall (workspaceRoot: string, name: string): boolean 
  * @param workspaceRoot - Absolute path to the workspace.
  * @param ecosystem - Which ecosystem the package belongs to.
  * @param name - The package name.
+ * @param fromDirectory - Where the lookup starts (npm only): the project that declares the package. Defaults to the root.
  * @returns The resolved version, or `undefined` when nothing is installed.
  * @throws Never - every lookup failure yields `undefined`.
  * @typeParam None - this function has no generic type parameters.
@@ -1132,15 +1133,24 @@ export function resolvedVersion (
   workspaceRoot: string,
   ecosystem: Ecosystem,
   name: string,
+  fromDirectory = workspaceRoot,
 ): string | undefined {
   if (ecosystem === 'npm') {
-    try {
-      return readJson<{ version?: string }>(
-        join(workspaceRoot, 'node_modules', name, 'package.json'),
-      ).version
-    } catch {
-      return undefined
+    // Node's own lookup: the nearest `node_modules` from the declaring project up to the root, because npm nests a
+    // package in a workspace whose range the hoisted copy does not satisfy.
+    let directory = fromDirectory
+    while (!relative(workspaceRoot, directory).startsWith('..')) {
+      try {
+        return readJson<{ version?: string }>(join(directory, 'node_modules', name, 'package.json')).version
+      } catch {
+        if (directory === workspaceRoot) {
+          return undefined
+        }
+        directory = dirname(directory)
+      }
     }
+
+    return undefined
   }
 
   if (ecosystem === 'pub') {

@@ -608,7 +608,7 @@
       {
         "name": "check",
         "flags": "--check",
-        "description": "report only; never prompt and never write (the default when piped)",
+        "description": "report only; never prompt and never write (the default when piped, unless --yes)",
         "takesValue": "none",
         "variadic": false,
         "repeatable": false,
