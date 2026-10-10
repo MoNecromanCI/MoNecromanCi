@@ -181,9 +181,14 @@ expect(run.calls.map(c => c.name)).toEqual(['FetchArticle'])   // order matters
   lets the run finish rather than looping — an eternal orchestration restarts
   forever by design. The next generation is a separate `runWorkflow` call.
 
-Stated rather than discovered later: **retry policies are not simulated** — a
-stub returning an `Error` throws once, it does not exhaust attempts. Timers
-complete immediately.
+- **Retry policies are simulated.** A call scheduled with `retryPolicy(...)` calls
+  its stub again after each `Error`, up to `maxNumberOfAttempts`; the recorded
+  call reports `attempts`. A stub that never succeeds exhausts the policy and
+  the last error throws inside the orchestration, so the `catch` after a retry
+  is reachable. The intervals are not waited for.
+
+Stated rather than discovered later: timers complete immediately, so a retry's
+back-off is not observable.
 
 ## Lint rules
 
