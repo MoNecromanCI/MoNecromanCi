@@ -1,4 +1,4 @@
-import { nodeAppExampleFiles } from './node-app-example.algorithm'
+import { nodeAppEmptyFiles, nodeAppExampleFiles } from './node-app-example.algorithm'
 
 /** Every relative `from './x'` specifier in the files, resolved against the file that holds it. */
 function relativeImports (files: Record<string, string>): { from: string, target: string }[] {
@@ -65,5 +65,24 @@ describe('nodeAppExampleFiles', () => {
     for (const contents of all) {
       expect(contents).not.toContain('`')
     }
+  })
+})
+
+describe('nodeAppEmptyFiles', () => {
+  it('is the entry point alone, for the frameworks that have a bare variant', () => {
+    for (const framework of ['none', 'express', 'koa'] as const) {
+      expect(Object.keys(nodeAppEmptyFiles(framework) ?? {})).toEqual(['main.ts'])
+    }
+  })
+
+  it('starts the server of express and koa with no route or handler', () => {
+    expect(nodeAppEmptyFiles('express')?.['main.ts']).toContain('app.listen(')
+    expect(nodeAppEmptyFiles('express')?.['main.ts']).not.toContain('app.get(')
+    expect(nodeAppEmptyFiles('koa')?.['main.ts']).not.toContain('app.use(')
+  })
+
+  it('has no bare variant of the frameworks that mandate their layout', () => {
+    expect(nodeAppEmptyFiles('fastify')).toBeNull()
+    expect(nodeAppEmptyFiles('nest')).toBeNull()
   })
 })

@@ -23,6 +23,7 @@ export default async function appGenerator (tree: Tree, options: AppGeneratorSch
     name:        options.name,
     directory:   options.directory ?? `apps/${options.name}`,
     projectType: 'application',
+    empty:       options.empty,
   })
   await formatFiles(tree)
 }

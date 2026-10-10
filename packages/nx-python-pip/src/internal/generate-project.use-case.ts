@@ -4,7 +4,9 @@ import {
   pythonPyprojectToml,
   pythonReadme,
   pythonSampleBarrel,
+  PYTHON_EMPTY_BARREL,
   PYTHON_SAMPLE_CONTRACT,
+  pythonEmptyTest,
   pythonSampleModule,
   pythonSampleTest,
   pythonTypedMarkerPath,
@@ -35,6 +37,8 @@ export interface BuildableProjectOptions {
   projectType:  'application' | 'library'
   /** Adds a `nx-release-publish` target + a project-level `versionActions` override. */
   publishable?: boolean
+  /** Writes an empty package and one smoke test instead of the greeting example (`--empty`). */
+  empty?:       boolean
 }
 
 /**
@@ -91,10 +95,15 @@ export function generateBuildableProject (tree: Tree, options: BuildableProjectO
 
   tree.write(`${root}/pyproject.toml`, pythonPyprojectToml(options.name, moduleDirectory))
   tree.write(`${root}/README.md`, pythonReadme(options.name, moduleDirectory))
-  tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_contract.py`, PYTHON_SAMPLE_CONTRACT)
-  tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_use_case.py`, pythonSampleModule(moduleDirectory))
-  tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleBarrel(moduleDirectory))
-  tree.write(`${root}/tests/test_${moduleDirectory}_use_case.py`, pythonSampleTest(moduleDirectory))
+  if (options.empty) {
+    tree.write(`${root}/${moduleDirectory}/__init__.py`, PYTHON_EMPTY_BARREL)
+    tree.write(`${root}/tests/test_${moduleDirectory}.py`, pythonEmptyTest(moduleDirectory))
+  } else {
+    tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_contract.py`, PYTHON_SAMPLE_CONTRACT)
+    tree.write(`${root}/${moduleDirectory}/${moduleDirectory}_use_case.py`, pythonSampleModule(moduleDirectory))
+    tree.write(`${root}/${moduleDirectory}/__init__.py`, pythonSampleBarrel(moduleDirectory))
+    tree.write(`${root}/tests/test_${moduleDirectory}_use_case.py`, pythonSampleTest(moduleDirectory))
+  }
   if (options.projectType === 'library') {
     tree.write(`${root}/${pythonTypedMarkerPath(moduleDirectory)}`, '')
   }

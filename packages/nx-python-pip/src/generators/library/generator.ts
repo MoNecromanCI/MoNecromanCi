@@ -30,6 +30,7 @@ export default async function libraryGenerator (
     directory:   options.directory ?? `libs/${options.name}`,
     projectType: 'library',
     publishable: true,
+    empty:       options.empty,
   })
   await formatFiles(tree)
 }

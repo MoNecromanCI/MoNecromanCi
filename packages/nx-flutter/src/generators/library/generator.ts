@@ -33,6 +33,7 @@ export default async function libraryGenerator (
     directory:   options.directory ?? `packages/${options.name}`,
     projectType: 'library',
     tag:         'type:flutter-lib',
+    empty:       options.empty,
     publishable: true,
   })
   await formatFiles(tree)

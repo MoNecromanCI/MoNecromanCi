@@ -28,6 +28,21 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 }
 
 /**
+ * The `function_app.py` of a function app scaffolded with `--empty`: the app object and no function yet.
+ *
+ * @remarks
+ * Registering a function is one decorated handler added under this object; `host.json` and the module folder are the same as the example's.
+ *
+ * @returns The `function_app.py` contents.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export const PYTHON_FUNCTION_APP_MAIN_EMPTY = `import azure.functions as func
+
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+`
+
+/**
  * The `host.json` written into a generated Python function app.
  *
  * @remarks

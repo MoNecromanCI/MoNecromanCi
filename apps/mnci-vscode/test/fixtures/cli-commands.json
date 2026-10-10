@@ -757,7 +757,7 @@
       {
         "name": "empty",
         "flags": "--empty",
-        "description": "npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec",
+        "description": "scaffold the bare skeleton with no sample code: every kind but container and vscode-extension (node-app needs --framework express, koa or none)",
         "takesValue": "none",
         "variadic": false,
         "repeatable": false,

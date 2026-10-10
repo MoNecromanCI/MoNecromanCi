@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
-import { goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
+import { goAppEmptyFiles, goAppExampleFiles, goLibraryExampleFiles } from './go-example.algorithm'
 import { fileExists, writeFileEnsured } from '../file-system'
 import { GO_SLICE_CHECK_PATH, GO_SLICE_CHECK_SCRIPT, goSliceCheckTarget } from '../go-slice-check'
 import { logger } from '../terminal'
@@ -293,18 +293,19 @@ function pinGoDirective (workspaceRoot: string, projectDir: string): void {
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param projectDir - The app's directory relative to the workspace (`apps/<name>`).
+ * @param empty - Write a `main.go` that does nothing, with no `hello` package (`--empty`).
  * @returns Nothing.
  * @throws Propagates any `fs` error writing or removing the files.
  * @typeParam None - this function has no generic type parameters.
  */
-function writeGoAppExample (workspaceRoot: string, projectDir: string): void {
+function writeGoAppExample (workspaceRoot: string, projectDir: string, empty = false): void {
   const goModPath = join(workspaceRoot, projectDir, 'go.mod')
   const modulePath = fileExists(goModPath) ? /^module\s+(\S+)/m.exec(readFileSync(goModPath, 'utf8'))?.[1] : undefined
   if (modulePath === undefined) {
     return
   }
   rmSync(join(workspaceRoot, projectDir, 'main_test.go'), { force: true })
-  const example = goAppExampleFiles(modulePath)
+  const example = empty ? goAppEmptyFiles() : goAppExampleFiles(modulePath)
   for (const [relative, contents] of Object.entries(example)) {
     writeFileEnsured(join(workspaceRoot, projectDir, relative), contents)
   }
@@ -853,11 +854,12 @@ export function goLibraryIdentifiers (projectName: string): {
  *
  * @param projectRoot - Absolute path to the generated library.
  * @param projectName - The project name the generator used for its files.
+ * @param empty - Keep the starter slice's `doc.go` only, no contract, use case or test (`--empty`).
  * @returns The import path suffix of the starter slice, relative to the module.
  * @throws Propagates any `fs` error writing the new files.
  * @typeParam None - this function has no generic type parameters.
  */
-export function reshapeGoLibraryScaffold (projectRoot: string, projectName: string): string {
+export function reshapeGoLibraryScaffold (projectRoot: string, projectName: string, empty = false): string {
   const { packageName, fileStem } = goLibraryIdentifiers(projectName)
 
   rmSync(join(projectRoot, `${projectName}.go`), { force: true })
@@ -876,10 +878,12 @@ export function reshapeGoLibraryScaffold (projectRoot: string, projectName: stri
         '// the outcome it delivers, and add one package per further outcome.\n' +
         `package ${packageName}\n`,
     ],
-    // The starter slice: a contract, a use case and its test (see goLibraryExampleFiles).
-    ...Object.entries(goLibraryExampleFiles(packageName, fileStem)).map(
-      ([name, content]): readonly [string, string] => [join(packageName, name), content],
-    ),
+    // The starter slice: a contract, a use case and its test (see goLibraryExampleFiles); `--empty` keeps the package only.
+    ...(empty
+      ? []
+      : Object.entries(goLibraryExampleFiles(packageName, fileStem)).map(
+          ([name, content]): readonly [string, string] => [join(packageName, name), content],
+        )),
   ]
   for (const [relativePath, content] of files) {
     const path = join(projectRoot, relativePath)
@@ -938,7 +942,7 @@ function prepareGo (workspaceRoot: string): void {
  * @throws Error when Go is missing, `web` is not a React app, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addGoApp (workspaceRoot: string, name: string, options: { release?: boolean, cgo?: boolean, web?: string } = {}): void {
+export function addGoApp (workspaceRoot: string, name: string, options: { release?: boolean, cgo?: boolean, web?: string, empty?: boolean } = {}): void {
   const cgo = options.cgo === true
   // Before anything is generated or installed, like the toolchain probe below it.
   if (options.web !== undefined) {
@@ -962,7 +966,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
   pinGoDirective(workspaceRoot, `apps/${name}`)
   // `--web` replaces main.go with its own server, so the example would be an orphan there.
   if (options.web === undefined) {
-    writeGoAppExample(workspaceRoot, `apps/${name}`)
+    writeGoAppExample(workspaceRoot, `apps/${name}`, options.empty === true)
   }
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build': goBuildTarget(name),
@@ -1024,7 +1028,7 @@ export function addGoApp (workspaceRoot: string, name: string, options: { releas
  * @throws Error when Go is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addGoFunctionApp (workspaceRoot: string, name: string): void {
+export function addGoFunctionApp (workspaceRoot: string, name: string, empty = false): void {
   prepareGo(workspaceRoot)
   ensureAdmZip(workspaceRoot)
 
@@ -1041,7 +1045,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
   )
   setGoModulePath(workspaceRoot, `apps/${name}`)
   pinGoDirective(workspaceRoot, `apps/${name}`)
-  writeGoAppExample(workspaceRoot, `apps/${name}`)
+  writeGoAppExample(workspaceRoot, `apps/${name}`, empty)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     'build':       goBuildTarget(name),
     'test':        goTestTarget(),
@@ -1073,7 +1077,7 @@ export function addGoFunctionApp (workspaceRoot: string, name: string): void {
  * @throws Error when Go is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addGoLib (workspaceRoot: string, name: string): void {
+export function addGoLib (workspaceRoot: string, name: string, empty = false): void {
   prepareGo(workspaceRoot)
 
   runNx(
@@ -1093,7 +1097,7 @@ export function addGoLib (workspaceRoot: string, name: string): void {
     test: goTestTarget(),
     ...goLintTargets(workspaceRoot, `packages/${name}`),
   })
-  const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'packages', name), name)
+  const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'packages', name), name, empty)
   registerProjectCommands(workspaceRoot, name, { build: false })
 
   const module = goModulePathFor(workspaceRoot, `packages/${name}`)
@@ -1117,7 +1121,7 @@ export function addGoLib (workspaceRoot: string, name: string): void {
  * @throws Error when Go is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addGoInternalLib (workspaceRoot: string, name: string): void {
+export function addGoInternalLib (workspaceRoot: string, name: string, empty = false): void {
   prepareGo(workspaceRoot)
 
   runNx(
@@ -1137,7 +1141,7 @@ export function addGoInternalLib (workspaceRoot: string, name: string): void {
     test: goTestTarget(),
     ...goLintTargets(workspaceRoot, `libs/${name}`),
   })
-  const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'libs', name), name)
+  const slice = reshapeGoLibraryScaffold(join(workspaceRoot, 'libs', name), name, empty)
   registerProjectCommands(workspaceRoot, name, { build: false })
 
   const module = goModulePathFor(workspaceRoot, `libs/${name}`)

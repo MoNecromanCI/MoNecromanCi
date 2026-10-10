@@ -250,7 +250,7 @@ export function buildProgram (cliVersion: string): Command {
     )
     .option(
       '--empty',
-      'npm-lib, internal-lib, react-lib, react-internal-lib, node-function-app: scaffold the slice skeleton only, with no sample code or spec',
+      'scaffold the bare skeleton with no sample code: every kind but container and vscode-extension (node-app needs --framework express, koa or none)',
     )
     .option('--app <project>', 'container only: the app to put in an image (a node-app, react-app or go-app)')
     .option('--port <port>', 'container only: the port the app listens on, exposed by the image and published by start')

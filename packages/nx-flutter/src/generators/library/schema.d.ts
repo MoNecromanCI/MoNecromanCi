@@ -8,4 +8,6 @@ export interface LibraryGeneratorSchema {
   name:       string
   /** Workspace-relative directory (defaults to `packages/<name>`). */
   directory?: string
+  /** Scaffold with no sample code: a bare entry and one smoke test. */
+  empty?:     boolean
 }

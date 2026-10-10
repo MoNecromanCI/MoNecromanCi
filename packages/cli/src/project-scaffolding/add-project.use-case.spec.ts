@@ -165,8 +165,15 @@ describe('runAdd', () => {
     await expect(runAdd('node-app', 'svc', { esm: true, framework: 'fastify' })).rejects.toThrow('--esm is not supported with --framework fastify')
   })
 
-  it('refuses --empty on a kind that has no skeleton variant yet, rather than ignoring it', async () => {
-    await expect(runAdd('python-app', 'svc', { empty: true })).rejects.toThrow('--empty applies to')
+  it('refuses --empty on a kind that has no skeleton variant, rather than ignoring it', async () => {
+    await expect(runAdd('container', 'img', { empty: true, app: 'api' })).rejects.toThrow('--empty applies to')
+    expect(mockRunNx).not.toHaveBeenCalled()
+  })
+
+  it('refuses --empty on a node-app framework whose layout is mandated, and with --web', async () => {
+    await expect(runAdd('node-app', 'svc', { empty: true, framework: 'nest' })).rejects.toThrow('--empty is not supported with --framework nest')
+    await expect(runAdd('node-app', 'svc', { empty: true, framework: 'fastify' })).rejects.toThrow('--empty is not supported with --framework fastify')
+    await expect(runAdd('go-app', 'svc', { empty: true, web: 'web' })).rejects.toThrow('--empty and --web cannot be combined')
     expect(mockRunNx).not.toHaveBeenCalled()
   })
 

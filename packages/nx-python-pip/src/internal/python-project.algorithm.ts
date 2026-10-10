@@ -273,3 +273,38 @@ def test_greet() -> None:
     assert greet("world").message == "Hello, world!"
 `
 }
+
+/**
+ * The barrel of a project scaffolded with `--empty`: a package with no public names yet.
+ *
+ * @remarks
+ * The module directory stays, so there is a slice to put code in, and `__all__` is declared so the first export is a
+ * one-line change. No contract and no use case (#330).
+ *
+ * @returns The `<module>/__init__.py` contents.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export const PYTHON_EMPTY_BARREL = `__all__: list[str] = []
+`
+
+/**
+ * The single test of a project scaffolded with `--empty`: the package imports.
+ *
+ * @remarks
+ * pytest exits non-zero (5) when it collects nothing, so an empty scaffold needs one test to keep `nx test` green. This is
+ * the smallest honest one, and the first real test replaces it.
+ *
+ * @param moduleDirectory - The project's module directory basename.
+ * @returns The `tests/test_<module>.py` contents.
+ * @throws Never - pure string build.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function pythonEmptyTest (moduleDirectory: string): string {
+  return `import ${moduleDirectory}
+
+
+def test_package_imports() -> None:
+    assert ${moduleDirectory} is not None
+`
+}

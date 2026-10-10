@@ -8,4 +8,6 @@ export interface LibraryGeneratorSchema {
   name:       string
   /** Workspace-relative directory (defaults to `libs/<name>`). */
   directory?: string
+  /** Write the module as an empty package with one smoke test, not the greeting example. */
+  empty?:     boolean
 }

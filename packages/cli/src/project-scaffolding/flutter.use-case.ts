@@ -124,10 +124,10 @@ function prepareFlutter (workspaceRoot: string): void {
  * @throws Error when Flutter is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addFlutterApp (workspaceRoot: string, name: string): void {
+export function addFlutterApp (workspaceRoot: string, name: string, empty = false): void {
   prepareFlutter(workspaceRoot)
   ensureAdmZip(workspaceRoot)
-  runNx(['g', '@mnci/nx-flutter:application', name, '--no-interactive'], workspaceRoot)
+  runNx(['g', '@mnci/nx-flutter:application', name, '--no-interactive', ...(empty ? ['--empty'] : [])], workspaceRoot)
   addProjectJsonTargets(join(workspaceRoot, 'apps', name, 'project.json'), {
     start: flutterAppStartTarget(name),
   })
@@ -153,9 +153,9 @@ export function addFlutterApp (workspaceRoot: string, name: string): void {
  * @throws Error when Flutter is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addFlutterLib (workspaceRoot: string, name: string): void {
+export function addFlutterLib (workspaceRoot: string, name: string, empty = false): void {
   prepareFlutter(workspaceRoot)
-  runNx(['g', '@mnci/nx-flutter:library', name, '--no-interactive'], workspaceRoot)
+  runNx(['g', '@mnci/nx-flutter:library', name, '--no-interactive', ...(empty ? ['--empty'] : [])], workspaceRoot)
   registerProjectCommands(workspaceRoot, name, { build: false })
 }
 
@@ -176,8 +176,8 @@ export function addFlutterLib (workspaceRoot: string, name: string): void {
  * @throws Error when Flutter is missing, or the generator/install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addFlutterInternalLib (workspaceRoot: string, name: string): void {
+export function addFlutterInternalLib (workspaceRoot: string, name: string, empty = false): void {
   prepareFlutter(workspaceRoot)
-  runNx(['g', '@mnci/nx-flutter:internal-library', name, '--no-interactive'], workspaceRoot)
+  runNx(['g', '@mnci/nx-flutter:internal-library', name, '--no-interactive', ...(empty ? ['--empty'] : [])], workspaceRoot)
   registerProjectCommands(workspaceRoot, name, { build: false })
 }

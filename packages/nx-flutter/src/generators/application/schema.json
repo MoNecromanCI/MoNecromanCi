@@ -16,6 +16,11 @@
     "directory": {
       "type": "string",
       "description": "Workspace-relative directory for the project (defaults to apps/<name>)."
+    },
+    "empty": {
+      "type": "boolean",
+      "default": false,
+      "description": "Scaffold the project with no sample code: a bare entry and one smoke test, instead of the greeting example."
     }
   },
   "required": ["name"]
