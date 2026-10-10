@@ -213,6 +213,10 @@ describe('mnci({ verticalSlices })', () => {
     expect(slicesFor('packages/app/src/ui/untyped.tsx')).toEqual(['vertical-slices/file-role'])
   })
 
+  it('accepts the front-end roles on a .ts file that imports Angular', () => {
+    expect(slicesFor('packages/app/src/ui/toolbar.component.ts')).toEqual([])
+  })
+
   it('reports a file without its role, or not in kebab-case, nested, or at the root of src', () => {
     expect(slicesFor('packages/app/src/reports/reportHelper.ts')).toEqual(['vertical-slices/file-role', 'vertical-slices/file-role'])
     expect(slicesFor('packages/app/src/reports/deeper/inner.use-case.ts')).toEqual(['vertical-slices/file-role'])

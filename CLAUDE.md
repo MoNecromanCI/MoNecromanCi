@@ -367,7 +367,13 @@ generator exists (`@nx/react`, `@nx/node`, `@nx/js`), and through a thin first-p
 Nx plugin where none does:
 
 - **Node/TypeScript** — official `@nx/react` (Vite) and `@nx/node`/`@nx/js` generators.
-  `npm-lib`, `internal-lib`, `react-app`, `node-app`, `node-function-app`.
+  `npm-lib`, `internal-lib`, `react-app`, `angular-app`, `node-app`, `node-function-app`.
+  `angular-app` (`project-scaffolding/angular-app.use-case.ts`, #314) is `@nx/angular:app` made to live in a project-references
+  workspace: Angular rejects `composite`/`emitDeclarationOnly` (NG4006, TS5069), so the app's `tsconfig*.json` override them and
+  `NX_IGNORE_UNSUPPORTED_TS_SETUP` is set for the install and generator; `typecheck` is `tsc --noEmit`; the runner setup moves
+  out of `src`; a manifest is written so `@angular/*` is not left at the root. A `.ts` file importing `@angular/*` takes the
+  front-end roles with no option (`verticalSlices` `file-role`). Measured on Nx 23.2 / Angular 22, Jest; not covered: Vitest,
+  SSR, `--e2e`, a library kind.
 - **Python** — `@mnci/nx-python-pip`, a real first-party `@nx/devkit` plugin (pip, Ruff,
   pytest, PyPA `build`/`twine`; no uv, no Poetry). Kinds: `python-app`, `python-lib`,
   `python-internal-lib`, `python-function-app`. Vendoring via `mnci add python-vendor`.

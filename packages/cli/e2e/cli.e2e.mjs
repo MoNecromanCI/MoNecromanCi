@@ -3776,6 +3776,38 @@ section('dev up', [], () => {
   const closed = tryRunCapture('node -e "(async()=>{for(let i=0;i<30;i++){const answers=await Promise.all([\'http://localhost:3000/\',\'http://localhost:4200/\'].map(u=>fetch(u).then(()=>true,()=>false)));if(!answers.includes(true)){console.log(\'freed\');return}await new Promise(r=>setTimeout(r,1000))}console.log(\'still answering\');process.exit(1)})()"', root)
   enforce('dev up: stopping the command stops both servers, so both ports are free again', closed.ok && closed.output.includes('freed'), closed.output)
 })
+section('angular app', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add angular-app` (#314): the generator refuses this workspace's TypeScript
+   * project references, so the app's own tsconfigs switch them off. Real generation,
+   * then every check CI runs, and the zip.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'ngapp')
+  run(`node ${CLI} new ngapp --yes --registry npm --scope @nga`, temporary)
+  run(`node ${CLI} add angular-app ngweb`, root)
+  const app = path.join(root, 'apps/ngweb')
+  const tsconfig = JSON.parse(readFileSync(path.join(app, 'tsconfig.json'), 'utf8'))
+  enforce(
+    'angular app: the app tsconfig switches the project references of the base configuration off',
+    tsconfig.compilerOptions?.composite === false && tsconfig.compilerOptions?.emitDeclarationOnly === false,
+    JSON.stringify(tsconfig.compilerOptions),
+  )
+  enforce(
+    'angular app: the runner setup is outside src, where only index and main may sit',
+    existsSync(path.join(app, 'test-setup.ts')) && !existsSync(path.join(app, 'src/test-setup.ts')),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=ngweb', root)
+  enforce('angular app: lint, typecheck, test and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run ngweb:package', root)
+  enforce(
+    'angular app: package zips the browser bundle',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/angular-app-ngweb.zip')),
+    packaged.output.slice(-1500),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('angular app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('function app dev', [], () => {
   /* ---------------------------------------------------------------------------
    * `<name>:dev` of a Node function app (#443): a build watcher beside `func start`,

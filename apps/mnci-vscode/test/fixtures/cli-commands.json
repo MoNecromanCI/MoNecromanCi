@@ -695,6 +695,7 @@
         "variadic": false,
         "choices": [
           "react-app",
+          "angular-app",
           "react-lib",
           "react-internal-lib",
           "node-app",
