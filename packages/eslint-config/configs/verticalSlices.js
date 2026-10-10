@@ -163,7 +163,10 @@ export const plugin = {
         // a workspace adding `.component.tsx` still wants `.use-case.ts`, and
         // making the option replace the list would mean restating fourteen
         // entries to add one.
-        const roles = [...ROLES, ...(context.options[0]?.roles ?? [])]
+        // A file that imports Angular is UI by construction, as one that holds JSX is: its components and routes
+        // are classes in `.ts` files, so without this every Angular app would need to opt in.
+        const angular = /\bfrom\s+['"]@angular\//.test(context.sourceCode.text)
+        const roles = [...ROLES, ...(angular ? TSX_ROLES : []), ...(context.options[0]?.roles ?? [])]
         const production = productionPattern(roles)
 
         return {
