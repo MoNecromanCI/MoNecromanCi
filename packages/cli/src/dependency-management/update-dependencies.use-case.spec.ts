@@ -122,6 +122,19 @@ describe('collectOutdated', () => {
     expect(outdated[0].kind).toBe('minor')
   })
 
+  it('measures a project that npm nested below the hoisted copy from its own install (#310)', async () => {
+    seedWorkspace()
+    // The hoisted copy is current, but `packages/api` was pinned older and npm nested it there.
+    write('node_modules/axios/package.json', JSON.stringify({ version: '1.9.0' }))
+    write('packages/api/node_modules/axios/package.json', JSON.stringify({ version: '1.7.2' }))
+    mockLatestVersions.mockResolvedValue(new Map([['axios', '1.9.0']]))
+
+    const outdated = await collectOutdated(workspaceRoot, ['npm'])
+
+    expect(outdated).toHaveLength(1)
+    expect(outdated[0]).toMatchObject({ name: 'axios', current: '1.7.2', latest: '1.9.0' })
+  })
+
   it('says nothing about a package already on its latest release', async () => {
     seedWorkspace()
     mockLatestVersions.mockResolvedValue(new Map([['axios', '1.7.2']]))
@@ -332,6 +345,18 @@ describe('runUp', () => {
     await runUp(workspaceRoot, { yes: true, install: false })
 
     expect(mockCheckbox).not.toHaveBeenCalled()
+    expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.9.0')
+  })
+
+  it('--yes writes when stdout is piped, and --check still does not (#310)', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: undefined, configurable: true, writable: true })
+    seedWorkspace()
+    mockLatestVersions.mockResolvedValue(new Map([['axios', '1.9.0']]))
+
+    await runUp(workspaceRoot, { yes: true, check: true, install: false })
+    expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.7.2')
+
+    await runUp(workspaceRoot, { yes: true, install: false })
     expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.9.0')
   })
 

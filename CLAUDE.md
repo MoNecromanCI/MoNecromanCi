@@ -749,7 +749,7 @@ to one is mirrored in the other by construction:
 - `mnci up` reproduces `npm-check -u`'s grouped report and multiselect across all
   five ecosystems, plus a "which projects declare this" column no single-project
   tool can produce; selecting a row rewrites every declaration, which is what stops
-  `up` from creating the drift `sync` repairs. Each ecosystem's own tool answers the
+  `up` from creating the drift `sync` repairs. The current version of an npm package is read from each declaring project's own install (the oldest wins), not the hoisted root copy, so a project npm nested below the hoisted version is still reported; `--yes` writes even when stdout is piped, and `--check` never does (#310). The e2e's `dependency updates` section runs it against the real registry and is reported SKIPPED offline. Each ecosystem's own tool answers the
   "what's latest" question (`npm view`, `pip index versions`, `go list -m -u -json
   all`, `flutter pub outdated --json`, `dotnet package search`) rather than a
   hand-rolled registry call, so private feeds and their auth just work.

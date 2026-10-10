@@ -209,7 +209,7 @@ export function buildProgram (cliVersion: string): Command {
     .description(
       'Show every dependency with a newer published release — grouped patch/minor/major/non-semver, with the projects declaring each one — and interactively update the ones you pick',
     )
-    .option('--check', 'report only; never prompt and never write (the default when piped)')
+    .option('--check', 'report only; never prompt and never write (the default when piped, unless --yes)')
     .option('-y, --yes', 'select every available update without prompting')
     .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | go')
     .option('--no-install', 'update the manifests but skip the reinstall step')
