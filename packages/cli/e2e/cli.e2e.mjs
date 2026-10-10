@@ -3503,7 +3503,6 @@ section('empty scaffolds', [], () => {
   } else {
     skip('empty: C# kinds', 'no .NET SDK')
   }
-
 })
 
 section('react e2e project', [], () => {
