@@ -3808,6 +3808,32 @@ section('angular app', [], () => {
   enforce('angular app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('vue app', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add vue-app` (#314): real generation, then every check CI runs and the zip.
+   * `vue-tsc` 3 is what reads TypeScript 6; the one `@nx/vue` installs cannot.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'vueapp')
+  run(`node ${CLI} new vueapp --yes --registry npm --scope @vua`, temporary)
+  run(`node ${CLI} add vue-app vueweb`, root)
+  const rootManifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+  enforce(
+    'vue app: vue-tsc 3 is the root dev tool, since 2 cannot read the TypeScript 6 tsc.js',
+    String(rootManifest.devDependencies?.['vue-tsc'] ?? '').startsWith('^3'),
+    JSON.stringify(rootManifest.devDependencies?.['vue-tsc']),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=vueweb', root)
+  enforce('vue app: lint, typecheck, test and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run vueweb:package', root)
+  enforce(
+    'vue app: package zips the bundle',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/vue-app-vueweb.zip')),
+    packaged.output.slice(-1500),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('vue app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('function app dev', [], () => {
   /* ---------------------------------------------------------------------------
    * `<name>:dev` of a Node function app (#443): a build watcher beside `func start`,

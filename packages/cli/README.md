@@ -113,6 +113,7 @@ mnci new --into .           # ...or bootstrap into a clone that already exists
 cd my-repo
 mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
+mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add node-app svc          # @nx/node (plain Node app, esbuild)
 mnci add node-app api --framework express  # ...or fastify | koa | nest
 mnci add npm-lib core --empty             # bare skeleton, no sample: every kind but container and vscode-extension
@@ -501,7 +502,7 @@ did:
 
 | Kind(s)                                    | `:start` runs                                                                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `react-app`, `angular-app`, `node-app`     | `nx run <name>:serve` — the generator's own inferred dev-server target                                                                |
+| `react-app`, `angular-app`, `vue-app`, `node-app` | `nx run <name>:serve` — the generator's own inferred dev-server target                                                                |
 | `node-function-app`, `python-function-app` | `nx run <name>:start` → `func start` (Azure Functions Core Tools, install separately — never a prerequisite for `add` itself)         |
 | `python-app`                               | `nx run <name>:start` → `python3 main.py` — mnci writes a runnable `main.py`, since the plugin's own sample module has no entry point |
 | `go-app`                                   | `nx run <name>:start` → `go run .`                                                                                                    |
@@ -642,6 +643,24 @@ makes it fit this workspace, which the generator does not:
 
 Not covered: `--e2e` (React only), SSR, a per-environment build as React has, Vitest (`--unitTestRunner=vitest-angular`
 is passed for a Vitest workspace but was not measured), and an Angular library kind.
+
+## Vue apps (`mnci add vue-app`)
+
+`mnci add vue-app <name>` runs `@nx/vue:app` (Vite, `--unitTestRunner=vitest`, no linter or e2e of its own). Vue's generator
+takes this workspace's TypeScript setup as it is, so there is less to repair than for Angular:
+
+- **`vue-tsc` 3 is installed** as a root dev tool. `@nx/vue` installs 2, whose patch of TypeScript's `lib/tsc.js` cannot read
+  the one TypeScript 6 ships ("Failed to locate tsc module path from shim"); `NX_PEER_OVERRIDES` lets npm accept 3 beside
+  `@nx/vue`'s `^2` peer.
+- **Vitest is the runner**, whatever the workspace's own is: `@nx/vue` supports no other.
+- **The welcome page and `vue-shims.d.ts` are replaced** by a `greeting` feature (contract, use case, component, specs)
+  composed by the root component; `--empty` leaves the root component alone. Single-file components are named for their
+  role, `<name>.component.vue`. `vue-tsc` reads `.vue` imports itself, so no shim is needed.
+- **`tsc` output moves out of the folder Vite empties** (`out-tsc/app`), as for React apps (#346).
+- `:start`/`:dev` are `serve`; `:build:dev` is `build --mode development --sourcemap`; `package` zips `apps/<name>/dist` into
+  `dist/drop/vue-app-<name>.zip`.
+
+Not covered: `--e2e`, routing, a per-environment build as React has, Pinia, and a Vue library kind.
 
 ## A paired Playwright project (`mnci add react-app web --e2e`)
 

@@ -374,6 +374,11 @@ Nx plugin where none does:
   out of `src`; a manifest is written so `@angular/*` is not left at the root. A `.ts` file importing `@angular/*` takes the
   front-end roles with no option (`verticalSlices` `file-role`). Measured on Nx 23.2 / Angular 22, Jest; not covered: Vitest,
   SSR, `--e2e`, a library kind.
+  `vue-app` (`project-scaffolding/vue-app.use-case.ts`, #314) is `@nx/vue:app` (Vite, Vitest only): the generator needs no
+  TypeScript-setup override, but installs `vue-tsc` 2, which cannot read TypeScript 6's `tsc.js`, so `vue-tsc@^3` is installed at
+  the root (with a `@nx/vue` entry in `NX_PEER_OVERRIDES` so npm accepts it beside the `^2` peer); tsc output moves out of Vite's
+  folder through `react-app-output` as for React apps; `.vue` files are `<name>.component.vue`. Measured on Nx 23.2; not covered:
+  `--e2e`, routing, a library kind.
 - **Python** — `@mnci/nx-python-pip`, a real first-party `@nx/devkit` plugin (pip, Ruff,
   pytest, PyPA `build`/`twine`; no uv, no Poetry). Kinds: `python-app`, `python-lib`,
   `python-internal-lib`, `python-function-app`. Vendoring via `mnci add python-vendor`.
