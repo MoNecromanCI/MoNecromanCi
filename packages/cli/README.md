@@ -112,6 +112,7 @@ mnci new --into .           # ...or bootstrap into a clone that already exists
 
 cd my-repo
 mnci add react-app web         # @nx/react (Vite + Jest)
+mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
 mnci add node-app svc          # @nx/node (plain Node app, esbuild)
 mnci add node-app api --framework express  # ...or fastify | koa | nest
 mnci add npm-lib core --empty             # bare skeleton, no sample: every kind but container and vscode-extension
@@ -500,7 +501,7 @@ did:
 
 | Kind(s)                                    | `:start` runs                                                                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `react-app`, `node-app`                    | `nx run <name>:serve` — the generator's own inferred dev-server target                                                                |
+| `react-app`, `angular-app`, `node-app`     | `nx run <name>:serve` — the generator's own inferred dev-server target                                                                |
 | `node-function-app`, `python-function-app` | `nx run <name>:start` → `func start` (Azure Functions Core Tools, install separately — never a prerequisite for `add` itself)         |
 | `python-app`                               | `nx run <name>:start` → `python3 main.py` — mnci writes a runnable `main.py`, since the plugin's own sample module has no entry point |
 | `go-app`                                   | `nx run <name>:start` → `go run .`                                                                                                    |
@@ -618,6 +619,29 @@ the agent has Docker. `mnci upgrade` rewrites `tools/container-image.cjs`, the s
 
 The `container images` e2e section builds a Node, a React and a Go image and talks to the running containers. It needs
 a Docker engine, so it skips where there is none and runs in CI's Linux `e2e-containers` job (nightly and on demand).
+
+## Angular apps (`mnci add angular-app`)
+
+`mnci add angular-app <name>` runs `@nx/angular:app` (esbuild, `--unitTestRunner=jest`, no linter or e2e of its own) and
+makes it fit this workspace, which the generator does not:
+
+- **TypeScript project references are switched off in the app.** The base `tsconfig` is `composite` with
+  `emitDeclarationOnly`; Angular refuses that (`NG4006`, `TS5069`, angular/angular#37276), and the generator itself stops
+  with "doesn't support the existing TypeScript setup" unless `NX_IGNORE_UNSUPPORTED_TS_SETUP` is set, which `add` does for
+  the install and the generator. The app's `tsconfig.json` and `tsconfig.spec.json` override the options, so the app
+  builds; nothing else in the workspace changes.
+- **`typecheck` is `tsc --noEmit`** over the app and spec configs (the inferred one builds declarations, which a
+  non-composite app cannot). Templates are checked by the build, with `strictTemplates`.
+- **The welcome page is replaced** by a `greeting` feature (contract, use case, component, specs) composed by the root
+  component, with `--empty` leaving the root component alone. Files are named for their role: `app.component.ts`,
+  `app.route.ts`, `app.config.ts`. A `.ts` file that imports `@angular/*` takes the front-end roles (`.component`, `.route`)
+  with no option, as a `.tsx` file does.
+- **The test setup sits beside `jest.config`**, not in `src`, where only `index` and `main` may live.
+- **A manifest is written** (`apps/<name>/package.json`), which is where the `@angular/*` dependencies are moved to.
+- `:start`/`:dev` are `serve`; `package` zips `dist/apps/<name>/browser` into `dist/drop/angular-app-<name>.zip`.
+
+Not covered: `--e2e` (React only), SSR, a per-environment build as React has, Vitest (`--unitTestRunner=vitest-angular`
+is passed for a Vitest workspace but was not measured), and an Angular library kind.
 
 ## A paired Playwright project (`mnci add react-app web --e2e`)
 

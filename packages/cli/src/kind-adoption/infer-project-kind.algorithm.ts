@@ -83,6 +83,9 @@ function inferNpm (evidence: ProjectEvidence): KindProposal {
     return { kind: 'node-function-app', certainty: 'certain', reason: 'an Azure Functions host.json or @azure/functions' }
   }
   const privatePackage = manifest.private === true
+  if (declares(manifest, '@angular/core') && files.includes('index.html')) {
+    return { kind: 'angular-app', certainty: 'certain', reason: 'Angular with an index.html entry' }
+  }
   if (declares(manifest, 'react') || declares(manifest, 'react-dom')) {
     if (files.includes('index.html')) {
       return { kind: 'react-app', certainty: 'certain', reason: 'React with an index.html entry' }
