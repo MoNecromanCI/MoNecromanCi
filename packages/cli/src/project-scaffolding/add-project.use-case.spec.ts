@@ -155,8 +155,8 @@ describe('runAdd', () => {
     expect(manifest.nx.targets.test.options.passWithNoTests).toBe(true)
   })
 
-  it('refuses --e2e on a kind that is not a React app, rather than ignoring it', async () => {
-    await expect(runAdd('node-app', 'svc', { e2e: true })).rejects.toThrow('--e2e applies to react-app, not node-app')
+  it('refuses --e2e on a kind that has no paired end-to-end project, rather than ignoring it', async () => {
+    await expect(runAdd('node-app', 'svc', { e2e: true })).rejects.toThrow('--e2e applies to react-app and angular-app, not node-app')
   })
 
   it('refuses --esm on a kind that is not a Node app, and on a framework whose layout is mandated', async () => {

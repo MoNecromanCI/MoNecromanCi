@@ -2,7 +2,8 @@ import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
-import { angularAppEmptyFiles, angularAppExampleFiles } from './angular-app-example.algorithm'
+import { angularAppE2eSpec, angularAppEmptyFiles, angularAppExampleFiles } from './angular-app-example.algorithm'
+import { withNodeTypes } from './react-app-example.algorithm'
 import {
   addProjectJsonTargets,
   ensureAdmZip,
@@ -68,11 +69,12 @@ export function angularAppTargets (name: string): Record<string, unknown> {
  * @param name - The project name (already validated).
  * @param stack - The workspace's chosen linter/test runner.
  * @param empty - Scaffold a bare app: a root component and nothing else (`--empty`).
+ * @param e2e - Also scaffold the paired Playwright project, `<name>-e2e` (`--e2e`).
  * @returns Nothing.
  * @throws Error when the generator or a required install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addAngularApp (workspaceRoot: string, name: string, stack: WorkspaceStack, empty = false): void {
+export function addAngularApp (workspaceRoot: string, name: string, stack: WorkspaceStack, empty = false, e2e = false): void {
   const previous = process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP
   process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP = 'true'
   try {
@@ -86,7 +88,7 @@ export function addAngularApp (workspaceRoot: string, name: string, stack: Works
         '--bundler=esbuild',
         `--unitTestRunner=${stack.testRunner === 'vitest' ? 'vitest-angular' : 'jest'}`,
         '--linter=none',
-        '--e2eTestRunner=none',
+        `--e2eTestRunner=${e2e ? 'playwright' : 'none'}`,
         '--formatter=none',
         '--style=css',
         '--no-interactive',
@@ -135,6 +137,40 @@ export function addAngularApp (workspaceRoot: string, name: string, stack: Works
     start:    `nx run ${name}:serve`,
     buildDev: `nx run ${name}:build:development`,
     dev:      `nx run ${name}:serve`,
+  })
+  if (e2e) {
+    pairE2eProject(workspaceRoot, name, empty)
+  }
+}
+
+/**
+ * Finishes the Playwright project `@nx/angular:app` paired with an app.
+ *
+ * @remarks
+ * Swaps Nx's sample test for one that checks what this app renders, gives the project's tsconfig the Node types its
+ * Playwright config reads (#410), makes sure no per-project ESLint config survives, and registers the commands. Its
+ * `:qa` is lint and typecheck: the `e2e` target needs a browser (`npx playwright install`), which CI's verify does not.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param name - The Angular app's project name.
+ * @param empty - Whether the app is the bare variant.
+ * @returns Nothing.
+ * @throws Propagates any `fs` error.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function pairE2eProject (workspaceRoot: string, name: string, empty: boolean): void {
+  const e2eName = `${name}-e2e`
+  const e2eRoot = join(workspaceRoot, 'apps', e2eName)
+  rmSync(join(e2eRoot, 'src/example.spec.ts'), { force: true })
+  writeFileEnsured(join(e2eRoot, 'src/greeting.e2e.spec.ts'), angularAppE2eSpec(name, empty))
+  const tsconfigPath = join(e2eRoot, 'tsconfig.json')
+  if (fileExists(tsconfigPath)) {
+    writeFileEnsured(tsconfigPath, withNodeTypes(readFileSync(tsconfigPath, 'utf8')))
+  }
+  removeGeneratedEslintConfig(workspaceRoot, `apps/${e2eName}`)
+  registerProjectCommands(workspaceRoot, e2eName, {
+    build: false,
+    qa:    `nx run ${e2eName}:lint && nx run ${e2eName}:typecheck`,
   })
 }
 

@@ -644,8 +644,10 @@ makes it fit this workspace, which the generator does not:
 - **A manifest is written** (`apps/<name>/package.json`), which is where the `@angular/*` dependencies are moved to.
 - `:start`/`:dev` are `serve`; `package` zips `dist/apps/<name>/browser` into `dist/drop/angular-app-<name>.zip`.
 
-Not covered: `--e2e` (React only), SSR, a per-environment build as React has, Vitest (`--unitTestRunner=vitest-angular`
-is passed for a Vitest workspace but was not measured), and an Angular library kind.
+`--e2e` pairs a Playwright project as for React (its `e2e` target needs a browser; `:qa` is lint and typecheck). A Vitest
+workspace gets `--unitTestRunner=vitest-angular`, which passes lint, typecheck, test and build.
+
+Not covered: SSR, a per-environment build as React has, and an Angular library kind.
 
 ## Vue apps (`mnci add vue-app`)
 
