@@ -3953,6 +3953,7 @@ section('rust', [], () => {
   run(`node ${CLI} new rustws --yes --registry npm --scope @rsw`, temporary)
   run(`node ${CLI} add rust-app hello`, root)
   run(`node ${CLI} add rust-internal-lib kit`, root)
+  run(`node ${CLI} add rust-lib core`, root)
   const cargoToml = readFileSync(path.join(root, 'apps/hello/Cargo.toml'), 'utf8')
   const projectName = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8')).name
   enforce(
@@ -3977,6 +3978,38 @@ section('rust', [], () => {
     needle:    'itoa',
     spec:      'itoa',
   })
+  // sync and up read crate versions: an old pin is reported as outdated, and `up --yes` rewrites it and re-resolves the lockfile.
+  const pinned = tryRunCapture(`node ${CLI} i -w hello itoa@0.4`, root)
+  const outdated = tryRunCapture(`node ${CLI} up --check --ecosystem cargo`, root)
+  enforce(
+    'rust: mnci up reports a crate pinned below its latest release',
+    pinned.ok && outdated.ok && /itoa/.test(outdated.output) && /0\.4/.test(outdated.output),
+    `${pinned.output.slice(-400)}
+${outdated.output.slice(-1200)}`,
+  )
+  const updated = tryRunCapture(`node ${CLI} up --yes --ecosystem cargo`, root)
+  const manifestAfter = readFileSync(path.join(root, 'apps/hello/Cargo.toml'), 'utf8')
+  enforce(
+    'rust: mnci up --yes moves the declared range and the project still builds',
+    updated.ok && !/itoa = "0\.4/.test(manifestAfter) && tryRunCapture('npx nx run hello:build', root).ok,
+    `${updated.output.slice(-800)}
+${manifestAfter}`,
+  )
+  // Release: the version is read from Cargo.toml (no package.json to find), and the publish target gates on its token.
+  run('git add -A', root)
+  run('git commit -m "feat: add the rust crates"', root)
+  const release = tryRunCapture('npx nx release --dry-run', root)
+  enforce(
+    'rust: nx release versions the publishable crate from its Cargo.toml (CargoVersionActions)',
+    release.ok && /core/.test(release.output),
+    release.output.slice(-2000),
+  )
+  const publish = tryRunCapture('npx nx run core:nx-release-publish', root)
+  enforce(
+    'rust: nx-release-publish self-gates cleanly with no CARGO_REGISTRY_TOKEN',
+    publish.ok && /not configured/.test(publish.output),
+    publish.output.slice(-800),
+  )
   const doctor = tryRunCapture(`node ${CLI} doctor`, root)
   enforce('rust: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })

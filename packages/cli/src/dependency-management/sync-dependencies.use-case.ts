@@ -342,9 +342,6 @@ export function runSync (workspaceRoot: string, options: SyncOptions): void {
       logger.info(`⊘ SKIPPED ${ecosystem} — no ${ecosystem} project in this workspace.`)
     }
   }
-  if (ecosystems.includes('cargo') && hasEcosystem(workspaceRoot, 'cargo')) {
-    logger.success('cargo — not read yet: crate versions are not part of the inventory, so none is converged. `cargo update` refreshes Cargo.lock and `cargo add` / `mnci i` set a range (#469).')
-  }
   if (ecosystems.includes('go') && hasEcosystem(workspaceRoot, 'go')) {
     logger.success('go — not converged: modules in a go.work build with the highest version any of them requires, so differing declarations do not ship two copies. `mnci up` upgrades each one through go get.')
   }

@@ -693,6 +693,15 @@ describe('the Dependabot lockfile workflow (#428)', () => {
   })
 })
 
+describe('the crates.io token (#469)', () => {
+  it('reaches the release step of both providers on the public registry, and no other', () => {
+    expect(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github')).toContain('CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}')
+    expect(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'npm')).toContain('CARGO_REGISTRY_TOKEN: $(CARGO_REGISTRY_TOKEN)')
+    expect(githubActionsYaml('ubuntu-latest', undefined, 'azure-artifacts', 'github')).not.toContain('CARGO_REGISTRY_TOKEN')
+    expect(azurePipelinesYaml('ubuntu-latest', 'Build', undefined, 'azure-artifacts')).not.toContain('CARGO_REGISTRY_TOKEN')
+  })
+})
+
 describe('a failed install names its usual cause (#428)', () => {
   it('GitHub runs the remedy only when the install step itself failed, and the YAML still parses', () => {
     const document_ = yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github')) as {

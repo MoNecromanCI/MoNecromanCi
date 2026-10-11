@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path'
 import { runCapture } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { listGoModuleDirectories } from '../go-workspace'
+import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-dependencies.algorithm'
 
 /**
  * The five dependency ecosystems a generated workspace can contain.
@@ -91,9 +92,8 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   // PascalCase identity, not a fixed name) — the same three roots
   // PACK_APPS_GUARD and add/csharp.ts already scan.
   nuget: ['apps/*/*.csproj', 'packages/*/*.csproj', 'libs/*/*.csproj'],
-  // Crates are read for `install`/`uninstall` (see PROJECT_GLOBS); their declared versions are not yet part of the
-  // inventory `sync` and `up` reconcile, so nothing is listed here.
-  cargo: [],
+  // One `Cargo.toml` per crate; the workspace root's lists members and holds no dependencies of its own.
+  cargo: ['apps/*/Cargo.toml', 'packages/*/Cargo.toml', 'libs/*/Cargo.toml'],
   // Single root module by design — there are no per-project Go manifests.
   go:    [],
 }
@@ -194,6 +194,44 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     fileExists(join(workspaceRoot, rootMarker[ecosystem])) ||
     globSync(MANIFEST_GLOBS[ecosystem], { cwd: workspaceRoot }).length > 0
   )
+}
+
+/**
+ * Reads every crate dependency declared by a project's `Cargo.toml`.
+ *
+ * @remarks
+ * The workspace root's `Cargo.toml` is not read: it lists the members and, by mnci's rule, declares no dependency of its own.
+ * A path dependency is reported with its version and never rewritten.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One site per crate dependency that carries a version requirement.
+ * @throws Never - an unreadable manifest is skipped.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function collectCargo (workspaceRoot: string): DependencySite[] {
+  const sites: DependencySite[] = []
+  const manifests = globSync(MANIFEST_GLOBS.cargo, { cwd: workspaceRoot })
+  for (const relativePath of manifests) {
+    let content: string
+    try {
+      content = readFileSync(join(workspaceRoot, relativePath), 'utf8')
+    } catch {
+      continue
+    }
+    for (const dependency of cargoDependencies(content)) {
+      sites.push({
+        name:         dependency.name,
+        ecosystem:    'cargo',
+        project:      projectOf(relativePath),
+        manifestPath: join(workspaceRoot, relativePath),
+        section:      dependency.section,
+        spec:         dependency.spec,
+        rewritable:   dependency.rewritable,
+      })
+    }
+  }
+
+  return sites
 }
 
 /**
@@ -723,7 +761,7 @@ export function collectInventory (
     pip:   collectPip,
     pub:   collectPub,
     nuget: collectNuget,
-    cargo: () => [],
+    cargo: collectCargo,
     go:    collectGo,
   }
 
@@ -866,6 +904,9 @@ export function rewriteSpec (site: DependencySite, spec: string): boolean {
       }
       case 'nuget': {
         return replaceNugetSpec(before, name, spec)
+      }
+      case 'cargo': {
+        return replaceCargoSpec(before, name, spec)
       }
       // 'go' entries are never rewritable (see collectGo), so this is
       // unreachable in practice — returning the text unchanged is the safe
@@ -1174,6 +1215,12 @@ export function resolvedVersion (
     } catch {
       return undefined
     }
+  }
+
+  if (ecosystem === 'cargo') {
+    const lockPath = join(workspaceRoot, 'Cargo.lock')
+
+    return fileExists(lockPath) ? cargoLockVersion(readFileSync(lockPath, 'utf8'), name) : undefined
   }
 
   if (ecosystem === 'pip') {
