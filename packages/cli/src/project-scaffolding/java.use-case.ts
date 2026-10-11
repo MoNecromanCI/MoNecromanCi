@@ -34,8 +34,10 @@ const MVN = 'mvn -B -ntp'
  *
  * @remarks
  * `-pl <module> -am` builds the module together with the siblings it depends on from the aggregator's reactor, so an
- * internal library needs no `mvn install` into the local repository first. Maven writes into `<module>/target`, which is
- * per project, so Nx's output clearing on a cache restore cannot touch another project. `javac` compiles with debug
+ * internal library needs no `mvn install` into the local repository first. Each module builds into its own
+ * `dist/maven/<name>` (its `pom.xml` sets `<build><directory>`), like Rust's `dist/target/<name>` and CMake's
+ * `dist/cmake/<name>`: nothing lands beside the sources for git to pick up, and Nx's output clearing on a cache restore
+ * cannot touch another project. `javac` compiles with debug
  * information by default, so `build` is the build a debugger wants and there is no `build-dev`. `lint` is Checkstyle,
  * after the compiler's own `-Xlint:all` and `failOnWarning`, which is part of `build`. There is no `typecheck`: compiling
  * is the check.
@@ -48,13 +50,14 @@ const MVN = 'mvn -B -ntp'
  * @typeParam None - this function has no generic type parameters.
  */
 export function javaTargets (name: string, directory: string, app: boolean): Record<string, unknown> {
-  const jar = `${directory}/target/${name}.jar`
+  const output = `dist/maven/${name}`
+  const jar = `${output}/${name}.jar`
   const targets: Record<string, unknown> = {
     'build': {
       cache:    true,
       executor: 'nx:run-commands',
       inputs:   ['default', '{workspaceRoot}/pom.xml'],
-      outputs:  [`{workspaceRoot}/${directory}/target`],
+      outputs:  [`{workspaceRoot}/${output}`],
       options:  { command: `${MVN} -pl ${directory} -am package -DskipTests` },
     },
     'test': {

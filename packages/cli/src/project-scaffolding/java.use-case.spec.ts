@@ -63,7 +63,7 @@ describe('runAdd java-app', () => {
     const { targets, tags } = JSON.parse(readFileSync(join(workspaceRoot, 'apps/hello/project.json'), 'utf8'))
     expect(Object.keys(targets)).toEqual(['build', 'test', 'slice-check', 'lint', 'start', 'package'])
     expect(tags).toEqual(['type:java-app'])
-    expect(targets.build.outputs).toEqual(['{workspaceRoot}/apps/hello/target'])
+    expect(targets.build.outputs).toEqual(['{workspaceRoot}/dist/maven/hello'])
     expect(targets.build.options.command).toBe('mvn -B -ntp -pl apps/hello -am package -DskipTests')
     expect(targets.lint.dependsOn).toEqual(['slice-check'])
     expect(targets.lint.options.command).toContain('checkstyle:check')

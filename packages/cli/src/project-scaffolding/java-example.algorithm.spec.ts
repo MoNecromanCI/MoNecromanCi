@@ -55,6 +55,7 @@ describe('a module pom.xml', () => {
     const pom = javaModulePom('java-lib', 'com.example', 'kit', undefined)
 
     expect(pom).toContain('<relativePath>../../pom.xml</relativePath>')
+    expect(pom).toContain('<directory>${project.basedir}/../../dist/maven/kit</directory>')
     expect(pom).toContain('<artifactId>kit</artifactId>')
     expect(pom).not.toContain('maven-shade-plugin')
     expect(pom).not.toMatch(/junit-jupiter<\/artifactId>\s*<version>/)

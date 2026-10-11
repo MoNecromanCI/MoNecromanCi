@@ -710,7 +710,9 @@ piece of work (#470). Apps live in `apps/`, publishable libraries in `packages/`
 - **One aggregator `pom.xml` at the root** (mnci's, as `go.work` and the root `Cargo.toml` are) lists every module and pins the
   plugin and test-library versions once, so a module's `pom.xml` names none and inherits them. `mvn -pl <module> -am` builds a
   module with the siblings it uses from the reactor, so an internal library needs no `mvn install` first. The group id comes
-  from the git origin (`github.com/Acme/tools` is `com.github.acme`), `com.example` without one.
+  from the git origin (`github.com/Acme/tools` is `com.github.acme`), `com.example` without one. Each module builds into its
+  own `dist/maven/<name>`, like Rust's `dist/target/<name>` and CMake's `dist/cmake/<name>`, so nothing lands beside the
+  sources for git to pick up and Nx's output clearing on a cache restore cannot touch another project.
 - **The example is a slice**: the package `<group>.<project>.greeting` holds `GreetingContract.java` and `GreetUseCase.java`,
   with `GreetUseCaseTest.java` beside them in `src/test/java`, and `Main` only wires. Java names a file for its one public type,
   so the role is in the type name (as C# does). A project name with a hyphen is one lowercase word in the package.

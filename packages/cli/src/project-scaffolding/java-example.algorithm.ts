@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/prefer-https -- the POM namespace is an identifier that must read http://, not a URL that is fetched */
 import { CHECKSTYLE_CONFIG_PATH, JAVA_RELEASE, MAVEN_AGGREGATOR_VERSION, MAVEN_VERSIONS } from './java-build.config'
 
 /**
@@ -78,7 +79,7 @@ export function javaRootPom (groupId: string, modules: readonly string[]): strin
   const v = MAVEN_VERSIONS
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>${groupId}</groupId>
@@ -192,9 +193,9 @@ export function addMavenModule (text: string, directory: string): string {
  * @typeParam None - this function has no generic type parameters.
  */
 export function javaModulePom (kind: JavaKind, groupId: string, name: string, entryPoint: string | undefined): string {
+  const directory = `\${project.basedir}/../../dist/maven/${name}`
   const shade = kind === 'java-app'
     ? `
-  <build>
     <finalName>${name}</finalName>
     <plugins>
       <plugin>
@@ -216,13 +217,11 @@ export function javaModulePom (kind: JavaKind, groupId: string, name: string, en
           </execution>
         </executions>
       </plugin>
-    </plugins>
-  </build>
-`
+    </plugins>`
     : ''
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -244,7 +243,12 @@ export function javaModulePom (kind: JavaKind, groupId: string, name: string, en
       <scope>test</scope>
     </dependency>
   </dependencies>
-${shade}</project>
+
+  <build>
+    <!-- Build output stays out of the source tree, with the other kinds' (dist/target, dist/cmake). -->
+    <directory>${directory}</directory>${shade}
+  </build>
+</project>
 `
 }
 
