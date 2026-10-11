@@ -52,9 +52,13 @@ describe('runAdd php-app', () => {
     expect(manifest.autoload['psr-4']).toEqual({ 'App\\Hello\\': 'src/' })
   })
 
-  it('writes the root composer.json of shared dev tools once, and ignores vendor/', async () => {
+  it('writes the root composer.json of shared dev tools once, installs them in one Nx task, and ignores vendor/', async () => {
     await runAdd('php-app', 'hello', {})
     await runAdd('php-internal-lib', 'kit', {})
+
+    const tools = JSON.parse(readFileSync(join(workspaceRoot, 'tools/php-tools/project.json'), 'utf8'))
+    expect(tools.targets.install.options.command).toContain('composer --no-interaction --no-progress install')
+    expect(tools.targets.install.outputs).toEqual(['{workspaceRoot}/vendor'])
 
     const root = JSON.parse(readFileSync(join(workspaceRoot, 'composer.json'), 'utf8'))
     expect(Object.keys(root['require-dev'])).toEqual(expect.arrayContaining(['phpstan/phpstan', 'phpunit/phpunit', 'squizlabs/php_codesniffer']))
@@ -70,7 +74,8 @@ describe('runAdd php-app', () => {
     expect(tags).toEqual(['type:php-app'])
     expect(targets.build.outputs).toEqual(['{workspaceRoot}/apps/hello/vendor'])
     expect(targets.build.options.commands[0]).toBe('composer --no-interaction validate --strict --working-dir=apps/hello')
-    expect(targets.lint.dependsOn).toEqual(['slice-check', 'build'])
+    expect(targets.lint.dependsOn).toEqual(['slice-check', 'build', { projects: ['php-tools'], target: 'install' }])
+    expect(targets.test.dependsOn).toEqual(['build', { projects: ['php-tools'], target: 'install' }])
     expect(targets.lint.options.commands.join('\n')).toContain('phpstan analyse -c apps/hello/phpstan.neon')
     expect(targets.lint.options.commands.join('\n')).toContain('--standard=PSR12 apps/hello/src apps/hello/tests apps/hello/bin')
     expect(targets.package.outputs).toEqual(['{workspaceRoot}/dist/drop/php-app-hello.zip'])
