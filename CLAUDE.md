@@ -379,6 +379,10 @@ Nx plugin where none does:
   the root (with a `@nx/vue` entry in `NX_PEER_OVERRIDES` so npm accepts it beside the `^2` peer); tsc output moves out of Vite's
   folder through `react-app-output` as for React apps; `.vue` files are `<name>.component.vue`. Measured on Nx 23.2; not covered:
   `--e2e`, routing, a library kind.
+  `svelte-app` (`project-scaffolding/svelte-app.use-case.ts`, #314) has no Nx generator (`@nxext/svelte` does not install here), so it
+  is Vite's `svelte-ts` template via `create-vite@CREATE_VITE_VERSION`, wired like Go and C#: explicit `nx.targets`
+  (`typecheck` is `svelte-check`), `apps/*` added to the root `workspaces`, test tooling installed into the app after a plain
+  `npm install` (the first `-w` for a new folder is a silent no-op). `.svelte` files are not linted.
 - **Python** — `@mnci/nx-python-pip`, a real first-party `@nx/devkit` plugin (pip, Ruff,
   pytest, PyPA `build`/`twine`; no uv, no Poetry). Kinds: `python-app`, `python-lib`,
   `python-internal-lib`, `python-function-app`. Vendoring via `mnci add python-vendor`.

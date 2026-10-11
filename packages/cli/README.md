@@ -114,6 +114,7 @@ cd my-repo
 mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
+mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add node-app svc          # @nx/node (plain Node app, esbuild)
 mnci add node-app api --framework express  # ...or fastify | koa | nest
 mnci add npm-lib core --empty             # bare skeleton, no sample: every kind but container and vscode-extension
@@ -502,7 +503,7 @@ did:
 
 | Kind(s)                                    | `:start` runs                                                                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `react-app`, `angular-app`, `vue-app`, `node-app` | `nx run <name>:serve` — the generator's own inferred dev-server target                                                                |
+| `react-app`, `angular-app`, `vue-app`, `svelte-app`, `node-app` | `nx run <name>:serve` — the generator's own inferred dev-server target                                                                |
 | `node-function-app`, `python-function-app` | `nx run <name>:start` → `func start` (Azure Functions Core Tools, install separately — never a prerequisite for `add` itself)         |
 | `python-app`                               | `nx run <name>:start` → `python3 main.py` — mnci writes a runnable `main.py`, since the plugin's own sample module has no entry point |
 | `go-app`                                   | `nx run <name>:start` → `go run .`                                                                                                    |
@@ -661,6 +662,25 @@ takes this workspace's TypeScript setup as it is, so there is less to repair tha
   `dist/drop/vue-app-<name>.zip`.
 
 Not covered: `--e2e`, routing, a per-environment build as React has, Pinia, and a Vue library kind.
+
+## Svelte apps (`mnci add svelte-app`)
+
+No Nx plugin for Svelte installs on this workspace (`@nxext/svelte` peers on TypeScript 5 and fails to resolve), so
+`mnci add svelte-app <name>` scaffolds with Vite's own `svelte-ts` template (`create-vite`, pinned in
+`CREATE_VITE_VERSION`) and wires it in, the way Go and C# are made by their own tools:
+
+- **`apps/*` is registered as an npm workspace** (the Nx generators do it for the other apps), and the app's test tooling
+  (`vitest`, `jsdom`, `@testing-library/svelte`) is installed into the app's own manifest. A plain `npm install` runs first,
+  since npm 12's first `-w apps/<name>` after a folder appears is a silent no-op.
+- **The Nx targets are written explicitly**: `build` and `serve` (Vite), `test` (`vitest run`), `typecheck`
+  (`svelte-check`, which reads `.svelte` files) and `package` (zips `apps/<name>/dist` into
+  `dist/drop/svelte-app-<name>.zip`). `lint` is the inferred ESLint one.
+- **The template's counter sample is replaced** by a `greeting` feature (contract, use case, component, specs) composed by
+  the root component; `--empty` leaves the root component. Components are named `<name>.component.svelte`. The app drops
+  its own copy of `typescript`.
+
+Not covered: `.svelte` files are not linted (the ESLint configuration has no Svelte parser; `svelte-check` is their
+check), `--e2e`, SvelteKit, and a Svelte library kind.
 
 ## A paired Playwright project (`mnci add react-app web --e2e`)
 

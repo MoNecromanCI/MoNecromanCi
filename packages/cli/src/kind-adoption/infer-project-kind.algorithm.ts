@@ -86,6 +86,9 @@ function inferNpm (evidence: ProjectEvidence): KindProposal {
   if (declares(manifest, '@angular/core') && files.includes('index.html')) {
     return { kind: 'angular-app', certainty: 'certain', reason: 'Angular with an index.html entry' }
   }
+  if (declares(manifest, 'svelte') && files.includes('index.html')) {
+    return { kind: 'svelte-app', certainty: 'certain', reason: 'Svelte with an index.html entry' }
+  }
   if (declares(manifest, 'vue') && files.includes('index.html')) {
     return { kind: 'vue-app', certainty: 'certain', reason: 'Vue with an index.html entry' }
   }
