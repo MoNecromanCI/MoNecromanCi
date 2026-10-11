@@ -3849,6 +3849,33 @@ section('vue app', [], () => {
   enforce('vue app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('react p5 app', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add react-p5-app` (#475): the React app plus p5 and its wrapper, installed into the app
+   * and not the root. Real generation, then every check CI runs and the per-environment zip.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'p5app')
+  run(`node ${CLI} new p5app --yes --registry npm --scope @p5a`, temporary)
+  run(`node ${CLI} add react-p5-app sketchbook`, root)
+  const manifest = JSON.parse(readFileSync(path.join(root, 'apps/sketchbook/package.json'), 'utf8'))
+  const rootManifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+  enforce(
+    'react p5 app: p5 and its wrapper are in the app manifest and not the root one',
+    manifest.dependencies?.p5 !== undefined && manifest.dependencies?.['@p5-wrapper/react'] !== undefined && rootManifest.dependencies?.p5 === undefined,
+    JSON.stringify({ app: manifest.dependencies, root: rootManifest.dependencies }),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=sketchbook', root)
+  enforce('react p5 app: lint, typecheck, test and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run sketchbook:package', root)
+  enforce(
+    'react p5 app: package zips each environment',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/react-app-sketchbook-prod.zip')),
+    packaged.output.slice(-1500),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('react p5 app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('svelte app', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add svelte-app` (#314): no Nx plugin for Svelte installs on this workspace, so

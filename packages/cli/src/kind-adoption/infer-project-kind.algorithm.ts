@@ -94,6 +94,10 @@ function inferNpm (evidence: ProjectEvidence): KindProposal {
   }
   if (declares(manifest, 'react') || declares(manifest, 'react-dom')) {
     if (files.includes('index.html')) {
+      if (declares(manifest, 'p5') || declares(manifest, '@p5-wrapper/react')) {
+        return { kind: 'react-p5-app', certainty: 'certain', reason: 'React with p5 and an index.html entry' }
+      }
+
       return { kind: 'react-app', certainty: 'certain', reason: 'React with an index.html entry' }
     }
 

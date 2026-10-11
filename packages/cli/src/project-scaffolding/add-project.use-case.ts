@@ -25,6 +25,7 @@ import { addDocsSite } from './docs-site.use-case'
 import { addSvelteApp } from './svelte-app.use-case'
 import { addVueApp } from './vue-app.use-case'
 import { addReactApp } from './react-app.use-case'
+import { addReactP5App } from './react-p5-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
 import { addVscodeExtension } from './vscode-extension.use-case'
 import { syncProjectReferences } from '../dependency-management'
@@ -127,6 +128,7 @@ export type { AddOptions } from './post-generation.use-case'
  */
 export type ProjectKind =
   | 'react-app' |
+  'react-p5-app' |
   'angular-app' |
   'angular-internal-lib' |
   'vue-app' |
@@ -168,6 +170,7 @@ export type ProjectKind =
  */
 export const PROJECT_KINDS: ProjectKind[] = [
   'react-app',
+  'react-p5-app',
   'angular-app',
   'angular-internal-lib',
   'vue-app',
@@ -201,7 +204,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'react-p5-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
 
 /** The kinds a registry publishes: a workspace with no registry releases none of them. */
 const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
@@ -288,8 +291,8 @@ export async function runAdd (
   if (options.port !== undefined && !/^\d+$/.test(options.port)) {
     throw new Error(`--port ${options.port}: a port is a whole number.`)
   }
-  if (resolvedKind !== 'react-app' && resolvedKind !== 'angular-app' && options.e2e === true) {
-    throw new Error(`--e2e applies to react-app and angular-app, not ${resolvedKind}.`)
+  if (resolvedKind !== 'react-app' && resolvedKind !== 'react-p5-app' && resolvedKind !== 'angular-app' && options.e2e === true) {
+    throw new Error(`--e2e applies to react-app, react-p5-app and angular-app, not ${resolvedKind}.`)
   }
   const resolvedName = name ?? (await promptText('Project name'))
   // A workspace generated with --registry none releases only what is tagged for it, so a library added to it is never
@@ -341,6 +344,10 @@ export async function runAdd (
     }
     case 'react-app': {
       addReactApp(workspaceRoot, resolvedName, stack, options.e2e === true, options.empty === true)
+      break
+    }
+    case 'react-p5-app': {
+      addReactP5App(workspaceRoot, resolvedName, stack, options.e2e === true, options.empty === true)
       break
     }
     case 'react-lib': {
