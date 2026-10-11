@@ -6,7 +6,7 @@
  * `package.json`'s `contributes.commands`; a test compares them with a snapshot of
  * `mnci commands --json`, so a command added to the CLI cannot be forgotten.
  */
-export const CLI_COMMAND_NAMES: readonly string[] = ['new', 'upgrade', 'doctor', 'adopt', 'add', 'dev', 'install', 'uninstall', 'sync', 'up', 'ci', 'pipeline']
+export const CLI_COMMAND_NAMES: readonly string[] = ['new', 'upgrade', 'doctor', 'adopt', 'add', 'dev', 'remove', 'install', 'uninstall', 'sync', 'up', 'ci', 'pipeline']
 
 /**
  * Commands that exist only in the extension.

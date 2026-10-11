@@ -711,6 +711,50 @@
     ]
   },
   {
+    "name": "remove",
+    "aliases": [],
+    "group": "projects",
+    "description": "Remove a project and every place that names it: its folder, root scripts, launch configurations, the Go, Dart and Cargo workspaces, path aliases. Refuses while another project depends on it. Git tags and published versions are not touched",
+    "arguments": [
+      {
+        "name": "project",
+        "description": "the project to remove, by directory (apps/foo) or name (foo)",
+        "required": true,
+        "variadic": false
+      }
+    ],
+    "options": [
+      {
+        "name": "dry-run",
+        "flags": "--dry-run",
+        "description": "print what would change and stop",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "yes",
+        "flags": "-y, --yes",
+        "short": "-y",
+        "description": "apply without asking (required when there is no terminal)",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "force",
+        "flags": "--force",
+        "description": "remove even when another project depends on it",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "add",
     "aliases": [],
     "group": "projects",

@@ -12,6 +12,7 @@ import { runInteractive } from './interactive-wizard'
 import { PRESET_IDS } from './workspace-presets'
 import { runNew, type NewOptions } from './workspace-creation'
 import { runInstall, runUninstall, type InstallOptions, type UninstallOptions } from './dependency-management'
+import { runRemove, type RemoveOptions } from './project-removal'
 import { runSync, type SyncOptions } from './dependency-management'
 import { runUp, type UpOptions } from './dependency-management'
 import { runUpgrade, type UpgradeOptions } from './workspace-upgrade'
@@ -250,6 +251,20 @@ export function buildProgram (cliVersion: string): Command {
     )
     .action((packages: string[], options: UninstallOptions) => {
       runUninstall(process.cwd(), packages, options)
+    })
+
+  program
+    .command('remove')
+    .argument('<project>', 'the project to remove, by directory (apps/foo) or name (foo)')
+    .description(
+      'Remove a project and every place that names it: its folder, root scripts, launch configurations, the Go, Dart and Cargo workspaces, path aliases. Refuses while another project depends on it. Git tags and published versions are not touched',
+    )
+    .option('--dry-run', 'print what would change and stop')
+    .option('-y, --yes', 'apply without asking (required when there is no terminal)')
+    .option('--force', 'remove even when another project depends on it')
+    .action(async (project: string, options: { dryRun?: boolean, yes?: boolean, force?: boolean }) => {
+      const settings: RemoveOptions = { dryRun: options.dryRun, yes: options.yes, force: options.force }
+      await runRemove(process.cwd(), project, settings)
     })
 
   program
