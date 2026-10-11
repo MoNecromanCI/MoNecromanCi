@@ -689,10 +689,19 @@ Apps live in `apps/`, publishable libraries in `packages/`, private ones in `lib
 `[dependencies]`: `mnci i -w <crate> <crate-name>` runs `cargo add --manifest-path` and `mnci un -w <crate> <crate-name>` runs
 `cargo remove`.
 
-Not covered yet (#469): `mnci sync` and `mnci up` do not read crate versions, so they do not reconcile or update them
-(`latestCargoVersions` is written); publishing to crates.io and a version for `nx release`; the Rust toolchain in
-`mnci ci setup`, the devcontainer and the pinned versions; a slice lint (`rust-slice-check`); a debugger launch
-configuration; `dev` (watch and restart); an internal crate as a path dependency of another.
+`mnci sync` and `mnci up` read a crate's `[dependencies]`, `[dev-dependencies]` and `[build-dependencies]` (a plain version
+or an inline table's `version`; a path or workspace dependency is reported and never rewritten), ask crates.io through
+`cargo search`, edit the range in place and run `cargo update`. A crate resolves from the one root `Cargo.lock`.
+
+A publishable `rust-lib` releases like the other kinds: `nx release` reads and writes the `version` of its `[package]` table
+(`tools/cargo-version-actions.cjs`, a workspace file mnci writes), and `nx-release-publish` runs `cargo publish --allow-dirty`
+(`nx release` is tag-only, so the bumped `Cargo.toml` is uncommitted) when `CARGO_REGISTRY_TOKEN` is set, which the generated
+pipelines pass for a workspace on the public registry, and says so and skips when it is not. A dry run publishes nothing.
+Only crates.io is wired.
+
+Not covered yet (#469): the Rust toolchain in `mnci ci setup`, the devcontainer and the pinned versions (GitHub runners ship
+`cargo`, a bare machine does not); a slice lint (`rust-slice-check`); a debugger launch configuration; `dev` (watch and
+restart); an internal crate as a path dependency of another (`mnci i -w app kit` is not a path dependency yet).
 
 ## HTML apps (`mnci add html-app`)
 

@@ -2949,6 +2949,39 @@ ${indent}${PYPI_TOKEN_VARIABLE}: ${variableReference(PYPI_TOKEN_VARIABLE)}`
 }
 
 /**
+ * The env var a Rust crate is published to crates.io with.
+ *
+ * @remarks
+ * Read by cargo itself, and by the `nx-release-publish` target of a `rust-lib`, which skips with a message when it is unset.
+ */
+export const CARGO_TOKEN_VARIABLE = 'CARGO_REGISTRY_TOKEN'
+
+/**
+ * The extra `env:` line the release step needs to carry a crates.io token.
+ *
+ * @remarks
+ * Only for the public registry kind, like {@link pypiTokenEnvLine}: crates.io is the one registry wired for Rust, and a
+ * workspace on an Azure Artifacts feed has no crates.io credential to pass. Rendered from one function for both providers.
+ *
+ * @param registryKind - The workspace's registry kind.
+ * @param variableReference - Renders a named secret in the calling provider's own syntax.
+ * @param indent - The indentation the provider's `env:` block uses.
+ * @returns The rendered line, or `''` when no crates.io token applies.
+ * @throws Never - pure mapping.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function cargoTokenEnvLine (
+  registryKind: RegistryConfig['kind'],
+  variableReference: (name: string) => string,
+  indent: string,
+): string {
+  return registryKind === 'npm'
+    ? `
+${indent}${CARGO_TOKEN_VARIABLE}: ${variableReference(CARGO_TOKEN_VARIABLE)}`
+    : ''
+}
+
+/**
  * The env var name + value pair that authenticates `npm ci`/`nx release publish`,
  * keyed by registry kind — two genuinely different secrets, never conflated.
  *
@@ -3336,7 +3369,7 @@ ${phaseStart('release', '  ')}
     displayName: Release — version, tag and publish (npm + Python + C# + VS Code)
     condition: ${onMain}
     env:
-      ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `$(${name})`, ' '.repeat(6))}
+      ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `$(${name})`, ' '.repeat(6))}${cargoTokenEnvLine(registryKind, name => `$(${name})`, ' '.repeat(6))}
       RELEASE_SPECIFIER: $(RELEASE_SPECIFIER)
       # A VS Code extension publishes with it; tools/vscode-extension.cjs skips the
       # Marketplace when it is unset, including when Azure leaves it as '$(VSCE_PAT)'.
@@ -3639,7 +3672,7 @@ ${phaseStart('release', ' '.repeat(6))}
         name: Release — version, tag${githubReleases ? ', publish and GitHub Release' : ' and publish'} (npm + Python + C# + VS Code)
         if: \${{ ${onMain} }}
         env:
-          ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `\${{ secrets.${name} }}`, ' '.repeat(10))}
+          ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `\${{ secrets.${name} }}`, ' '.repeat(10))}${cargoTokenEnvLine(registryKind, name => `\${{ secrets.${name} }}`, ' '.repeat(10))}
           RELEASE_SPECIFIER: \${{ vars.RELEASE_SPECIFIER }}
           # A VS Code extension publishes with Entra ID when the sign-in step
           # above ran (VSCE_AUTH=entra), else with the VSCE_PAT token;

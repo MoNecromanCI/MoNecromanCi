@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { writeFileEnsured } from '../file-system'
 import { rustEmptyFiles, rustExampleFiles } from './rust-example.algorithm'
+import { wireRustLibRelease } from './rust-release.use-case'
 import {
   addProjectJsonTargets,
   ensureAdmZip,
@@ -132,7 +133,8 @@ function withWorkspaceLayout (workspaceRoot: string, folder: string, step: () =>
  *
  * The crate's dependencies are its own: a `[dependencies]` table in its `Cargo.toml`, with one root `Cargo.lock` for the
  * Cargo workspace the plugin's `init` writes. A library under `libs/` is private (`rust-internal-lib`), one under
- * `packages/` is the publishable one (`rust-lib`; publishing is not wired yet).
+ * `packages/` is the publishable one (`rust-lib`), released by `nx release` with a version read from `Cargo.toml` and published
+ * to crates.io when `CARGO_REGISTRY_TOKEN` is set.
  *
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
@@ -160,5 +162,8 @@ export function addRustProject (workspaceRoot: string, name: string, kind: RustK
     writeFileEnsured(join(projectRoot, 'src', relative), contents)
   }
   addProjectJsonTargets(join(projectRoot, 'project.json'), rustTargets(name, app))
+  if (kind === 'rust-lib') {
+    wireRustLibRelease(workspaceRoot, `${directory}/${name}`, name)
+  }
   registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:run` } : { build: true })
 }

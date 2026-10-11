@@ -462,6 +462,8 @@ function reinstall (workspaceRoot: string, ecosystems: ReadonlySet<Ecosystem>): 
     ['pip', 'npm', ['run', 'python:install']],
     ['pub', 'flutter', ['pub', 'get']],
     ['nuget', 'npx', ['nx', 'run-many', '-t', 'restore']],
+    // Re-resolves Cargo.lock inside the ranges just written; the one lockfile serves every crate.
+    ['cargo', 'cargo', ['update']],
     // A multi-module workspace syncs its build list across modules; an adopted flat repository has one module to tidy.
     ['go', 'go', fileExists(join(workspaceRoot, 'go.work')) ? ['work', 'sync'] : ['mod', 'tidy']],
   ]
@@ -560,10 +562,6 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
     if (!hasEcosystem(workspaceRoot, ecosystem)) {
       logger.info(`⊘ SKIPPED ${ecosystem} — no ${ecosystem} project in this workspace.`)
     }
-  }
-
-  if (ecosystems.includes('cargo') && hasEcosystem(workspaceRoot, 'cargo')) {
-    logger.info('cargo — not read yet: crate versions are not part of the inventory, so none is checked. `cargo update` refreshes Cargo.lock and `cargo add` / `mnci i` set a range (#469).')
   }
 
   // The tools mnci pins are not requirements of any manifest, so they are reported on their own, and only for a full

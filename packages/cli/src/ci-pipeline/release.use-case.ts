@@ -21,6 +21,7 @@ interface ReleasableCounts {
   python: number
   csharp: number
   dart:   number
+  rust:   number
   vscode: number
   go:     number
 }
@@ -93,7 +94,7 @@ function releasedPythonManifests (workspaceRoot: string): string[] {
  * Counts the releasable projects of each ecosystem, the way the inline guard does.
  *
  * @remarks
- * Matches `release.projects` in the generated `nx.json`: npm/C#/Dart publishable
+ * Matches `release.projects` in the generated `nx.json`: npm/C#/Dart/Rust publishable
  * packages under `packages/*`, Python under `python-packages/*`, and the two
  * `apps/*` kinds that release by tag (a vscode-extension, a `--release` Go app).
  *
@@ -108,6 +109,7 @@ function releasableCounts (workspaceRoot: string): ReleasableCounts {
     csharp: globSync('packages/*/*.csproj', { cwd: workspaceRoot }).length,
     python: releasedPythonManifests(workspaceRoot).length,
     dart:   globSync('packages/*/pubspec.yaml', { cwd: workspaceRoot }).length,
+    rust:   globSync('packages/*/Cargo.toml', { cwd: workspaceRoot }).length,
     vscode: globSync('apps/*/package.json', { cwd: workspaceRoot }).filter(path => hasTag(workspaceRoot, path, VSCODE_EXTENSION_TAG)).length,
     go:     globSync('apps/*/project.json', { cwd: workspaceRoot }).filter(path => hasTag(workspaceRoot, path, GO_RELEASE_TAG)).length,
   }
@@ -352,7 +354,7 @@ async function runReleaseCommand (
   log: (message: string) => void,
   tee: ((command: string, arguments_: string[]) => Promise<{ status: number, output: string }>) | undefined,
 ): Promise<{ status: number, output: string }> {
-  const total = counts.npm + counts.python + counts.csharp + counts.dart + counts.vscode + counts.go
+  const total = counts.npm + counts.python + counts.csharp + counts.dart + counts.rust + counts.vscode + counts.go
   if (total === 0) {
     log('Nothing to release - skipping.')
 
@@ -599,7 +601,7 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
   const counts = releasableCounts(workspaceRoot)
   // A workspace with no registry (--registry none) releases only what is tagged for it: the packages/* globs are not in
   // release.projects, so they are not counted here either (#228).
-  const releasable = registry.kind === 'none' ? { ...counts, npm: 0, python: 0, csharp: 0, dart: 0 } : counts
+  const releasable = registry.kind === 'none' ? { ...counts, npm: 0, python: 0, csharp: 0, dart: 0, rust: 0 } : counts
   const released = await runReleaseCommand(workspaceRoot, registry, releasable, environment, processes, log, processes.tee)
   if (released.status !== 0) {
     // Per package, not all or nothing: what published keeps its tag, so a retry does not republish it.
