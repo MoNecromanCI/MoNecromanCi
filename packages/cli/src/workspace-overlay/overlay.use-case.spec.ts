@@ -15,6 +15,7 @@ import {
   ACTION_VERSIONS,
   applyOverlay,
   azurePipelinesYaml,
+  dependabotLockfileWorkflow,
   DEFAULT_STACK,
   devcontainerJson,
   ensureEslintCacheIgnored,
@@ -671,6 +672,24 @@ describe('VSCE_PAT in the release step', () => {
 
     expect(pipeline).toContain('VSCE_PAT: $(VSCE_PAT)')
     expect(workflow).toContain('VSCE_PAT: ${{ secrets.VSCE_PAT }}')
+  })
+})
+
+describe('the Dependabot lockfile workflow (#428)', () => {
+  interface Job { if?: string; steps: { if?: string; uses?: string; run?: string; with?: Record<string, string>; env?: Record<string, string> }[] }
+
+  it('runs for Dependabot only, pushes with LOCKFILE_TOKEN, and does nothing when it is missing', () => {
+    const document_ = yaml.load(dependabotLockfileWorkflow('npm')) as { jobs: { lockfile: Job } }
+    const { lockfile } = document_.jobs
+    const checkout = lockfile.steps.find(step => step.uses?.startsWith('actions/checkout@'))
+    const complete = lockfile.steps.find(step => step.run?.includes('--package-lock-only'))
+
+    expect(lockfile.if).toBe("github.actor == 'dependabot[bot]'")
+    expect(checkout?.with).toEqual({ ref: '${{ github.head_ref }}', token: '${{ secrets.LOCKFILE_TOKEN }}' })
+    expect(complete?.run).toBe(`npx --yes npm@${NPM_VERSION} install --package-lock-only --ignore-scripts`)
+    expect(complete?.env).toEqual({ NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' })
+    // Every step after the check is skipped without the secret.
+    expect(lockfile.steps.slice(1).every(step => step.if === "steps.token.outputs.present == 'true'")).toBe(true)
   })
 })
 
@@ -2181,6 +2200,7 @@ describe('applyOverlay', () => {
     })
 
     expect(existsSync(join(workspaceRoot, '.github/dependabot.yml'))).toBe(false)
+    expect(existsSync(join(workspaceRoot, '.github/workflows/dependabot-lockfile.yml'))).toBe(false)
   })
 
   it('writes .github/dependabot.yml alongside the workflow for ci: "github"', () => {
@@ -2194,6 +2214,7 @@ describe('applyOverlay', () => {
       stack:         DEFAULT_STACK,
     })
 
+    expect(existsSync(join(workspaceRoot, '.github/workflows/dependabot-lockfile.yml'))).toBe(true)
     const dependabot = readFileSync(join(workspaceRoot, '.github/dependabot.yml'), 'utf8')
     const parsed = yaml.load(dependabot) as {
       updates: Array<{ 'package-ecosystem': string; 'directory'?: string; 'directories'?: string[] }>
