@@ -69,7 +69,7 @@ describe('runAdd php-app', () => {
     expect(Object.keys(targets)).toEqual(['build', 'test', 'slice-check', 'lint', 'start', 'package'])
     expect(tags).toEqual(['type:php-app'])
     expect(targets.build.outputs).toEqual(['{workspaceRoot}/apps/hello/vendor'])
-    expect(targets.build.options.commands[0]).toContain('validate --strict --working-dir=apps/hello')
+    expect(targets.build.options.commands[0]).toBe('composer --no-interaction validate --strict --working-dir=apps/hello')
     expect(targets.lint.dependsOn).toEqual(['slice-check', 'build'])
     expect(targets.lint.options.commands.join('\n')).toContain('phpstan analyse -c apps/hello/phpstan.neon')
     expect(targets.lint.options.commands.join('\n')).toContain('--standard=PSR12 apps/hello/src apps/hello/tests apps/hello/bin')
@@ -99,13 +99,13 @@ describe('runAdd php-lib and php-internal-lib', () => {
     expect(Object.keys(project.targets)).toContain('nx-release-publish')
   })
 
-  it('a private library has no release, no start, and no extra', async () => {
+  it('a private library has no release and no start, but carries a version a consumer can require', async () => {
     await runAdd('php-internal-lib', 'kit', {})
 
     const project = JSON.parse(readFileSync(join(workspaceRoot, 'libs/kit/project.json'), 'utf8'))
     expect(project.release).toBeUndefined()
     expect(Object.keys(project.targets)).toEqual(['build', 'test', 'slice-check', 'lint'])
     const manifest = JSON.parse(readFileSync(join(workspaceRoot, 'libs/kit/composer.json'), 'utf8'))
-    expect(manifest.extra).toBeUndefined()
+    expect(manifest.extra.mnci.version).toBe('0.1.0')
   })
 })

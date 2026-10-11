@@ -105,8 +105,8 @@ export function phpRootComposerJson (vendor: string): string {
  * A project's `composer.json`.
  *
  * @remarks
- * PSR-4 maps the project's namespace to `src/` and `<namespace>\Tests` to `tests/`. The version of a publishable library
- * is under `extra.mnci`: Composer takes a published package's version from its git tag, and its `version` key makes
+ * PSR-4 maps the project's namespace to `src/` and `<namespace>\Tests` to `tests/`. The version of a library (either
+ * kind: a consumer requires its caret, and an internal one is never released) is under `extra.mnci`: Composer takes a published package's version from its git tag, and its `version` key makes
  * `composer validate --strict` warn, but `nx release` needs a manifest to read and write, so it lives where Composer
  * ignores it.
  *
@@ -129,7 +129,7 @@ export function phpProjectComposerJson (kind: PhpKind, vendor: string, name: str
     'autoload':     { 'psr-4': { [`${namespace}\\`]: 'src/' } },
     'autoload-dev': { 'psr-4': { [`${namespace}\\Tests\\`]: 'tests/' } },
     'config':       { 'sort-packages': true },
-    ...((kind === 'php-lib') && { extra: { mnci: { version: '0.1.0' } } }),
+    ...((kind !== 'php-app') && { extra: { mnci: { version: '0.1.0' } } }),
   })
 }
 
