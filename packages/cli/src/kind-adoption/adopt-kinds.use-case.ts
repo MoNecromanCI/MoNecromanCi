@@ -87,6 +87,11 @@ function readEvidence (repositoryRoot: string, location: ProjectLocation): Proje
 
       break
     }
+    case 'bundler': {
+      hasProgram = globSync('bin/*', { cwd: directory }).length > 0
+
+      break
+    }
     default: {
       break
     }

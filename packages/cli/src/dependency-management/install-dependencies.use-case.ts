@@ -12,6 +12,7 @@ import {
   locateProjects,
 } from './manifest.repository'
 import { addCmakeSibling } from './cmake-sibling.algorithm'
+import { addBundlerGems } from './bundler-dependencies.use-case'
 import { addComposerPackages } from './composer-dependencies.use-case'
 import { addMavenDependencies } from './maven-dependencies.use-case'
 import { resolveTarget } from './resolve-target-project.use-case'
@@ -53,6 +54,8 @@ const WHOLE_WORKSPACE_INSTALL: ReadonlyArray<readonly [Ecosystem, string, readon
   // The shared dev tools at the root, then each project's own dependencies through its build target.
   ['composer', 'composer', ['install', '--no-interaction']],
   ['composer', 'npx', ['nx', 'run-many', '-t', 'build', '--projects=tag:type:php-*']],
+  ['bundler', 'bundle', ['install']],
+  ['bundler', 'npx', ['nx', 'run-many', '-t', 'build', '--projects=tag:type:ruby-*']],
   ['go', 'go', ['work', 'sync']],
 ]
 
@@ -299,6 +302,11 @@ function installInto (
     }
     case 'composer': {
       addComposerPackages(workspaceRoot, location, packages, saveDev, locations)
+
+      return
+    }
+    case 'bundler': {
+      addBundlerGems(workspaceRoot, location, packages, saveDev, locations)
 
       return
     }

@@ -322,6 +322,10 @@ export async function latestVersions (
     case 'composer': {
       return new Map()
     }
+    // A Ruby project's gems are not read yet (#472), so there is nothing to ask RubyGems.
+    case 'bundler': {
+      return new Map()
+    }
     case 'go': {
       return await latestGoVersions(cwd)
     }

@@ -21,7 +21,7 @@ export const SLICE_CHECK_PATH = 'tools/slice-check.cjs'
 export const SLICE_CHECK_SCRIPT = String.raw`#!/usr/bin/env node
 // Written by MoNecromanCI; mnci rewrites it, so local edits do not survive.
 //
-// node tools/slice-check.cjs <rust|cpp|java|php> <project directory>...
+// node tools/slice-check.cjs <rust|cpp|java|php|ruby> <project directory>...
 //
 // The Rust and C++ counterpart of the vertical-slices/file-role lint rule: a file under src/ is <snake>_<role>
 // (a C++ test <snake>_<role>_test), only the entry point sits at the root of src/, a slice's barrel is mod.rs (Rust) or
@@ -203,11 +203,61 @@ function checkPhp (project) {
   return problems
 }
 
+// Ruby: its own convention is the slice one, a snake_case file per constant. lib/<name>.rb is the barrel (a file at the
+// root of lib/ must be named for a folder beside it), lib/<name>/version.rb is the gem's version, a slice is a snake_case
+// folder under lib/<name>/, a file is <snake>_<role>.rb, and a spec is the same name with _spec under spec/ (with
+// spec_helper.rb, and one smoke_spec.rb for a bare project).
+const RUBY_FILE = new RegExp('^' + ROLE_STEM + '$')
+
+function checkRuby (project) {
+  const problems = []
+  const lib = join(project, 'lib')
+  const spec = join(project, 'spec')
+  const walk = (directory, depth, kind) => {
+    const entries = readdirSync(directory, { withFileTypes: true })
+    const folders = new Set(entries.filter(entry => entry.isDirectory()).map(entry => entry.name))
+    for (const entry of entries) {
+      const path = join(directory, entry.name)
+      const shown = relative(project, path).replaceAll('\\', '/')
+      if (entry.isDirectory()) {
+        if (FORBIDDEN_FOLDERS.has(entry.name)) {
+          problems.push(shown + '/ - "' + entry.name + '" is a junk drawer; name the folder for the outcome it serves')
+        } else if (/^[a-z_][a-z0-9_]*$/.test(entry.name)) {
+          walk(path, depth + 1, kind)
+        } else {
+          problems.push(shown + '/ - a folder is snake_case, like the file it requires')
+        }
+        continue
+      }
+      if (extname(entry.name) !== '.rb') continue
+      const stem = entry.name.slice(0, -'.rb'.length)
+      if (kind === 'lib') {
+        const isVersion = depth === 1 && stem === 'version'
+        if (depth === 0) {
+          if (!folders.has(stem)) problems.push(shown + ' - only the barrel, named for the folder beside it, sits at the root of lib/')
+        } else if (!isVersion && !RUBY_FILE.test(stem)) {
+          problems.push(shown + ' - a file is <snake>_<role>.rb (roles: ' + ROLES.join(', ') + ')')
+        }
+      } else {
+        const isHelper = depth === 0 && (stem === 'spec_helper' || stem === 'smoke_spec')
+        const isRoleSpec = stem.endsWith('_spec') && RUBY_FILE.test(stem.slice(0, -'_spec'.length))
+        if (!isHelper && !isRoleSpec) {
+          problems.push(shown + ' - a spec is <snake>_<role>_spec.rb (roles: ' + ROLES.join(', ') + ')')
+        }
+      }
+    }
+  }
+  if (existsSync(lib)) walk(lib, 0, 'lib')
+  if (existsSync(spec)) walk(spec, 0, 'spec')
+
+  return problems
+}
+
 const [name, ...projects] = process.argv.slice(2)
-const CHECKERS = { java: { check: checkJava }, php: { check: checkPhp } }
+const CHECKERS = { java: { check: checkJava }, php: { check: checkPhp }, ruby: { check: checkRuby } }
 const language = CHECKERS[name] || LANGUAGES[name]
 if (!language || projects.length === 0) {
-  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|php> <project directory>...')
+  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|php|ruby> <project directory>...')
   process.exit(1)
 }
 let failed = 0

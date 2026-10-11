@@ -15,7 +15,7 @@ import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-d
  *
  * @typeParam None - this type has no generic type parameters.
  */
-export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'maven' | 'composer' | 'go'
+export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'maven' | 'composer' | 'bundler' | 'go'
 
 /**
  * Every ecosystem, in the order commands report them.
@@ -25,7 +25,7 @@ export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'm
  * because it is the one with nothing to reconcile — every other ecosystem,
  * NuGet included, has a real per-project manifest whose versions can drift.
  */
-export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'maven', 'composer', 'go']
+export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'maven', 'composer', 'bundler', 'go']
 
 /**
  * The label shown for the workspace root, which is not a project.
@@ -100,6 +100,8 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   maven:    ['apps/*/pom.xml', 'packages/*/pom.xml', 'libs/*/pom.xml'],
   // A PHP project is located by its composer.json; its dependencies are read in a later slice (#471).
   composer: ['apps/*/composer.json', 'packages/*/composer.json', 'libs/*/composer.json'],
+  // A Ruby project is located by its Gemfile; its gems are read in a later slice (#472).
+  bundler: ['apps/*/Gemfile', 'packages/*/Gemfile', 'libs/*/Gemfile'],
   // Single root module by design — there are no per-project Go manifests.
   go:       [],
 }
@@ -194,6 +196,7 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     cmake:    'CMakeLists.txt',
     maven:    'pom.xml',
     composer: 'composer.json',
+    bundler: 'Gemfile',
   }
 
   // Either marker counts. A root file alone is the usual case, but a workspace
@@ -774,6 +777,7 @@ export function collectInventory (
     cmake:    () => [],
     maven:    () => [],
     composer: () => [],
+    bundler: () => [],
     go:       collectGo,
   }
 
@@ -813,6 +817,7 @@ const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
   cmake:    ['apps/*/CMakeLists.txt', 'libs/*/CMakeLists.txt', 'packages/*/CMakeLists.txt'],
   maven:    ['apps/*/pom.xml', 'libs/*/pom.xml', 'packages/*/pom.xml'],
   composer: ['apps/*/composer.json', 'libs/*/composer.json', 'packages/*/composer.json'],
+  bundler: ['apps/*/Gemfile', 'libs/*/Gemfile', 'packages/*/Gemfile'],
   go:       ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
 }
 

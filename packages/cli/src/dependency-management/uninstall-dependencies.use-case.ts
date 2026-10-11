@@ -6,6 +6,7 @@ import { logger } from '../terminal'
 import { completeLockfile } from '../lockfile-completion'
 import { type ProjectLocation, locateProjects } from './manifest.repository'
 import { findPackageImports } from './find-package-imports.use-case'
+import { removeBundlerGems } from './bundler-dependencies.use-case'
 import { removeComposerPackages } from './composer-dependencies.use-case'
 import { removeMavenDependencies } from './maven-dependencies.use-case'
 import { removePipDependency } from './remove-pip-dependency.algorithm'
@@ -142,6 +143,11 @@ function uninstallFrom (
     }
     case 'composer': {
       removeComposerPackages(workspaceRoot, location, packages, locations)
+
+      return
+    }
+    case 'bundler': {
+      removeBundlerGems(workspaceRoot, location, packages, locations)
 
       return
     }
