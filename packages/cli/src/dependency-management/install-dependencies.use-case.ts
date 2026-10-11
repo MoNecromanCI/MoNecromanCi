@@ -12,6 +12,7 @@ import {
   locateProjects,
 } from './manifest.repository'
 import { addCmakeSibling } from './cmake-sibling.algorithm'
+import { addComposerPackages } from './composer-dependencies.use-case'
 import { addMavenDependencies } from './maven-dependencies.use-case'
 import { resolveTarget } from './resolve-target-project.use-case'
 
@@ -49,6 +50,9 @@ const WHOLE_WORKSPACE_INSTALL: ReadonlyArray<readonly [Ecosystem, string, readon
   ['nuget', 'npx', ['nx', 'run-many', '-t', 'restore']],
   ['cargo', 'cargo', ['fetch']],
   ['maven', 'mvn', ['-B', '-ntp', 'compile']],
+  // The shared dev tools at the root, then each project's own dependencies through its build target.
+  ['composer', 'composer', ['install', '--no-interaction']],
+  ['composer', 'npx', ['nx', 'run-many', '-t', 'build', '--projects=tag:type:php-*']],
   ['go', 'go', ['work', 'sync']],
 ]
 
@@ -290,6 +294,11 @@ function installInto (
     }
     case 'maven': {
       addMavenDependencies(workspaceRoot, location, packages, saveDev, locations)
+
+      return
+    }
+    case 'composer': {
+      addComposerPackages(workspaceRoot, location, packages, saveDev, locations)
 
       return
     }

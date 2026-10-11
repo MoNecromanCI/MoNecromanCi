@@ -135,6 +135,42 @@ describe('slice-check java', () => {
   })
 })
 
+describe('slice-check php', () => {
+  it('accepts the worked example: slice folders with role-named classes and a test beside them in tests/', () => {
+    seed(
+      'app/src/Greeting/GreetUseCase.php',
+      'app/src/Greeting/GreetingContract.php',
+      'app/tests/Greeting/GreetUseCaseTest.php',
+      'app/bin/app.php',
+    )
+
+    expect(run('php', 'app')).toMatchObject({ status: 0 })
+  })
+
+  it('rejects a class with no role, a file at the root of src, a junk folder and a folder that is not StudlyCase', () => {
+    seed(
+      'app/src/Helper.php',
+      'app/src/Greeting/Stuff.php',
+      'app/src/Util/ParseUseCase.php',
+      'app/src/lower/ParseUseCase.php',
+    )
+
+    const result = run('php', 'app')
+
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('nothing sits at the root of src/')
+    expect(result.output).toContain('app/src/Greeting/Stuff.php - a class is <Name><Role>.php')
+    expect(result.output).toContain('"Util" is a junk drawer')
+    expect(result.output).toContain('a slice folder is StudlyCase')
+  })
+
+  it('allows one SmokeTest at the root of tests/, as a bare project keeps', () => {
+    seed('app/tests/SmokeTest.php')
+
+    expect(run('php', 'app')).toMatchObject({ status: 0 })
+  })
+})
+
 describe('slice-check usage', () => {
   it('refuses an unknown language', () => {
     expect(run('kotlin', 'app').status).toBe(1)

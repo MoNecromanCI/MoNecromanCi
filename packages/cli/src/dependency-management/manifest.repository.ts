@@ -15,7 +15,7 @@ import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-d
  *
  * @typeParam None - this type has no generic type parameters.
  */
-export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'maven' | 'go'
+export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'maven' | 'composer' | 'go'
 
 /**
  * Every ecosystem, in the order commands report them.
@@ -25,7 +25,7 @@ export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'm
  * because it is the one with nothing to reconcile — every other ecosystem,
  * NuGet included, has a real per-project manifest whose versions can drift.
  */
-export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'maven', 'go']
+export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'maven', 'composer', 'go']
 
 /**
  * The label shown for the workspace root, which is not a project.
@@ -84,22 +84,24 @@ export type Inventory = Map<string, DependencySite[]>
 /** Where each ecosystem's per-project manifests live, relative to the root. */
 const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   // `libs/*` carries private internal libs; `packages/*` the publishable ones.
-  npm:   ['apps/*/package.json', 'libs/*/package.json', 'packages/*/package.json'],
+  npm:      ['apps/*/package.json', 'libs/*/package.json', 'packages/*/package.json'],
   // Matches PYTHON_PROJECT_DIRS in commands/add/python.ts.
-  pip:   ['apps/*/pyproject.toml', 'python-packages/*/pyproject.toml', 'libs/*/pyproject.toml'],
-  pub:   ['apps/*/pubspec.yaml', 'packages/*/pubspec.yaml', 'libs/*/pubspec.yaml'],
+  pip:      ['apps/*/pyproject.toml', 'python-packages/*/pyproject.toml', 'libs/*/pyproject.toml'],
+  pub:      ['apps/*/pubspec.yaml', 'packages/*/pubspec.yaml', 'libs/*/pubspec.yaml'],
   // Unlike every other ecosystem, the filename itself varies (the project's own
   // PascalCase identity, not a fixed name) — the same three roots
   // PACK_APPS_GUARD and add/csharp.ts already scan.
-  nuget: ['apps/*/*.csproj', 'packages/*/*.csproj', 'libs/*/*.csproj'],
+  nuget:    ['apps/*/*.csproj', 'packages/*/*.csproj', 'libs/*/*.csproj'],
   // One `Cargo.toml` per crate; the workspace root's lists members and holds no dependencies of its own.
-  cargo: ['apps/*/Cargo.toml', 'packages/*/Cargo.toml', 'libs/*/Cargo.toml'],
+  cargo:    ['apps/*/Cargo.toml', 'packages/*/Cargo.toml', 'libs/*/Cargo.toml'],
   // A CMake project is located by its CMakeLists.txt; it declares no dependency a registry could be asked about yet (#473).
-  cmake: ['apps/*/CMakeLists.txt', 'packages/*/CMakeLists.txt', 'libs/*/CMakeLists.txt'],
+  cmake:    ['apps/*/CMakeLists.txt', 'packages/*/CMakeLists.txt', 'libs/*/CMakeLists.txt'],
   // A Maven module is located by its pom.xml; its dependencies are read in a later slice (#470).
-  maven: ['apps/*/pom.xml', 'packages/*/pom.xml', 'libs/*/pom.xml'],
+  maven:    ['apps/*/pom.xml', 'packages/*/pom.xml', 'libs/*/pom.xml'],
+  // A PHP project is located by its composer.json; its dependencies are read in a later slice (#471).
+  composer: ['apps/*/composer.json', 'packages/*/composer.json', 'libs/*/composer.json'],
   // Single root module by design — there are no per-project Go manifests.
-  go:    [],
+  go:       [],
 }
 
 /**
@@ -185,12 +187,13 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     return globSync(MANIFEST_GLOBS.nuget, { cwd: workspaceRoot }).length > 0
   }
   const rootMarker: Record<Exclude<Ecosystem, 'go' | 'nuget'>, string> = {
-    npm:   'package.json',
-    pip:   'requirements-dev.txt',
-    pub:   'pubspec.yaml',
-    cargo: 'Cargo.toml',
-    cmake: 'CMakeLists.txt',
-    maven: 'pom.xml',
+    npm:      'package.json',
+    pip:      'requirements-dev.txt',
+    pub:      'pubspec.yaml',
+    cargo:    'Cargo.toml',
+    cmake:    'CMakeLists.txt',
+    maven:    'pom.xml',
+    composer: 'composer.json',
   }
 
   // Either marker counts. A root file alone is the usual case, but a workspace
@@ -763,14 +766,15 @@ export function collectInventory (
   ecosystems: readonly Ecosystem[] = ECOSYSTEMS,
 ): Inventory {
   const readers: Record<Ecosystem, (root: string) => DependencySite[]> = {
-    npm:   collectNpm,
-    pip:   collectPip,
-    pub:   collectPub,
-    nuget: collectNuget,
-    cargo: collectCargo,
-    cmake: () => [],
-    maven: () => [],
-    go:    collectGo,
+    npm:      collectNpm,
+    pip:      collectPip,
+    pub:      collectPub,
+    nuget:    collectNuget,
+    cargo:    collectCargo,
+    cmake:    () => [],
+    maven:    () => [],
+    composer: () => [],
+    go:       collectGo,
   }
 
   const inventory: Inventory = new Map()
@@ -805,10 +809,11 @@ export function collectInventory (
  */
 const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
   ...MANIFEST_GLOBS,
-  cargo: ['apps/*/Cargo.toml', 'libs/*/Cargo.toml', 'packages/*/Cargo.toml'],
-  cmake: ['apps/*/CMakeLists.txt', 'libs/*/CMakeLists.txt', 'packages/*/CMakeLists.txt'],
-  maven: ['apps/*/pom.xml', 'libs/*/pom.xml', 'packages/*/pom.xml'],
-  go:    ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
+  cargo:    ['apps/*/Cargo.toml', 'libs/*/Cargo.toml', 'packages/*/Cargo.toml'],
+  cmake:    ['apps/*/CMakeLists.txt', 'libs/*/CMakeLists.txt', 'packages/*/CMakeLists.txt'],
+  maven:    ['apps/*/pom.xml', 'libs/*/pom.xml', 'packages/*/pom.xml'],
+  composer: ['apps/*/composer.json', 'libs/*/composer.json', 'packages/*/composer.json'],
+  go:       ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
 }
 
 /**

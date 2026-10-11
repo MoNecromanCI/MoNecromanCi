@@ -21,11 +21,11 @@ export const SLICE_CHECK_PATH = 'tools/slice-check.cjs'
 export const SLICE_CHECK_SCRIPT = String.raw`#!/usr/bin/env node
 // Written by MoNecromanCI; mnci rewrites it, so local edits do not survive.
 //
-// node tools/slice-check.cjs <rust|cpp|java> <project directory>...
+// node tools/slice-check.cjs <rust|cpp|java|php> <project directory>...
 //
 // The Rust and C++ counterpart of the vertical-slices/file-role lint rule: a file under src/ is <snake>_<role>
 // (a C++ test <snake>_<role>_test), only the entry point sits at the root of src/, a slice's barrel is mod.rs (Rust) or
-// <folder>.hpp (C++), and no folder is a junk drawer; Java: a type is <Name><Role>.java inside its package (util, helper, common, shared, manager, processor, data, misc).
+// <folder>.hpp (C++), and no folder is a junk drawer; Java: a type is <Name><Role>.java inside its package; PHP: a class is <Name><Role>.php in a StudlyCase folder (util, helper, common, shared, manager, processor, data, misc).
 // Exits 1 and names every violation.
 'use strict'
 const { existsSync, readdirSync, readFileSync } = require('node:fs')
@@ -163,10 +163,51 @@ function checkJava (project) {
   return problems
 }
 
+// PHP: PSR-4 names a class file for its one class, so the role is in the class name and the folder and namespace are the
+// slice: src/<Slice>/<Name><Role>.php, a test tests/<Slice>/<Name><Role>Test.php. Nothing sits at the root of src/ (an
+// app's entry script is bin/<name>.php, outside it); tests/ may hold one SmokeTest at its root.
+const PHP_CLASS = new RegExp('^[A-Z][A-Za-z0-9]*(?:' + JAVA_ROLES.join('|') + ')(?:Test)?$')
+
+function checkPhp (project) {
+  const problems = []
+  for (const tree of ['src', 'tests']) {
+    const root = join(project, tree)
+    if (!existsSync(root)) continue
+    const walk = (directory, depth) => {
+      const entries = readdirSync(directory, { withFileTypes: true })
+      for (const entry of entries) {
+        const path = join(directory, entry.name)
+        const shown = relative(project, path).replaceAll('\\', '/')
+        if (entry.isDirectory()) {
+          if (FORBIDDEN_FOLDERS.has(entry.name.toLowerCase())) {
+            problems.push(shown + '/ - "' + entry.name + '" is a junk drawer; name the folder for the outcome it serves')
+          } else if (/^[A-Z][A-Za-z0-9]*$/.test(entry.name)) {
+            walk(path, depth + 1)
+          } else {
+            problems.push(shown + '/ - a slice folder is StudlyCase, like its namespace')
+          }
+          continue
+        }
+        if (extname(entry.name) !== '.php') continue
+        const stem = entry.name.slice(0, -'.php'.length)
+        if (depth === 0) {
+          if (tree === 'src' || stem !== 'SmokeTest') problems.push(shown + ' - nothing sits at the root of ' + tree + '/; move this into a slice folder')
+        } else if (!PHP_CLASS.test(stem)) {
+          problems.push(shown + ' - a class is <Name><Role>.php (roles: ' + JAVA_ROLES.join(', ') + '; a test <Name><Role>Test.php)')
+        }
+      }
+    }
+    walk(root, 0)
+  }
+
+  return problems
+}
+
 const [name, ...projects] = process.argv.slice(2)
-const language = name === 'java' ? { check: checkJava } : LANGUAGES[name]
+const CHECKERS = { java: { check: checkJava }, php: { check: checkPhp } }
+const language = CHECKERS[name] || LANGUAGES[name]
 if (!language || projects.length === 0) {
-  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java> <project directory>...')
+  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|php> <project directory>...')
   process.exit(1)
 }
 let failed = 0

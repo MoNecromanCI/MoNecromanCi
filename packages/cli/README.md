@@ -119,6 +119,7 @@ mnci add html-app site         # plain HTML, CSS and jQuery on Vite, see "HTML a
 mnci add rust-app tool         # a Rust executable on @monodon/rust, see "Rust projects"
 mnci add cpp-app viewer        # a C++ executable built with CMake, see "C++ projects"
 mnci add java-app service      # a Java executable jar built with Maven, see "Java projects"
+mnci add php-app site          # a PHP application on Composer, see "PHP projects"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -739,6 +740,42 @@ lookup.
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust and C++, and what `lint` depends on) holds the layout: the root of the
 base package holds only `Main`, a type is `<Name><Role>.java` (a test `<Name><Role>Test.java`), a package is one lowercase word,
 no package is a junk drawer, and every source is under the base package.
+
+## PHP projects (`mnci add php-app | php-lib | php-internal-lib`)
+
+The one Nx plugin for PHP (`@nx-php/composer-plugin`) was last published in 2023 and ships a single executor, so mnci writes the
+project itself, as it writes a C++ or Java one: a `composer.json`, a worked example and explicit targets. Apps live in `apps/`,
+publishable libraries in `packages/`, private ones in `libs/`.
+
+- **Dependencies are per project; dev tools are shared.** Each project has its own `composer.json` and its own `vendor/`. PHPUnit,
+  PHPStan and PHP_CodeSniffer are `require-dev` of one root `composer.json` that mnci owns, installed once and run from the root
+  against each project (`vendor/` is ignored by the root `.gitignore`, with one line).
+- **The example is a slice**: `src/Greeting/` holds `GreetingContract.php` and `GreetUseCase.php`, with
+  `tests/Greeting/GreetUseCaseTest.php` beside them in the mirrored tree; an app's `bin/<name>.php` only wires. PSR-4 names a
+  file for its class, so the role is in the class name (as for C# and Java) and the folder and namespace are the slice. The
+  vendor of the package name is the repository's organisation (`github.com/Acme/tools` is `acme`, namespace `Acme\Tools`),
+  `app` without an origin.
+- **`lint`** is PHPStan at level 8 and PHP_CodeSniffer (PSR-12), after the shared `slice-check`; `build` is
+  `composer validate --strict` then `composer install` in the project; `test` is PHPUnit (strict about warnings and risky
+  tests). An app has `start` (`php bin/<name>.php`) and `package` (a zip of `src/`, `bin/`, `vendor/` and the manifest).
+- **`mnci i -w app kit`** declares the sibling as a Composer `path` repository (symlinked, so an edit is seen at once) with
+  the version it declares, requires it at the caret of that version, and records an `implicitDependencies` edge (Nx infers none
+  from a `composer.json`). **`mnci i -w kit psr/log`** is `composer require` in that project (`--save-dev` is `--dev`); `mnci un`
+  is `composer remove`.
+- **A publishable library** is released by tag, which Packagist reads: Composer takes a version from the tag and warns about a
+  `version` key, so the version `nx release` bumps is `extra.mnci.version` in the library's `composer.json`
+  (`tools/composer-version-actions.cjs`), and `nx-release-publish` says there is nothing to upload.
+
+Measured with PHP 8.4.25, Composer 2.10.3, PHPUnit 12.5, PHPStan 2.1 and PHP_CodeSniffer 4.0 on Windows: generate, link, lint,
+test, build, package, run, install and uninstall, `nx release`, `mnci doctor`. The PHP that winget installs has no `php.ini`:
+enable `openssl`, `mbstring`, `curl`, `zip` and `fileinfo` (and set `extension_dir`) or Composer cannot download.
+
+Not covered yet (#471): `mnci sync` / `mnci up` reading a project's requirements; the PHP version in `mnci ci setup` and the
+devcontainer; a debugger launch configuration (Xdebug); `dev`; propagating a library's new version to a consumer's `^` range.
+
+**`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++ and Java, and what `lint` depends on) holds the layout: nothing
+sits at the root of `src/`, a slice folder is StudlyCase, a class is `<Name><Role>.php` (a test `<Name><Role>Test.php`), no
+folder is a junk drawer, and `tests/` may hold one `SmokeTest` at its root.
 
 ## Rust projects (`mnci add rust-app | rust-lib | rust-internal-lib`)
 
