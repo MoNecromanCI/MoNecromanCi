@@ -42,6 +42,12 @@ const MVN = 'mvn -B -ntp'
  * after the compiler's own `-Xlint:all` and `failOnWarning`, which is part of `build`. There is no `typecheck`: compiling
  * is the check.
  *
+ * `-am` makes each Maven run compile the siblings too, into their own directories, so two runs at once would write the same
+ * `dist/maven/<name>` and one would delete the classes the other is reading (measured: `hello:build` failed to find a
+ * class while `hello:test` ran). `build` therefore waits for the builds of what the project depends on (`^build`, which
+ * is why an installed sibling is recorded as an `implicitDependencies` edge) and `test` waits for `build`, as the other
+ * kinds' do, so the `mvn` that follows finds the classes already compiled.
+ *
  * @param name - The project name.
  * @param directory - The project's workspace-relative directory.
  * @param app - Whether the project builds an executable jar.
@@ -54,17 +60,19 @@ export function javaTargets (name: string, directory: string, app: boolean): Rec
   const jar = `${output}/${name}.jar`
   const targets: Record<string, unknown> = {
     'build': {
-      cache:    true,
-      executor: 'nx:run-commands',
-      inputs:   ['default', '{workspaceRoot}/pom.xml'],
-      outputs:  [`{workspaceRoot}/${output}`],
-      options:  { command: `${MVN} -pl ${directory} -am package -DskipTests` },
+      cache:     true,
+      executor:  'nx:run-commands',
+      dependsOn: ['^build'],
+      inputs:    ['default', '^default', '{workspaceRoot}/pom.xml'],
+      outputs:   [`{workspaceRoot}/${output}`],
+      options:   { command: `${MVN} -pl ${directory} -am package -DskipTests` },
     },
     'test': {
-      cache:    true,
-      executor: 'nx:run-commands',
-      inputs:   ['default', '{workspaceRoot}/pom.xml'],
-      options:  { command: `${MVN} -pl ${directory} -am test` },
+      cache:     true,
+      executor:  'nx:run-commands',
+      dependsOn: ['build'],
+      inputs:    ['default', '^default', '{workspaceRoot}/pom.xml'],
+      options:   { command: `${MVN} -pl ${directory} -am test` },
     },
     'slice-check': nativeSliceCheckTarget('java', directory),
     'lint':        {

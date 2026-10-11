@@ -74,8 +74,8 @@ class ComposerVersionActions extends VersionActions {
     const manifestPath = posix.join(this.projectGraphNode.data.root, MANIFEST)
     const text = tree.read(manifestPath, 'utf8') ?? '{}'
     const manifest = JSON.parse(text)
-    manifest.extra = manifest.extra || {}
-    manifest.extra.mnci = manifest.extra.mnci || {}
+    manifest.extra ||= {}
+    manifest.extra.mnci ||= {}
     manifest.extra.mnci.version = newVersion
     tree.write(manifestPath, JSON.stringify(manifest, null, indentOf(text)) + '\n')
 

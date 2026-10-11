@@ -65,6 +65,8 @@ describe('runAdd java-app', () => {
     expect(tags).toEqual(['type:java-app'])
     expect(targets.build.outputs).toEqual(['{workspaceRoot}/dist/maven/hello'])
     expect(targets.build.options.command).toBe('mvn -B -ntp -pl apps/hello -am package -DskipTests')
+    expect(targets.build.dependsOn).toEqual(['^build'])
+    expect(targets.test.dependsOn).toEqual(['build'])
     expect(targets.lint.dependsOn).toEqual(['slice-check'])
     expect(targets.lint.options.command).toContain('checkstyle:check')
     expect(targets.package.outputs).toEqual(['{workspaceRoot}/dist/drop/java-app-hello.zip'])

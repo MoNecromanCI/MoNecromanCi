@@ -26,7 +26,7 @@ const PHP_DIRECTORIES: Readonly<Record<PhpKind, string>> = {
   'php-internal-lib': 'libs',
 }
 
-/** The Composer flags every non-interactive call shares. */
+/** The Composer flags every non-interactive call shares (`validate` has no `--no-progress`, so it spells its own). */
 const COMPOSER = 'composer --no-interaction --no-progress'
 
 /**
@@ -67,7 +67,7 @@ export function phpTargets (name: string, directory: string, app: boolean): Reco
       inputs:   ['default', '{projectRoot}/composer.lock'],
       outputs:  [`{workspaceRoot}/${directory}/vendor`],
       options:  {
-        commands: [`${COMPOSER} validate --strict --working-dir=${directory}`, `${COMPOSER} install --working-dir=${directory}`],
+        commands: [`composer --no-interaction validate --strict --working-dir=${directory}`, `${COMPOSER} install --working-dir=${directory}`],
         parallel: false,
       },
     },
