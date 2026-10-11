@@ -217,6 +217,22 @@ function inferJava (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
+ * Proposes the kind of a PHP (Composer) project.
+ *
+ * @param evidence - What was read about it.
+ * @returns The proposal.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function inferPhp (evidence: ProjectEvidence): KindProposal {
+  if (evidence.hasProgram) {
+    return { kind: 'php-app', certainty: 'certain', reason: 'a script under bin/ is the entry point' }
+  }
+
+  return { kind: 'php-lib', certainty: 'guess', reason: 'a library, but internal or published is a choice only you can make' }
+}
+
+/**
  * Proposes the kind of a Rust crate.
  *
  * @param evidence - What was read about it.
@@ -289,6 +305,9 @@ export function inferProjectKind (evidence: ProjectEvidence): KindProposal {
     }
     case 'maven': {
       return inferJava(evidence)
+    }
+    case 'composer': {
+      return inferPhp(evidence)
     }
     case 'go': {
       return inferGo(evidence)

@@ -6,6 +6,7 @@ import { logger } from '../terminal'
 import { completeLockfile } from '../lockfile-completion'
 import { type ProjectLocation, locateProjects } from './manifest.repository'
 import { findPackageImports } from './find-package-imports.use-case'
+import { removeComposerPackages } from './composer-dependencies.use-case'
 import { removeMavenDependencies } from './maven-dependencies.use-case'
 import { removePipDependency } from './remove-pip-dependency.algorithm'
 import { resolveTarget } from './resolve-target-project.use-case'
@@ -74,7 +75,7 @@ export function runUninstall (
 
       continue
     }
-    uninstallFrom(workspaceRoot, location, packages)
+    uninstallFrom(workspaceRoot, location, packages, locations)
   }
   if (locations.some(location => location.ecosystem === 'npm')) {
     completeLockfile(workspaceRoot)
@@ -87,11 +88,17 @@ export function runUninstall (
  * @param workspaceRoot - Absolute path to the workspace.
  * @param location - The resolved target project.
  * @param packages - The packages to remove.
+ * @param locations - Every project of the workspace.
  * @returns Nothing.
  * @throws Never - a failed native command is reported as a warning.
  * @typeParam None - this function has no generic type parameters.
  */
-function uninstallFrom (workspaceRoot: string, location: ProjectLocation, packages: readonly string[]): void {
+function uninstallFrom (
+  workspaceRoot: string,
+  location: ProjectLocation,
+  packages: readonly string[],
+  locations: readonly ProjectLocation[],
+): void {
   const projectDir = join(workspaceRoot, location.dir)
 
   switch (location.ecosystem) {
@@ -130,6 +137,11 @@ function uninstallFrom (workspaceRoot: string, location: ProjectLocation, packag
     }
     case 'maven': {
       removeMavenDependencies(workspaceRoot, location, packages)
+
+      return
+    }
+    case 'composer': {
+      removeComposerPackages(workspaceRoot, location, packages, locations)
 
       return
     }
