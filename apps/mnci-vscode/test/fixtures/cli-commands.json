@@ -695,6 +695,7 @@
         "variadic": false,
         "choices": [
           "react-app",
+          "react-p5-app",
           "angular-app",
           "angular-internal-lib",
           "vue-app",

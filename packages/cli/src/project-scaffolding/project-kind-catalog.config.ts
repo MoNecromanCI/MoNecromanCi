@@ -37,6 +37,7 @@ export interface ProjectKindDescription {
  */
 export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'react-app', language: 'typescript', label: 'React app', description: 'A Vite React app, built per environment', flags: ['e2e', 'empty'], requiredFlags: [] },
+  { kind: 'react-p5-app', language: 'typescript', label: 'React p5 app', description: 'A Vite React app that draws with p5.js, built per environment', flags: ['e2e', 'empty'], requiredFlags: [] },
   { kind: 'angular-app', language: 'typescript', label: 'Angular app', description: 'An Angular app built with esbuild, zipped for deployment', flags: ['e2e', 'empty'], requiredFlags: [] },
   { kind: 'angular-internal-lib', language: 'typescript', label: 'Angular internal library', description: 'A private Angular library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
   { kind: 'vue-app', language: 'typescript', label: 'Vue app', description: 'A Vite Vue app with Vitest, zipped for deployment', flags: ['empty'], requiredFlags: [] },

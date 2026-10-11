@@ -114,6 +114,7 @@ cd my-repo
 mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
 mnci add angular-internal-lib kit # a private Angular library an Angular app imports, see "Angular apps"
+mnci add react-p5-app art      # a React app that draws with p5.js, see "React p5 apps"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -657,6 +658,22 @@ its typecheck is `tsc --build`, since a referenced project may not disable emit.
 replaced by a `greeting` feature behind the barrel, with `lib-` selectors.
 
 Not covered: SSR, a per-environment build as React has, and a publishable Angular library (ng-packagr).
+
+## React p5 apps (`mnci add react-p5-app`)
+
+`mnci add react-p5-app <name>` is `react-app` (same generator, per-environment builds and zips, `--e2e`, `--empty`) with `p5` and
+`@p5-wrapper/react` installed into **the app's own manifest**, never the root. `p5` 2 ships its own types, so there is no
+`@types/p5`. The worked example is a `bouncing-ball` slice beside the greeting feature, using the existing roles:
+
+- `step-ball.algorithm.ts` is the motion, pure and tested with plain values;
+- `bouncing-ball.client.ts` is the p5 sketch, the adapter to the drawing engine, tested against a recording stand-in for the p5
+  instance so no canvas is needed;
+- `bouncing-ball.component.tsx` is the `P5Canvas` wrapper, inside its own `Suspense` boundary (the wrapper loads p5 lazily, and
+  without a boundary the whole page waits for it).
+
+Measured on Nx 23.2 with Jest: lint, typecheck, test, build and the three environment zips. The p5 chunk is 1.2 MB (350 kB
+gzipped) and is loaded on demand; Vite warns about it. Not covered: pixel-level tests of a canvas (`--e2e` can assert on the page,
+not on what p5 drew).
 
 ## Vue apps (`mnci add vue-app`)
 
