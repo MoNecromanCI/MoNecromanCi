@@ -19,6 +19,7 @@ import {
 } from './python.use-case'
 import { addContainer } from './container.use-case'
 import { addAngularApp } from './angular-app.use-case'
+import { addAngularInternalLib } from './angular-internal-lib.use-case'
 import { addBicepProject } from './bicep.use-case'
 import { addDocsSite } from './docs-site.use-case'
 import { addSvelteApp } from './svelte-app.use-case'
@@ -127,6 +128,7 @@ export type { AddOptions } from './post-generation.use-case'
 export type ProjectKind =
   | 'react-app' |
   'angular-app' |
+  'angular-internal-lib' |
   'vue-app' |
   'svelte-app' |
   'bicep-iac' |
@@ -167,6 +169,7 @@ export type ProjectKind =
 export const PROJECT_KINDS: ProjectKind[] = [
   'react-app',
   'angular-app',
+  'angular-internal-lib',
   'vue-app',
   'svelte-app',
   'react-lib',
@@ -198,7 +201,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'angular-app', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
 
 /** The kinds a registry publishes: a workspace with no registry releases none of them. */
 const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
@@ -326,6 +329,10 @@ export async function runAdd (
     }
     case 'vue-app': {
       addVueApp(workspaceRoot, resolvedName, options.empty === true)
+      break
+    }
+    case 'angular-internal-lib': {
+      addAngularInternalLib(workspaceRoot, resolvedName, stack, options.empty === true)
       break
     }
     case 'angular-app': {

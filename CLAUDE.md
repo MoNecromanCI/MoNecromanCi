@@ -373,7 +373,11 @@ Nx plugin where none does:
   `NX_IGNORE_UNSUPPORTED_TS_SETUP` is set for the install and generator; `typecheck` is `tsc --noEmit`; the runner setup moves
   out of `src`; a manifest is written so `@angular/*` is not left at the root. A `.ts` file importing `@angular/*` takes the
   front-end roles with no option (`verticalSlices` `file-role`). Measured on Nx 23.2 / Angular 22 with Jest and with Vitest
-  (`vitest-angular`); `--e2e` pairs Playwright as for React; not covered: SSR, a library kind.
+  (`vitest-angular`); `--e2e` pairs Playwright as for React; not covered: SSR, a publishable library.
+  `angular-internal-lib` (`angular-internal-lib.use-case.ts`) shares the app's repairs but keeps the library composite (an app that
+  imports it gets a project reference from `nx sync`, and referencing a non-composite project is TS6306), with the specs
+  non-composite and checked apart; the app's `tsconfig.app.json` is `noEmit` with `rootDir: '../..'` and `typecheck` is
+  `tsc --build` (a referenced project may not disable emit, TS6310). Measured: app + library lint, typecheck, test, build.
   `vue-app` (`project-scaffolding/vue-app.use-case.ts`, #314) is `@nx/vue:app` (Vite, Vitest only): the generator needs no
   TypeScript-setup override, but installs `vue-tsc` 2, which cannot read TypeScript 6's `tsc.js`, so `vue-tsc@^3` is installed at
   the root (with a `@nx/vue` entry in `NX_PEER_OVERRIDES` so npm accepts it beside the `^2` peer); tsc output moves out of Vite's

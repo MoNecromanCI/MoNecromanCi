@@ -75,9 +75,7 @@ export function angularAppTargets (name: string): Record<string, unknown> {
  * @typeParam None - this function has no generic type parameters.
  */
 export function addAngularApp (workspaceRoot: string, name: string, stack: WorkspaceStack, empty = false, e2e = false): void {
-  const previous = process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP
-  process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP = 'true'
-  try {
+  withUnsupportedTsSetupAllowed(() => {
     // The plugin's init generator makes the same check, so the install is inside the override too.
     ensurePlugin(workspaceRoot, '@nx/angular')
     runNx(
@@ -95,13 +93,7 @@ export function addAngularApp (workspaceRoot: string, name: string, stack: Works
       ],
       workspaceRoot,
     )
-  } finally {
-    if (previous === undefined) {
-      delete process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP
-    } else {
-      process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP = previous
-    }
-  }
+  })
   const appRoot = join(workspaceRoot, 'apps', name)
   // The generator writes a `project.json` and no manifest. A manifest is where the app's own `@angular/*` dependencies
   // belong (a runtime dependency at the root is a defect `mnci doctor` fails), and what `mnci add` moves them into.
@@ -115,9 +107,12 @@ export function addAngularApp (workspaceRoot: string, name: string, stack: Works
     ...ANGULAR_APP_COMPILER_OPTIONS,
     module:           'preserve',
     moduleResolution: 'bundler',
+    rootDir:          '../..',
   })
-  // The app project writes to `outDir` from `src`, which TypeScript 6 wants a `rootDir` for.
-  overrideCompilerOptions(join(appRoot, 'tsconfig.app.json'), { rootDir: 'src' })
+  // The app emits nothing (the bundler does), and `tsc --build` must not write JavaScript into `outDir`. `rootDir` is the
+  // workspace: an app that imports an internal library compiles that library's sources from outside its own folder, which
+  // TypeScript 6 reports as TS6059 against the default.
+  overrideCompilerOptions(join(appRoot, 'tsconfig.app.json'), { noEmit: true, rootDir: '../..' })
 
   // Nx's welcome page is a demo, not a template.
   for (const generated of ['nx-welcome.ts', 'app.html', 'app.css', 'app.ts', 'app.spec.ts', 'app.routes.ts', 'app.config.ts']) {
@@ -186,7 +181,7 @@ function pairE2eProject (workspaceRoot: string, name: string, empty: boolean): v
  * @throws Propagates any `fs` error.
  * @typeParam None - this function has no generic type parameters.
  */
-function moveTestSetupOutOfSrc (appRoot: string): void {
+export function moveTestSetupOutOfSrc (appRoot: string): void {
   const setup = join(appRoot, 'src/test-setup.ts')
   if (!fileExists(setup)) {
     return
@@ -204,13 +199,17 @@ function moveTestSetupOutOfSrc (appRoot: string): void {
 /**
  * Merges compiler options into a tsconfig, when the file exists.
  *
+ * @remarks
+ * Shared by the app and the library kinds. A file the generator did not write (a library has no `tsconfig.app.json`) is
+ * left alone rather than created.
+ *
  * @param path - Absolute path to the tsconfig.
  * @param options - The options to set over what it has.
  * @returns Nothing.
  * @throws Propagates any `fs` or JSON error.
  * @typeParam None - this function has no generic type parameters.
  */
-function overrideCompilerOptions (path: string, options: Record<string, unknown>): void {
+export function overrideCompilerOptions (path: string, options: Record<string, unknown>): void {
   if (!fileExists(path)) {
     return
   }
@@ -232,12 +231,56 @@ function overrideCompilerOptions (path: string, options: Record<string, unknown>
  * @typeParam None - this function has no generic type parameters.
  */
 function angularAppTypecheckTarget (name: string): Record<string, unknown> {
+  return angularTypecheckTarget(`apps/${name}`, 'tsconfig.app.json')
+}
+
+/**
+ * The `typecheck` target of an Angular project: `tsc --build` over its own tsconfig, and `tsc --noEmit` over its specs'.
+ *
+ * @remarks
+ * `--build` rather than `--noEmit` for the project itself, because it may reference an internal library, and a
+ * referenced project may not disable emit (TS6310) nor be unbuilt (TS6305). The app's own `noEmit` keeps it from writing.
+ *
+ * @param cwd - The project's directory, workspace-relative.
+ * @param configuration - The project's own tsconfig file name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function angularTypecheckTarget (cwd: string, configuration: string): Record<string, unknown> {
   return {
     executor: 'nx:run-commands',
     options:  {
-      commands: ['tsc --noEmit -p tsconfig.app.json', 'tsc --noEmit -p tsconfig.spec.json'],
+      commands: [`tsc --build ${configuration}`, 'tsc --noEmit -p tsconfig.spec.json'],
       parallel: false,
-      cwd:      `apps/${name}`,
+      cwd,
     },
+  }
+}
+
+/**
+ * Runs a step with Nx's check of the TypeScript setup switched off, and puts the variable back afterwards.
+ *
+ * @remarks
+ * Angular's generators (and the plugin's `init`) stop with "doesn't support the existing TypeScript setup" for a workspace
+ * built on project references, unless `NX_IGNORE_UNSUPPORTED_TS_SETUP` is `true`. The override is for the one step: it
+ * is restored whether the step returns or throws, so nothing else in the process inherits it.
+ *
+ * @param step - What to run with the check off.
+ * @returns Nothing.
+ * @throws Whatever `step` throws.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function withUnsupportedTsSetupAllowed (step: () => void): void {
+  const previous = process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP
+  process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP = 'true'
+  try {
+    step()
+  } finally {
+    if (previous === undefined) {
+      delete process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP
+    } else {
+      process.env.NX_IGNORE_UNSUPPORTED_TS_SETUP = previous
+    }
   }
 }

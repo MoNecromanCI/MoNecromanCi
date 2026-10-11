@@ -113,6 +113,7 @@ mnci new --into .           # ...or bootstrap into a clone that already exists
 cd my-repo
 mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
+mnci add angular-internal-lib kit # a private Angular library an Angular app imports, see "Angular apps"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -647,7 +648,15 @@ makes it fit this workspace, which the generator does not:
 `--e2e` pairs a Playwright project as for React (its `e2e` target needs a browser; `:qa` is lint and typecheck). A Vitest
 workspace gets `--unitTestRunner=vitest-angular`, which passes lint, typecheck, test and build.
 
-Not covered: SSR, a per-environment build as React has, and an Angular library kind.
+`mnci add angular-internal-lib <name>` adds a private library under `libs/` (`@nx/angular:library`, not buildable by the
+Angular builders; an app imports it through the `tsconfig` path under the workspace scope). It differs from the app in what
+it repairs: its own configuration **stays composite** with declaration output, because an app that imports it gets a project
+reference from `mnci sync` and a reference to a project that is not composite fails (TS6306). Its specs are not composite and
+are checked on their own. The app's `tsconfig.app.json` is `noEmit` with `rootDir` at the workspace (TS6059 otherwise), and
+its typecheck is `tsc --build`, since a referenced project may not disable emit. The generator's `src/lib/<name>/` is
+replaced by a `greeting` feature behind the barrel, with `lib-` selectors.
+
+Not covered: SSR, a per-environment build as React has, and a publishable Angular library (ng-packagr).
 
 ## Vue apps (`mnci add vue-app`)
 

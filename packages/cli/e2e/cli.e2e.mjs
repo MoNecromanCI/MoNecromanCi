@@ -3806,6 +3806,17 @@ section('angular app', [], () => {
   )
   const doctor = tryRunCapture(`node ${CLI} doctor`, root)
   enforce('angular app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+  // An internal library: the app imports it through the tsconfig path, `mnci sync` adds the project reference, and
+  // everything still lints, type-checks, tests and builds.
+  run(`node ${CLI} add angular-internal-lib ngkit`, root)
+  const appComponent = path.join(app, 'src/app/app.component.ts')
+  writeFileSync(
+    appComponent,
+    readFileSync(appComponent, 'utf8').replace("'../greeting'", "'@nga/ngkit'").replace('<app-greeting', '<lib-greeting'),
+  )
+  run(`node ${CLI} sync`, root)
+  const withLibrary = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=ngweb,ngkit', root)
+  enforce('angular app: an app importing an Angular internal library lints, type-checks, tests and builds', withLibrary.ok, withLibrary.output.slice(-2500))
   // --e2e pairs a Playwright project; its `e2e` target needs a browser, so lint and typecheck are what CI can run.
   run(`node ${CLI} add angular-app ngshop --e2e`, root)
   const paired = tryRunCapture('npx nx run-many -t lint,typecheck --projects=ngshop,ngshop-e2e', root)
