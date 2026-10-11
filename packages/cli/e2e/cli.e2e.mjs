@@ -3862,6 +3862,35 @@ section('svelte app', [], () => {
   enforce('svelte app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('bicep infrastructure', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add bicep-iac` (#314): the template is linted and compiled by `az bicep`,
+   * which downloads the Bicep CLI on first use. Gated on the Azure CLI.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'bicepiac')
+  run(`node ${CLI} new bicepiac --yes --registry npm --scope @bic`, temporary)
+  run(`node ${CLI} add bicep-iac infra`, root)
+  const project = JSON.parse(readFileSync(path.join(root, 'apps/infra/project.json'), 'utf8'))
+  enforce(
+    'bicep: the project has lint, build and package targets and no test',
+    ['lint', 'build', 'package'].every(target => Object.hasOwn(project.targets, target)) && !Object.hasOwn(project.targets, 'test'),
+    Object.keys(project.targets).join(', '),
+  )
+  if (!tryRunCapture('az version', root).ok) {
+    skip('bicep: lint, build and package', 'the Azure CLI (`az`) is not on PATH')
+
+    return
+  }
+  const checks = tryRunCapture('npx nx run-many -t lint,build,package --projects=infra', root)
+  enforce('bicep: lint, build and package pass', checks.ok, checks.output.slice(-2500))
+  enforce(
+    'bicep: the zip holds the compiled template and parameters',
+    existsSync(path.join(root, 'dist/drop/bicep-infra.zip')) && existsSync(path.join(root, 'dist/apps/infra/main.json')) && existsSync(path.join(root, 'dist/apps/infra/main.parameters.json')),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('bicep: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('function app dev', [], () => {
   /* ---------------------------------------------------------------------------
    * `<name>:dev` of a Node function app (#443): a build watcher beside `func start`,

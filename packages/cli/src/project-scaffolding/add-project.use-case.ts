@@ -19,6 +19,7 @@ import {
 } from './python.use-case'
 import { addContainer } from './container.use-case'
 import { addAngularApp } from './angular-app.use-case'
+import { addBicepProject } from './bicep.use-case'
 import { addSvelteApp } from './svelte-app.use-case'
 import { addVueApp } from './vue-app.use-case'
 import { addReactApp } from './react-app.use-case'
@@ -127,6 +128,7 @@ export type ProjectKind =
   'angular-app' |
   'vue-app' |
   'svelte-app' |
+  'bicep-iac' |
   'react-lib' |
   'react-internal-lib' |
   'node-app' |
@@ -189,10 +191,11 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'csharp-internal-lib',
   'vscode-extension',
   'container',
+  'bicep-iac',
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'angular-app', 'vue-app', 'svelte-app', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'angular-app', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib'])
 
 /** The kinds a registry publishes: a workspace with no registry releases none of them. */
 const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
@@ -306,6 +309,10 @@ export async function runAdd (
   ensureNxPeerOverrides(workspaceRoot)
 
   switch (resolvedKind) {
+    case 'bicep-iac': {
+      addBicepProject(workspaceRoot, resolvedName, options.empty === true)
+      break
+    }
     case 'svelte-app': {
       addSvelteApp(workspaceRoot, resolvedName, options.empty === true)
       break
