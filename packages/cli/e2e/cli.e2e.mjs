@@ -3954,6 +3954,15 @@ section('rust', [], () => {
   run(`node ${CLI} add rust-app hello`, root)
   run(`node ${CLI} add rust-internal-lib kit`, root)
   run(`node ${CLI} add rust-lib core`, root)
+  // An internal crate is consumed by path (with its version beside it), and the app really uses it.
+  const linked = tryRunCapture(`node ${CLI} i -w hello kit`, root)
+  const helloManifest = readFileSync(path.join(root, 'apps/hello/Cargo.toml'), 'utf8')
+  enforce(
+    'rust: installing a sibling crate adds a path dependency with its version',
+    linked.ok && helloManifest.includes('kit = { version = "0.1.0", path = "../../libs/kit" }'),
+    `${linked.output.slice(-600)}\n${helloManifest}`,
+  )
+  writeFileSync(path.join(root, 'apps/hello/src/main.rs'), 'fn main() {\n    println!("{}", kit::greet("hello").message);\n}\n')
   const cargoToml = readFileSync(path.join(root, 'apps/hello/Cargo.toml'), 'utf8')
   const projectName = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8')).name
   enforce(

@@ -42,6 +42,17 @@ afterEach(() => {
 })
 
 describe('mnci install: per-ecosystem dispatch (#291)', () => {
+  it('adds a crate through cargo add against the crate manifest, and a sibling crate by path with its version', () => {
+    seed('apps/tool/Cargo.toml', '[package]\nname = "tool"\nversion = "0.1.0"\n')
+    seed('libs/kit/Cargo.toml', '[package]\nname = "kit"\nversion = "0.1.0"\n')
+
+    runInstall(workspaceRoot, ['serde', 'kit'], { workspace: ['tool'] })
+
+    const manifest = join(workspaceRoot, 'apps/tool/Cargo.toml')
+    expect(mockRunShell).toHaveBeenCalledWith('cargo', ['add', 'serde', '--manifest-path', manifest], workspaceRoot)
+    expect(mockRunShell).toHaveBeenCalledWith('cargo', ['add', 'kit', '--path', 'libs/kit', '--manifest-path', manifest], workspaceRoot)
+  })
+
   it('adds an npm package through the native workspace flag, from the root', () => {
     runInstall(workspaceRoot, ['left-pad'], { workspace: ['web'] })
 
