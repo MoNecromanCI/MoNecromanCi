@@ -23,6 +23,7 @@ import {
   ESLINT_BLOCK_INVENTORY,
   DOTNET_SDK_VERSION,
   GO_VERSION,
+  RUST_VERSION,
   GOLANGCI_LINT_VERSION,
   CLI_VERSION,
   ESLINT_CONFIG_VERSION,
@@ -1523,11 +1524,12 @@ describe('devcontainerJson', () => {
     )
   })
 
-  it('brings Python, Go and .NET as features rather than a hand-maintained Dockerfile', () => {
+  it('brings Python, Go, .NET and Rust as features rather than a hand-maintained Dockerfile', () => {
     expect(Object.keys(parsed().features)).toEqual([
       'ghcr.io/devcontainers/features/python:1',
       'ghcr.io/devcontainers/features/go:1',
       'ghcr.io/devcontainers/features/dotnet:2',
+      'ghcr.io/devcontainers/features/rust:1',
     ])
   })
 
@@ -1551,6 +1553,10 @@ describe('devcontainerJson', () => {
       version:             GO_VERSION,
       golangciLintVersion: GOLANGCI_LINT_VERSION,
     })
+  })
+
+  it('pins the Rust feature to RUST_VERSION with the default profile, so clippy and rustfmt come with it (#469)', () => {
+    expect(parsed().features['ghcr.io/devcontainers/features/rust:1']).toEqual({ version: RUST_VERSION, profile: 'default' })
   })
 
   it("provisions the toolchains with the pipeline's own command instead of a third copy", () => {

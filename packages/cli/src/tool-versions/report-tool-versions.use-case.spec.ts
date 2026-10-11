@@ -5,7 +5,7 @@ jest.mock('../terminal', () => ({
 }))
 
 import { logger } from '../terminal'
-import { DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT_VERSION, GO_VERSION, NODE_VERSION, NPM_VERSION } from '../workspace-overlay'
+import { DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT_VERSION, GO_VERSION, NODE_VERSION, NPM_VERSION, RUST_VERSION } from '../workspace-overlay'
 import type { ToolQueryDependencies } from './latest-tool-versions.client'
 import { checkToolVersions, reportToolVersions } from './report-tool-versions.use-case'
 
@@ -13,7 +13,7 @@ const mockInfo = jest.mocked(logger.info)
 const mockSuccess = jest.mocked(logger.success)
 
 /** Release sources that answer with the given versions; any tool not named is unreachable. */
-function sources (answers: { linter?: string, node?: string, npm?: string, go?: string, dotnet?: string, flutter?: string }): ToolQueryDependencies {
+function sources (answers: { linter?: string, node?: string, npm?: string, go?: string, dotnet?: string, flutter?: string, rust?: string }): ToolQueryDependencies {
   return {
     fetchText: async url => {
       if (url.includes('nodejs.org') && answers.node !== undefined) {
@@ -21,6 +21,9 @@ function sources (answers: { linter?: string, node?: string, npm?: string, go?: 
       }
       if (url.includes('go.dev') && answers.go !== undefined) {
         return JSON.stringify([{ version: 'go1.99rc1', stable: false }, { version: `go${answers.go}`, stable: true }])
+      }
+      if (url.includes('rust-lang.org') && answers.rust !== undefined) {
+        return ['date = "2026-01-01"', '[pkg.cargo]', 'version = "0.1.0"', '[pkg.rust]', `version = "${answers.rust}"`, ''].join('\n')
       }
       if (url.includes('dotnet') && answers.dotnet !== undefined) {
         return JSON.stringify({ 'releases-index': [{ 'channel-version': '11.0', 'support-phase': 'preview' }, { 'channel-version': answers.dotnet, 'support-phase': 'active' }, { 'channel-version': '8.0', 'support-phase': 'maintenance' }] })
@@ -44,7 +47,7 @@ function sources (answers: { linter?: string, node?: string, npm?: string, go?: 
   }
 }
 
-const AT_PINS = { linter: GOLANGCI_LINT_VERSION, node: `${NODE_VERSION}.2.0`, npm: `${NPM_VERSION}.4.0`, go: `${GO_VERSION}.3`, dotnet: DOTNET_SDK_VERSION.replace(/\.x$/u, ''), flutter: FLUTTER_SDK_VERSION }
+const AT_PINS = { linter: GOLANGCI_LINT_VERSION, node: `${NODE_VERSION}.2.0`, npm: `${NPM_VERSION}.4.0`, go: `${GO_VERSION}.3`, dotnet: DOTNET_SDK_VERSION.replace(/\.x$/u, ''), flutter: FLUTTER_SDK_VERSION, rust: `${RUST_VERSION}.0` }
 
 /** A source that throws instead of answering. */
 async function fail (): Promise<string | undefined> {
@@ -59,7 +62,7 @@ describe('checkToolVersions', () => {
   it('finds nothing newer when every source reports the pinned release or an older patch of it', async () => {
     const statuses = await checkToolVersions(sources(AT_PINS))
 
-    expect(statuses.map(status => status.name)).toEqual(['golangci-lint', 'Node', 'npm', 'Go', '.NET SDK', 'Flutter SDK'])
+    expect(statuses.map(status => status.name)).toEqual(['golangci-lint', 'Node', 'npm', 'Go', '.NET SDK', 'Flutter SDK', 'Rust'])
     expect(statuses.every(status => status.latest !== undefined)).toBe(true)
     expect(statuses.filter(status => status.newer)).toEqual([])
   })
@@ -72,9 +75,10 @@ describe('checkToolVersions', () => {
       go:      '99.0.0',
       dotnet:  '99.0',
       flutter: '99.0.0',
+      rust:    '99.0.0',
     }))
 
-    expect(statuses.filter(status => status.newer).map(status => status.name)).toEqual(['golangci-lint', 'Node', 'npm', 'Go', '.NET SDK', 'Flutter SDK'])
+    expect(statuses.filter(status => status.newer).map(status => status.name)).toEqual(['golangci-lint', 'Node', 'npm', 'Go', '.NET SDK', 'Flutter SDK', 'Rust'])
     expect(statuses.find(status => status.name === 'Flutter SDK')?.latest).toBe('99.0.0')
   })
 

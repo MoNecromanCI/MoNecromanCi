@@ -132,6 +132,15 @@ export const TOOL_QUERIES: readonly ToolQuery[] = [
       return highest(tags)
     },
   },
+  {
+    name:   'Rust',
+    latest: async ({ fetchText }) => {
+      // The stable channel manifest: the [pkg.rust] table's first version is the compiler's.
+      const manifest = await fetchText('https://static.rust-lang.org/dist/channel-rust-stable.toml')
+
+      return /\[pkg\.rust\]\s+version = "(\d+\.\d+\.\d+)/u.exec(manifest ?? '')?.[1]
+    },
+  },
 ]
 
 /**

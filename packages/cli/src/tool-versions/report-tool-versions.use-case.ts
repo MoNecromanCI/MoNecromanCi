@@ -7,6 +7,7 @@ import {
   GO_VERSION,
   NODE_VERSION,
   NPM_VERSION,
+  RUST_VERSION,
 } from '../workspace-overlay'
 import { isNewerThanPin } from './compare-tool-versions.algorithm'
 import { neutralDirectory, TOOL_QUERIES, type ToolQueryDependencies } from './latest-tool-versions.client'
@@ -22,6 +23,7 @@ const PINS: Readonly<Record<string, string>> = {
   'Go':            GO_VERSION,
   '.NET SDK':      DOTNET_SDK_VERSION,
   'Flutter SDK':   FLUTTER_SDK_VERSION,
+  'Rust':          RUST_VERSION,
 }
 
 /**

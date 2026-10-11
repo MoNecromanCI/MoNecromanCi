@@ -1111,6 +1111,7 @@ export function devcontainerJson (workspaceName: string): string {
       // BEFORE postCreateCommand, so the guard there found a linter on PATH and never installed the pin.
       'ghcr.io/devcontainers/features/go:1':     { version: GO_VERSION, golangciLintVersion: GOLANGCI_LINT_VERSION },
       'ghcr.io/devcontainers/features/dotnet:2': { version: DOTNET_SDK_VERSION.replace(/\.x$/, '') },
+      'ghcr.io/devcontainers/features/rust:1':   { version: RUST_VERSION, profile: 'default' },
     },
     // `npm ci` first: every guard after it runs through the workspace's own
     // scripts and Nx, which do not exist until the install completes.
@@ -2571,6 +2572,17 @@ export const GOLANGCI_LINT_VERSION = '2.14.0'
  * `go.mod` directive, not this constant, is what keeps CI and the container compatible.
  */
 export const GO_VERSION = '1.27'
+
+/**
+ * The Rust toolchain version mnci provisions where it provisions Rust itself: the devcontainer.
+ *
+ * @remarks
+ * A minor (`1.99`), which the devcontainer Rust feature resolves to the newest patch of it, with the `default` profile so
+ * `clippy` and `rustfmt` (what a Rust project's `lint` runs) come with it. Pinned for the reason {@link GO_VERSION} is: a
+ * tool version appears in exactly one mnci-owned place, and nothing installs `latest` (#241). The hosted CI images ship
+ * `rustup` with a stable toolchain and the `default` profile, so mnci installs none there.
+ */
+export const RUST_VERSION = '1.99'
 
 /**
  * The Flutter SDK version the generated pipeline installs.
