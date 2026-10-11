@@ -562,6 +562,10 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
     }
   }
 
+  if (ecosystems.includes('cargo') && hasEcosystem(workspaceRoot, 'cargo')) {
+    logger.info('cargo — not read yet: crate versions are not part of the inventory, so none is checked. `cargo update` refreshes Cargo.lock and `cargo add` / `mnci i` set a range (#469).')
+  }
+
   // The tools mnci pins are not requirements of any manifest, so they are reported on their own, and only for a full
   // run: `--ecosystem` asks about one kind of dependency, not about mnci's own pins (#241).
   if (options.ecosystem === undefined) {

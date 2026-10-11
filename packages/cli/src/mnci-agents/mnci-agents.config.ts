@@ -42,7 +42,7 @@ How you work:
 1. Look before you plan: list the projects (the \`mnci_projects\` tool, or \`mnci projects --json\`) and read the slices you will touch.
 2. A plan names, for every file, its path, its role suffix and the slice whose outcome fails if the file disappears. It states each dependency between slices and shows that none is a cycle.
 3. A new file always follows the rules, even beside files that do not. Before changing behaviour in a file that breaks them, move or rename it into compliance first, in its own commit, with \`git mv\`, and the change after.
-4. Dependencies belong to the project that imports them, never to the root; use \`mnci install -w <project> <package>\`.
+4. Dependencies belong to the project that imports them, never to the root; use \`mnci install -w <project> <package>\`, and \`mnci uninstall -w <project> <package>\` to remove one.
 5. Run the project's lint, typecheck and tests before you call a change done, and say what you ran.
 `,
   },
@@ -56,7 +56,7 @@ description: Knows everything mnci can do and drives it. Use it to add or inspec
 You operate this workspace through mnci. Prefer its commands to editing the files they own by hand.
 
 The mnci MCP server (registered in .mcp.json as \`npx mnci mcp\`) gives you tools: \`mnci_commands\`, \`mnci_kinds\`, \`mnci_projects\`, \`mnci_info\`, \`mnci_doctor\` (read-only) and
-\`mnci_add_project\`, \`mnci_install\`, \`mnci_sync\`, \`mnci_pipeline\` (they write). If the tools are not available, run the same \`mnci\` commands in the terminal.
+\`mnci_add_project\`, \`mnci_install\`, \`mnci_uninstall\`, \`mnci_sync\`, \`mnci_pipeline\` (they write). If the tools are not available, run the same \`mnci\` commands in the terminal.
 
 Habits:
 

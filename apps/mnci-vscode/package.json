@@ -60,6 +60,12 @@
         "icon": "$(package)"
       },
       {
+        "command": "mnci.uninstall",
+        "title": "Uninstall dependencies",
+        "category": "MNCI",
+        "icon": "$(trash)"
+      },
+      {
         "command": "mnci.sync",
         "title": "Sync dependency versions",
         "category": "MNCI",

@@ -7,7 +7,7 @@ import type { ProjectKind } from './add-project.use-case'
  * The language families `add` offers; an editor groups its picker by them.
  * @typeParam None - this type has no generic type parameters.
  */
-export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'bicep' | 'container'
+export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'rust' | 'bicep' | 'container'
 
 /**
  * One project kind, described for a picker: what it makes, in which language, and which `add` flags apply.
@@ -69,4 +69,7 @@ export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'csharp-function-app', language: 'csharp', label: 'C# function app', description: 'An Azure Functions isolated-worker app', flags: ['empty'], requiredFlags: [] },
   { kind: 'csharp-lib', language: 'csharp', label: 'C# library', description: 'A NuGet package', flags: ['scope', 'empty'], requiredFlags: [] },
   { kind: 'csharp-internal-lib', language: 'csharp', label: 'C# internal library', description: 'A private .NET library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
+  { kind: 'rust-app', language: 'rust', label: 'Rust app', description: 'A Rust executable, built with Cargo and zipped as a release binary', flags: ['empty'], requiredFlags: [] },
+  { kind: 'rust-lib', language: 'rust', label: 'Rust library', description: 'A Rust crate other projects depend on', flags: ['empty'], requiredFlags: [] },
+  { kind: 'rust-internal-lib', language: 'rust', label: 'Rust internal library', description: 'A private crate for apps in this workspace', flags: ['empty'], requiredFlags: [] },
 ]

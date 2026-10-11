@@ -450,7 +450,7 @@ describe('runUp', () => {
 
   it('rejects an unknown --ecosystem before querying anything', async () => {
     write('nx.json', JSON.stringify({}))
-    await expect(runUp(workspaceRoot, { ecosystem: 'cargo' })).rejects.toThrow('Unknown ecosystem')
+    await expect(runUp(workspaceRoot, { ecosystem: 'banana' })).rejects.toThrow('Unknown ecosystem')
     expect(mockLatestVersions).not.toHaveBeenCalled()
   })
 

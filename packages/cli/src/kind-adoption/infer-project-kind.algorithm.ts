@@ -185,6 +185,25 @@ function inferCsharp (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
+ * Proposes the kind of a Rust crate.
+ *
+ * @param evidence - What was read about it.
+ * @returns The proposal.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function inferRust (evidence: ProjectEvidence): KindProposal {
+  if (evidence.hasProgram) {
+    return { kind: 'rust-app', certainty: 'certain', reason: 'src/main.rs is the entry point' }
+  }
+  if (/^publish\s*=\s*false\s*$/m.test(evidence.text)) {
+    return { kind: 'rust-internal-lib', certainty: 'certain', reason: 'publish = false' }
+  }
+
+  return { kind: 'rust-lib', certainty: 'guess', reason: 'a library, but internal or published is a choice only you can make' }
+}
+
+/**
  * Proposes the kind of a Go module.
  *
  * @param evidence - What was read about it.
@@ -229,6 +248,9 @@ export function inferProjectKind (evidence: ProjectEvidence): KindProposal {
     }
     case 'nuget': {
       return inferCsharp(evidence)
+    }
+    case 'cargo': {
+      return inferRust(evidence)
     }
     case 'go': {
       return inferGo(evidence)

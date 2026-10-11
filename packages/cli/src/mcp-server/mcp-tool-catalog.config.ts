@@ -165,6 +165,29 @@ export const MCP_TOOLS: readonly McpTool[] = [
     },
   },
   {
+    name:        'mnci_uninstall',
+    description: "Remove a dependency from one or more projects using each project's own toolchain (npm, pip, go, nuget, pub). A dependency belongs to the project that declares it, so a project is always named.",
+    inputSchema: {
+      type:       'object',
+      properties: {
+        package:  { type: 'string', description: 'The package to remove.' },
+        projects: { type: 'array', items: { type: 'string' }, minItems: 1, description: 'The projects to remove it from, by directory (apps/foo) or name (foo).' },
+      },
+      required:             ['package', 'projects'],
+      additionalProperties: false,
+    },
+    readOnly:   false,
+    arguments_: (input) => {
+      const projects = input.projects
+      if (!Array.isArray(projects) || projects.length === 0) {
+        throw new Error("'projects' must list at least one project.")
+      }
+      const targets = projects.flatMap(project => ['-w', word({ project }, 'project')])
+
+      return ['uninstall', ...targets, word(input, 'package')]
+    },
+  },
+  {
     name:        'mnci_sync',
     description: 'Make every dependency range declared at more than one version agree, then run nx sync. With check true it only reports drift.',
     inputSchema: {

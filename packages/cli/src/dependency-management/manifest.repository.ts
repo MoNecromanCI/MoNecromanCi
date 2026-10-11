@@ -14,7 +14,7 @@ import { listGoModuleDirectories } from '../go-workspace'
  *
  * @typeParam None - this type has no generic type parameters.
  */
-export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'go'
+export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'go'
 
 /**
  * Every ecosystem, in the order commands report them.
@@ -24,7 +24,7 @@ export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'go'
  * because it is the one with nothing to reconcile — every other ecosystem,
  * NuGet included, has a real per-project manifest whose versions can drift.
  */
-export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'go']
+export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'go']
 
 /**
  * The label shown for the workspace root, which is not a project.
@@ -91,6 +91,9 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   // PascalCase identity, not a fixed name) — the same three roots
   // PACK_APPS_GUARD and add/csharp.ts already scan.
   nuget: ['apps/*/*.csproj', 'packages/*/*.csproj', 'libs/*/*.csproj'],
+  // Crates are read for `install`/`uninstall` (see PROJECT_GLOBS); their declared versions are not yet part of the
+  // inventory `sync` and `up` reconcile, so nothing is listed here.
+  cargo: [],
   // Single root module by design — there are no per-project Go manifests.
   go:    [],
 }
@@ -178,9 +181,10 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     return globSync(MANIFEST_GLOBS.nuget, { cwd: workspaceRoot }).length > 0
   }
   const rootMarker: Record<Exclude<Ecosystem, 'go' | 'nuget'>, string> = {
-    npm: 'package.json',
-    pip: 'requirements-dev.txt',
-    pub: 'pubspec.yaml',
+    npm:   'package.json',
+    pip:   'requirements-dev.txt',
+    pub:   'pubspec.yaml',
+    cargo: 'Cargo.toml',
   }
 
   // Either marker counts. A root file alone is the usual case, but a workspace
@@ -719,6 +723,7 @@ export function collectInventory (
     pip:   collectPip,
     pub:   collectPub,
     nuget: collectNuget,
+    cargo: () => [],
     go:    collectGo,
   }
 
@@ -754,7 +759,8 @@ export function collectInventory (
  */
 const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
   ...MANIFEST_GLOBS,
-  go: ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
+  cargo: ['apps/*/Cargo.toml', 'libs/*/Cargo.toml', 'packages/*/Cargo.toml'],
+  go:    ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
 }
 
 /**

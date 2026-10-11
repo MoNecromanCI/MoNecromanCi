@@ -116,6 +116,7 @@ mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps
 mnci add angular-internal-lib kit # a private Angular library an Angular app imports, see "Angular apps"
 mnci add react-p5-app art      # a React app that draws with p5.js, see "React p5 apps"
 mnci add html-app site         # plain HTML, CSS and jQuery on Vite, see "HTML apps"
+mnci add rust-app tool         # a Rust executable on @monodon/rust, see "Rust projects"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -174,7 +175,13 @@ mnci i -w api github.com/x/y  # ...go get in the Go module; dotnet/flutter/pip a
 mnci i -w ui -w web react     # ...-w repeats, to add to several projects at once
 mnci i -w svc jest -D         # ...--save-dev where the ecosystem has a dev-dependency notion
 mnci i                        # no -w: install/restore the whole workspace (the one-shot bootstrap)
+mnci uninstall -w web left-pad # take a dep out of ONE project (alias: mnci un); -w repeats, and there is no root form
 ```
+
+`mnci uninstall` (#476) is `install` the other way, with the same refusals: a package with no `-w` is refused, never taken from the root. It uses
+each ecosystem's own verb (`npm uninstall -w`, `go get <pkg>@none`, `dotnet remove package`, `flutter pub remove`) and, for pip, edits
+`pyproject.toml` (pip has no verb for that, as it has none to add; the package stays in the shared environment until it is recreated).
+After an npm removal it names the source files that still import the package, as a warning, since those imports no longer resolve.
 
 ## Where a dependency belongs: root vs project
 
@@ -659,6 +666,33 @@ its typecheck is `tsc --build`, since a referenced project may not disable emit.
 replaced by a `greeting` feature behind the barrel, with `lib-` selectors.
 
 Not covered: SSR, a per-environment build as React has, and a publishable Angular library (ng-packagr).
+
+## Rust projects (`mnci add rust-app | rust-lib | rust-internal-lib`)
+
+Rust has a maintained Nx plugin, so mnci delegates to it as it does to `@nx-go/nx-go`: `@monodon/rust` (measured on Nx 23.2 with
+Rust 1.76, though it declares `@nx/devkit ^22`) initialises a Cargo workspace (a root `Cargo.toml` with `members`, one root
+`Cargo.lock`) and generates the crates. mnci then:
+
+- places the crate itself: the plugin puts a crate where `nx.json`'s `workspaceLayout` (or whichever of `apps`, `libs` and
+  `packages` exists) says, so `--directory=apps` landed in `packages/apps/<name>` in a mnci workspace (measured). mnci sets the
+  layout to the wanted folder for the one generator call and restores `nx.json`; the plugin snake_cases the name, which is Rust's
+  convention for a crate and its folder;
+- writes a `greeting` slice (`greeting_contract.rs`, `greet_use_case.rs` with its unit tests inside, a `mod.rs` barrel) and a
+  `main.rs` or `lib.rs` that only wires; `--empty` is an entry point that does nothing;
+- makes `lint` run `cargo fmt --check` **and** clippy with warnings as errors (the plugin's own lint is clippy only), adds
+  `typecheck` (`cargo check`), and for an app `package`, a zip of the release binary in `dist/drop/rust-app-<name>.zip`;
+- keeps the plugin's per-project `target-dir` (`dist/target/<name>`): Nx clears a target's outputs when it restores a cached
+  build, so a directory shared by every crate would delete another crate's artifacts. The price is that each crate compiles
+  its dependencies itself.
+
+Apps live in `apps/`, publishable libraries in `packages/`, private ones in `libs/`. A crate's dependencies are its own
+`[dependencies]`: `mnci i -w <crate> <crate-name>` runs `cargo add --manifest-path` and `mnci un -w <crate> <crate-name>` runs
+`cargo remove`.
+
+Not covered yet (#469): `mnci sync` and `mnci up` do not read crate versions, so they do not reconcile or update them
+(`latestCargoVersions` is written); publishing to crates.io and a version for `nx release`; the Rust toolchain in
+`mnci ci setup`, the devcontainer and the pinned versions; a slice lint (`rust-slice-check`); a debugger launch
+configuration; `dev` (watch and restart); an internal crate as a path dependency of another.
 
 ## HTML apps (`mnci add html-app`)
 

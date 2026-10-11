@@ -56,10 +56,25 @@ function readEvidence (repositoryRoot: string, location: ProjectLocation): Proje
   const manifest = location.ecosystem === 'npm' ? readJson<Record<string, unknown>>(location.manifestPath) : {}
   const text = location.ecosystem === 'npm' ? '' : readFileSync(location.manifestPath, 'utf8')
   let hasProgram = false
-  if (location.ecosystem === 'go') {
-    hasProgram = files.filter(file => file.endsWith('.go')).some(file => /^package main\b/m.test(readFileSync(join(directory, file), 'utf8')))
-  } else if (location.ecosystem === 'pub') {
-    hasProgram = existsSync(join(directory, 'lib', 'main.dart'))
+  switch (location.ecosystem) {
+    case 'go': {
+      hasProgram = files.filter(file => file.endsWith('.go')).some(file => /^package main\b/m.test(readFileSync(join(directory, file), 'utf8')))
+
+      break
+    }
+    case 'pub': {
+      hasProgram = existsSync(join(directory, 'lib', 'main.dart'))
+
+      break
+    }
+    case 'cargo': {
+      hasProgram = existsSync(join(directory, 'src', 'main.rs'))
+
+      break
+    }
+    default: {
+      break
+    }
   }
 
   return { ecosystem: location.ecosystem, manifest, text, files, hasProgram }

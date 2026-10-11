@@ -11,7 +11,7 @@ import { runInfo, runProjects, type InfoOptions, type ProjectsOptions } from './
 import { runInteractive } from './interactive-wizard'
 import { PRESET_IDS } from './workspace-presets'
 import { runNew, type NewOptions } from './workspace-creation'
-import { runInstall, type InstallOptions } from './dependency-management'
+import { runInstall, runUninstall, type InstallOptions, type UninstallOptions } from './dependency-management'
 import { runSync, type SyncOptions } from './dependency-management'
 import { runUp, type UpOptions } from './dependency-management'
 import { runUpgrade, type UpgradeOptions } from './workspace-upgrade'
@@ -199,7 +199,7 @@ export function buildProgram (cliVersion: string): Command {
       "Make every project agree: converge external dependency ranges declared at more than one version, then run 'nx sync' for TypeScript project references. Go is a no-op — one root go.mod means one version of every module",
     )
     .option('--check', 'report drift and exit non-zero without writing anything')
-    .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | go')
+    .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | nuget | cargo | go')
     .action((options: SyncOptions) => {
       runSync(process.cwd(), options)
     })
@@ -211,7 +211,7 @@ export function buildProgram (cliVersion: string): Command {
     )
     .option('--check', 'report only; never prompt and never write (the default when piped, unless --yes)')
     .option('-y, --yes', 'select every available update without prompting')
-    .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | go')
+    .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | nuget | cargo | go')
     .option('--no-install', 'update the manifests but skip the reinstall step')
     .action(async (options: UpOptions) => {
       await runUp(process.cwd(), options)
@@ -233,6 +233,23 @@ export function buildProgram (cliVersion: string): Command {
     .option('-D, --save-dev', 'add as a development dependency, where the ecosystem distinguishes one')
     .action((packages: string[], options: InstallOptions) => {
       runInstall(process.cwd(), packages, options)
+    })
+
+  program
+    .command('uninstall')
+    .alias('un')
+    .argument('<packages...>', 'packages to remove, by name')
+    .description(
+      "Remove a dependency from a specific project using its own toolchain (npm/pip/pub/nuget/go) — the counterpart of 'mnci install'. A dependency belongs to the project that imports it, so a package needs a target: 'mnci uninstall -w <project> <package>'",
+    )
+    .option(
+      '-w, --workspace <project>',
+      'target project, by directory (apps/foo) or basename (foo); give the flag again for each project',
+      (project: string, projects: string[]) => [...projects, project],
+      [] as string[],
+    )
+    .action((packages: string[], options: UninstallOptions) => {
+      runUninstall(process.cwd(), packages, options)
     })
 
   program
