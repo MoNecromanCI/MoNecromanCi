@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { runShell } from '../nx-workspace'
 import { logger } from '../terminal'
+import { singleQuoteGemLines } from './gemfile-quotes.algorithm'
 import type { ProjectLocation } from './manifest.repository'
 
 /** Runs Bundler in a project's directory, warning (not throwing) on a failure. */
@@ -14,6 +16,24 @@ function bundle (workspaceRoot: string, location: ProjectLocation, arguments_: r
   }
 
   return true
+}
+
+/**
+ * Rewrites the `Gemfile` Bundler just wrote so it passes the workspace's RuboCop.
+ *
+ * @param location - The project whose `Gemfile` changed.
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns Nothing.
+ * @throws Error when the file cannot be read or written.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function normaliseGemfile (workspaceRoot: string, location: ProjectLocation): void {
+  const path = join(workspaceRoot, location.dir, 'Gemfile')
+  const text = readFileSync(path, 'utf8')
+  const next = singleQuoteGemLines(text)
+  if (next !== text) {
+    writeFileEnsured(path, next)
+  }
 }
 
 /**
@@ -85,12 +105,15 @@ export function addBundlerGems (
     const sibling = siblings.get(specifier)
     if (sibling === undefined) {
       const [gem, version] = specifier.split('@', 2) as [string, string | undefined]
-      bundle(workspaceRoot, location, ['add', gem, ...(version === undefined ? [] : ['--version', version]), ...group])
+      if (bundle(workspaceRoot, location, ['add', gem, ...(version === undefined ? [] : ['--version', version]), ...group])) {
+        normaliseGemfile(workspaceRoot, location)
+      }
 
       continue
     }
     const path = relative(join(workspaceRoot, location.dir), join(workspaceRoot, sibling.dir)).split(sep).join('/')
     if (bundle(workspaceRoot, location, ['add', sibling.name, '--path', path, ...group])) {
+      normaliseGemfile(workspaceRoot, location)
       setImplicitDependency(workspaceRoot, location, sibling.name, true)
     }
   }
