@@ -107,10 +107,60 @@ export function runInstall (
 
       continue
     }
-    installInto(workspaceRoot, location, packages, Boolean(options.saveDev))
+    installInto(workspaceRoot, location, packages, Boolean(options.saveDev), locations)
   }
   if (locations.some(location => location.ecosystem === 'npm')) {
     completeLockfile(workspaceRoot)
+  }
+}
+
+/**
+ * Adds crates to one Rust project: a sibling crate by path, the rest from the registry.
+ *
+ * @remarks
+ * A package that is another crate of this workspace is a path dependency, which is how an internal library is consumed:
+ * `cargo add --path` writes the crate's version beside the path, so a publishable crate that depends on one still publishes
+ * once that one is. The remaining names are added from the registry in one call. The manifest path names the crate exactly,
+ * whatever its package is called (an adopted crate need not match its folder).
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param location - The crate that gains the dependencies.
+ * @param packages - The crates to add, by name (a registry spec such as `serde@1` is passed on as typed).
+ * @param saveDev - Whether to add as a development dependency.
+ * @param locations - Every project of the workspace.
+ * @returns Nothing.
+ * @throws Never - a failed cargo command is reported as a warning.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function addCrates (
+  workspaceRoot: string,
+  location: ProjectLocation,
+  packages: readonly string[],
+  saveDev: boolean,
+  locations: readonly ProjectLocation[],
+): void {
+  const devFlag = saveDev ? ['--dev'] : []
+  const siblings = new Map(
+    locations
+      .filter(candidate => candidate.ecosystem === 'cargo' && candidate.dir !== location.dir)
+      .map(candidate => [candidate.name, candidate] as const),
+  )
+  const registry: string[] = []
+  const paths: Array<[string, string]> = []
+  for (const name of packages) {
+    const sibling = siblings.get(name)
+    if (sibling === undefined) {
+      registry.push(name)
+    } else {
+      // Relative to where cargo runs (the workspace root), not to the manifest: cargo writes the path the manifest needs.
+      paths.push([name, sibling.dir])
+    }
+  }
+  if (registry.length > 0) {
+    shell(workspaceRoot, 'cargo', ['add', ...registry, ...devFlag, '--manifest-path', location.manifestPath], location)
+  }
+  for (const [name, path] of paths) {
+    shell(workspaceRoot, 'cargo', ['add', name, '--path', path, ...devFlag, '--manifest-path', location.manifestPath], location)
   }
 }
 
@@ -127,6 +177,7 @@ export function runInstall (
  * @param location - The resolved target project.
  * @param packages - The packages to add, verbatim; empty to install only.
  * @param saveDev - Whether to add as a dev dependency where the ecosystem supports it.
+ * @param locations - Every project of the workspace, so a package that names a sibling crate resolves to its path.
  * @returns Nothing.
  * @throws Never - a failed native command is reported as a warning.
  * @typeParam None - this function has no generic type parameters.
@@ -136,6 +187,7 @@ function installInto (
   location: ProjectLocation,
   packages: readonly string[],
   saveDev: boolean,
+  locations: readonly ProjectLocation[],
 ): void {
   const projectDir = join(workspaceRoot, location.dir)
 
@@ -173,14 +225,12 @@ function installInto (
     }
     case 'cargo': {
       // The manifest path names the crate exactly, whatever its package is called (an adopted crate need not match its folder).
-      const devFlag = saveDev ? ['--dev'] : []
+      if (packages.length === 0) {
+        shell(workspaceRoot, 'cargo', ['fetch', '--manifest-path', location.manifestPath], location)
 
-      shell(
-        workspaceRoot,
-        'cargo',
-        packages.length > 0 ? ['add', ...packages, ...devFlag, '--manifest-path', location.manifestPath] : ['fetch', '--manifest-path', location.manifestPath],
-        location,
-      )
+        return
+      }
+      addCrates(workspaceRoot, location, packages, saveDev, locations)
 
       return
     }

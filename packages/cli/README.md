@@ -699,9 +699,14 @@ A publishable `rust-lib` releases like the other kinds: `nx release` reads and w
 pipelines pass for a workspace on the public registry, and says so and skips when it is not. A dry run publishes nothing.
 Only crates.io is wired.
 
-Not covered yet (#469): the Rust toolchain in `mnci ci setup`, the devcontainer and the pinned versions (GitHub runners ship
-`cargo`, a bare machine does not); a slice lint (`rust-slice-check`); a debugger launch configuration; `dev` (watch and
-restart); an internal crate as a path dependency of another (`mnci i -w app kit` is not a path dependency yet).
+The devcontainer provisions Rust at the pinned minor (`RUST_VERSION`, with clippy and rustfmt) and `mnci up` reports a newer
+stable; the hosted CI images ship `cargo` already, so `mnci ci setup` installs nothing for it.
+
+A package that names another crate of the workspace is added by path (`mnci i -w app kit` runs
+`cargo add kit --path libs/kit`, which writes the version beside the path, so a publishable crate still publishes once its
+dependency is). That is how an internal library is consumed.
+
+Not covered yet (#469): a slice lint (`rust-slice-check`); a debugger launch configuration; `dev` (watch and restart).
 
 ## HTML apps (`mnci add html-app`)
 
