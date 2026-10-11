@@ -590,7 +590,7 @@
       {
         "name": "ecosystem",
         "flags": "--ecosystem <name>",
-        "description": "restrict to one ecosystem: npm | pip | pub | go",
+        "description": "restrict to one ecosystem: npm | pip | pub | nuget | cargo | go",
         "takesValue": "required",
         "variadic": false,
         "repeatable": false,
@@ -627,7 +627,7 @@
       {
         "name": "ecosystem",
         "flags": "--ecosystem <name>",
-        "description": "restrict to one ecosystem: npm | pip | pub | go",
+        "description": "restrict to one ecosystem: npm | pip | pub | nuget | cargo | go",
         "takesValue": "required",
         "variadic": false,
         "repeatable": false,
@@ -683,6 +683,34 @@
     ]
   },
   {
+    "name": "uninstall",
+    "aliases": [
+      "un"
+    ],
+    "group": "dependencies",
+    "description": "Remove a dependency from a specific project using its own toolchain (npm/pip/pub/nuget/go) — the counterpart of 'mnci install'. A dependency belongs to the project that imports it, so a package needs a target: 'mnci uninstall -w <project> <package>'",
+    "arguments": [
+      {
+        "name": "packages",
+        "description": "packages to remove, by name",
+        "required": true,
+        "variadic": true
+      }
+    ],
+    "options": [
+      {
+        "name": "workspace",
+        "flags": "-w, --workspace <project>",
+        "short": "-w",
+        "description": "target project, by directory (apps/foo) or basename (foo); give the flag again for each project",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": true,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "add",
     "aliases": [],
     "group": "projects",
@@ -723,6 +751,9 @@
           "csharp-function-app",
           "csharp-lib",
           "csharp-internal-lib",
+          "rust-app",
+          "rust-lib",
+          "rust-internal-lib",
           "vscode-extension",
           "container",
           "bicep-iac",

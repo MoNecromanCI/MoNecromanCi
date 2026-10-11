@@ -128,6 +128,14 @@ function checkInstallLandsInOne (details) {
     result.ok && landed && leaked.length === 0,
     `${result.output.slice(-800)}\nlanded: ${landed}; leaked into: ${leaked.join(', ') || 'nothing'}`,
   )
+  // #476: the counterpart. `mnci un -w` takes the same package out of the same manifest, with the project's own tool.
+  const removed = tryRunCapture(`node ${CLI} un -w ${project} ${spec}`, root, extraEnvironment)
+  const gone = existsSync(path.join(root, manifest)) && !readFileSync(path.join(root, manifest), 'utf8').includes(needle)
+  enforce(
+    `uninstall: ${ecosystem} dependency leaves the target project's manifest`,
+    removed.ok && gone,
+    `${removed.output.slice(-800)}\ngone: ${gone}`,
+  )
 }
 
 /** Whether a pipeline file calls `command` on a line that is not a comment (a switched-off phase is commented out). */
@@ -483,6 +491,17 @@ function hasFlutter () {
 function hasFunctionsHost () {
   try {
     execSync('func --version', { stdio: 'ignore' })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Whether the Rust toolchain (cargo) is available to drive the Rust section. */
+function hasCargo () {
+  try {
+    execSync('cargo --version', { stdio: 'ignore' })
 
     return true
   } catch {
@@ -3918,6 +3937,48 @@ section('vite apps side by side', [], () => {
   enforce('vite apps side by side: a React app added after an html app, both bare, lint, type-check, test and build', checks.ok, checks.output.slice(-2500))
   const doctor = tryRunCapture(`node ${CLI} doctor`, root)
   enforce('vite apps side by side: doctor passes', doctor.ok, doctor.output.slice(-1500))
+})
+
+section('rust', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add rust-app|rust-lib|rust-internal-lib` (#469): @monodon/rust's generators, renamed and
+   * reshaped into a slice, with fmt + clippy as lint. Gated on cargo, reported SKIPPED without it.
+   * ------------------------------------------------------------------------- */
+  if (!hasCargo()) {
+    skip('the entire Rust section', 'the Rust toolchain (cargo) is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'rustws')
+  run(`node ${CLI} new rustws --yes --registry npm --scope @rsw`, temporary)
+  run(`node ${CLI} add rust-app hello`, root)
+  run(`node ${CLI} add rust-internal-lib kit`, root)
+  const cargoToml = readFileSync(path.join(root, 'apps/hello/Cargo.toml'), 'utf8')
+  const projectName = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8')).name
+  enforce(
+    'rust: the crate and the project are named for what was typed, and placed under apps/ and libs/',
+    cargoToml.includes('name = "hello"') && projectName === 'hello' && existsSync(path.join(root, 'libs/kit/Cargo.toml')),
+    cargoToml.slice(0, 200),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=hello,kit', root)
+  enforce('rust: lint (fmt and clippy), typecheck, test and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run hello:package', root)
+  enforce(
+    'rust: package zips the release binary',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/rust-app-hello.zip')),
+    packaged.output.slice(-1500),
+  )
+  checkInstallLandsInOne({
+    ecosystem: 'cargo',
+    root,
+    project:   'hello',
+    manifest:  'apps/hello/Cargo.toml',
+    siblings:  ['Cargo.toml', 'apps/*/Cargo.toml', 'libs/*/Cargo.toml', 'packages/*/Cargo.toml'],
+    needle:    'itoa',
+    spec:      'itoa',
+  })
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('rust: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
 section('svelte app', [], () => {

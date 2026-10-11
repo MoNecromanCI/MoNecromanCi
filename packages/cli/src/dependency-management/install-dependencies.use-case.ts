@@ -11,6 +11,7 @@ import {
   hasEcosystem,
   locateProjects,
 } from './manifest.repository'
+import { resolveTarget } from './resolve-target-project.use-case'
 
 /**
  * Options for `mnci install` (alias `mnci i`).
@@ -44,6 +45,7 @@ const WHOLE_WORKSPACE_INSTALL: ReadonlyArray<readonly [Ecosystem, string, readon
   ['pip', 'npm', ['run', 'python:install']],
   ['pub', 'flutter', ['pub', 'get']],
   ['nuget', 'npx', ['nx', 'run-many', '-t', 'restore']],
+  ['cargo', 'cargo', ['fetch']],
   ['go', 'go', ['work', 'sync']],
 ]
 
@@ -113,41 +115,6 @@ export function runInstall (
 }
 
 /**
- * Resolves a `-w` argument to exactly one project.
- *
- * @remarks
- * A project is addressable by its directory (`apps/goapi`) or its basename
- * (`goapi`). A directory match is exact and wins; a basename that matches more
- * than one project (two ecosystems sharing a folder name) is ambiguous, so the
- * caller is told to use the directory instead of a guess being made.
- *
- * @param locations - Every located project.
- * @param target - The `-w` argument.
- * @returns The single matching project, or `undefined` when none or many match.
- * @throws Never - pure lookup.
- * @typeParam None - this function has no generic type parameters.
- */
-function resolveTarget (
-  locations: readonly ProjectLocation[],
-  target: string,
-): ProjectLocation | undefined {
-  const byDir = locations.find(location => location.dir === target)
-  if (byDir !== undefined) {
-    return byDir
-  }
-  const byName = locations.filter(location => location.name === target)
-  if (byName.length > 1) {
-    logger.error(
-      `'${target}' matches ${byName.length} projects (${byName.map(match => match.dir).join(', ')}) — name it by directory`,
-    )
-
-    return undefined
-  }
-
-  return byName[0]
-}
-
-/**
  * Adds packages to one project, or installs it, using its own toolchain.
  *
  * @remarks
@@ -201,6 +168,19 @@ function installInto (
 
         shell(workspaceRoot, 'dotnet', ['add', location.manifestPath, 'package', name, ...versionFlag], location)
       }
+
+      return
+    }
+    case 'cargo': {
+      // The manifest path names the crate exactly, whatever its package is called (an adopted crate need not match its folder).
+      const devFlag = saveDev ? ['--dev'] : []
+
+      shell(
+        workspaceRoot,
+        'cargo',
+        packages.length > 0 ? ['add', ...packages, ...devFlag, '--manifest-path', location.manifestPath] : ['fetch', '--manifest-path', location.manifestPath],
+        location,
+      )
 
       return
     }

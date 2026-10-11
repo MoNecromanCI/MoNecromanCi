@@ -2,6 +2,7 @@ import type { CliSession } from '../cli-session'
 import { collectAddInvocation } from './collect-add-invocation.use-case'
 import { collectInstallInvocation } from './collect-install-invocation.use-case'
 import { collectInvocation, type Invocation } from './collect-invocation.use-case'
+import { collectUninstallInvocation } from './collect-uninstall-invocation.use-case'
 import type { Prompter } from './prompter.contract'
 
 /**
@@ -43,13 +44,41 @@ export async function invokeCommand (name: string, dependencies: InvokeDependenc
     throw new Error(`The installed mnci has no "${name}" command. Update mnci (see the MNCI Update view).`)
   }
 
-  const invocation =
-    name === 'add'
-      ? await collectAddInvocation(command, await session.kinds(), prompter)
-      : (name === 'install'
-          ? await collectInstallInvocation(await session.projects(), prompter)
-          : await collectInvocation(command, prompter))
+  const invocation = await collect(name, command, session, prompter)
   if (invocation !== undefined) {
     run(invocation)
+  }
+}
+
+/**
+ * Asks for what a command needs: its own flow when it has one, otherwise the generic prompts from its description.
+ *
+ * @param name - The CLI command name.
+ * @param command - The command's own description.
+ * @param session - The cached answers of the CLI.
+ * @param prompter - How to ask.
+ * @returns What to run, or `undefined` when the user cancelled.
+ * @throws Error when a flow needs a project and the workspace has none.
+ * @typeParam None - this function has no generic type parameters.
+ */
+async function collect (
+  name: string,
+  command: Parameters<typeof collectInvocation>[0],
+  session: CliSession,
+  prompter: Prompter,
+): Promise<Invocation | undefined> {
+  switch (name) {
+    case 'add': {
+      return await collectAddInvocation(command, await session.kinds(), prompter)
+    }
+    case 'install': {
+      return await collectInstallInvocation(await session.projects(), prompter)
+    }
+    case 'uninstall': {
+      return await collectUninstallInvocation(await session.projects(), prompter)
+    }
+    default: {
+      return await collectInvocation(command, prompter)
+    }
   }
 }

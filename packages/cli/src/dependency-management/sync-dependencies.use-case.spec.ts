@@ -75,7 +75,7 @@ afterEach(() => {
 
 describe('resolveEcosystems', () => {
   it('defaults to every ecosystem', () => {
-    expect(resolveEcosystems(undefined)).toEqual(['npm', 'pip', 'pub', 'nuget', 'go'])
+    expect(resolveEcosystems(undefined)).toEqual(['npm', 'pip', 'pub', 'nuget', 'cargo', 'go'])
   })
 
   it('narrows to the one requested', () => {
@@ -271,7 +271,7 @@ describe('runSync', () => {
   it('rejects an unknown --ecosystem before doing any work', () => {
     write('nx.json', JSON.stringify({}))
     expect(() => {
-      runSync(workspaceRoot, { ecosystem: 'cargo' })
+      runSync(workspaceRoot, { ecosystem: 'banana' })
     }).toThrow('Unknown ecosystem')
   })
 })

@@ -246,6 +246,38 @@ export async function latestNugetVersions (
 }
 
 /**
+ * Asks crates.io for the latest published version of each crate.
+ *
+ * @remarks
+ * `cargo search <name> --limit 5` per crate, through the ecosystem's own tool as the others are, so a configured
+ * registry source is consulted. The result is matched by exact name, since a search returns near matches too: `serde`
+ * is not answered with `serde_json`.
+ *
+ * @param names - The crate names to look up.
+ * @param cwd - The workspace root, so `cargo` reads the workspace's `.cargo/config.toml`.
+ * @returns A promise of the latest version per crate that answered.
+ * @throws Never - an unknown crate, or no `cargo`, is simply absent.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function latestCargoVersions (
+  names: readonly string[],
+  cwd: string,
+): Promise<LatestVersions> {
+  const results = await pool(names, LOOKUP_CONCURRENCY, async name => {
+    const result = await runCaptureAsync('cargo', ['search', name, '--limit', '5'], cwd)
+    if (result.status !== 0) {
+      return
+    }
+    const line = result.stdout.split(/\r?\n/).find(entry => entry.startsWith(`${name} = "`))
+    const version = line === undefined ? undefined : /^\S+ = "([^"]+)"/.exec(line)?.[1]
+
+    return version === undefined ? undefined : ([name, version] as const)
+  })
+
+  return new Map(results.filter(entry => entry !== undefined))
+}
+
+/**
  * Resolves latest versions for one ecosystem.
  *
  * @remarks
@@ -274,6 +306,9 @@ export async function latestVersions (
     }
     case 'nuget': {
       return await latestNugetVersions(names, cwd)
+    }
+    case 'cargo': {
+      return await latestCargoVersions(names, cwd)
     }
     case 'go': {
       return await latestGoVersions(cwd)
