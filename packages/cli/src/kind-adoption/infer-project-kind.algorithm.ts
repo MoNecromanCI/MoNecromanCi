@@ -103,6 +103,9 @@ function inferNpm (evidence: ProjectEvidence): KindProposal {
 
     return { kind: privatePackage ? 'react-internal-lib' : 'react-lib', certainty: 'certain', reason: `React without an index.html, ${privatePackage ? 'private' : 'publishable'}` }
   }
+  if (declares(manifest, 'jquery') && files.includes('index.html')) {
+    return { kind: 'html-app', certainty: 'certain', reason: 'jQuery with an index.html entry' }
+  }
   const framework = SERVER_FRAMEWORKS.find(name => declares(manifest, name))
   if (framework !== undefined) {
     return { kind: 'node-app', certainty: 'certain', reason: `a ${framework} server` }

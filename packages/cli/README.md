@@ -115,6 +115,7 @@ mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
 mnci add angular-internal-lib kit # a private Angular library an Angular app imports, see "Angular apps"
 mnci add react-p5-app art      # a React app that draws with p5.js, see "React p5 apps"
+mnci add html-app site         # plain HTML, CSS and jQuery on Vite, see "HTML apps"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -658,6 +659,22 @@ its typecheck is `tsc --build`, since a referenced project may not disable emit.
 replaced by a `greeting` feature behind the barrel, with `lib-` selectors.
 
 Not covered: SSR, a per-environment build as React has, and a publishable Angular library (ng-packagr).
+
+## HTML apps (`mnci add html-app`)
+
+`mnci add html-app <name>` is a web app of plain HTML, CSS and jQuery. No Nx generator is the right base (`@nx/web` is
+deprecated and the framework generators bring a framework), so it is Vite's `vanilla-ts` template from the pinned `create-vite`,
+wired like `svelte-app`: explicit `nx.targets` (`typecheck` is `tsc --noEmit`, `test` is Vitest in jsdom, `package` zips the
+build), `apps/*` registered as a workspace.
+
+- **jQuery is an npm dependency of the app** (with `@types/jquery` and the test tooling beside it), not a CDN tag: the lockfile
+  pins it, `mnci up` and `mnci doctor` see it, and it is never installed at the root.
+- The worked example is a `greeting` feature on a page with a form. The DOM binding is a **`.handler.ts`**: it adapts what the
+  page delivers (a submitted form), calls one use case and shapes the response (an element's text), which is that role's
+  definition, so no new role is needed. Its spec builds the page in jsdom and drives it through jQuery.
+- `--empty` keeps an empty `main` and an entry point that does nothing.
+
+Measured on Nx 23.2: lint, typecheck, test, build, the zip, and `mnci doctor`, for the example and for `--empty`.
 
 ## React p5 apps (`mnci add react-p5-app`)
 

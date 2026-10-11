@@ -59,6 +59,18 @@ describe('runAdd react-app', () => {
     )
   })
 
+  it('installs @nx/vite first when a Vite app is already there, which Nx cannot read through its temporary copy', async () => {
+    // svelte-app and html-app write a vite.config.ts that Nx has no plugin for; the React generator fetches @nx/vite into
+    // a temporary directory and fails on that file ("Cannot find package 'vite'") unless the plugin is installed.
+    mkdirSync(join(workspaceRoot, 'apps/site'), { recursive: true })
+    writeFileSync(join(workspaceRoot, 'apps/site/vite.config.ts'), 'export default {}')
+
+    await runAdd('react-app', 'web', {})
+
+    expect(mockRunNx).toHaveBeenNthCalledWith(1, ['add', '@nx/vite'], workspaceRoot)
+    expect(mockRunNx).toHaveBeenNthCalledWith(2, ['add', '@nx/react'], workspaceRoot)
+  })
+
   it('--e2e asks the generator for Playwright and replaces its sample with a test of the greeting', async () => {
     mockRunNx.mockImplementation((arguments_: string[]) => {
       if (arguments_[0] !== 'g') {

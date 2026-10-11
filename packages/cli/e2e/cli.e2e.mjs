@@ -3876,6 +3876,50 @@ section('react p5 app', [], () => {
   enforce('react p5 app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('html app', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add html-app` (#474): Vite's vanilla-ts template with jQuery, no framework. Real
+   * generation, then every check CI runs and the zip.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'htmlapp')
+  run(`node ${CLI} new htmlapp --yes --registry npm --scope @hta`, temporary)
+  run(`node ${CLI} add html-app site`, root)
+  const manifest = JSON.parse(readFileSync(path.join(root, 'apps/site/package.json'), 'utf8'))
+  const rootManifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+  enforce(
+    'html app: jQuery is a runtime dependency of the app and not of the root',
+    manifest.dependencies?.jquery !== undefined && rootManifest.dependencies?.jquery === undefined,
+    JSON.stringify({ app: manifest.dependencies, root: rootManifest.dependencies }),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=site', root)
+  enforce('html app: lint, typecheck, test and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run site:package', root)
+  enforce(
+    'html app: package zips the bundle',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/html-app-site.zip')),
+    packaged.output.slice(-1500),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('html app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
+section('vite apps side by side', [], () => {
+  /* ---------------------------------------------------------------------------
+   * An app Nx has no plugin for (html-app) before the first React app. The React generator fetches
+   * @nx/vite into a temporary directory and failed reading the existing vite.config.ts ("Cannot find
+   * package 'vite'"); mnci now installs the plugin first. Bare variants of both, since they were
+   * only unit-tested with mocks.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'viteapps')
+  run(`node ${CLI} new viteapps --yes --registry npm --scope @vit`, temporary)
+  run(`node ${CLI} add html-app plain --empty`, root)
+  run(`node ${CLI} add react-p5-app art --empty`, root)
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=plain,art', root)
+  enforce('vite apps side by side: a React app added after an html app, both bare, lint, type-check, test and build', checks.ok, checks.output.slice(-2500))
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('vite apps side by side: doctor passes', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('svelte app', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add svelte-app` (#314): no Nx plugin for Svelte installs on this workspace, so
