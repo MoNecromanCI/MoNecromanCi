@@ -3834,6 +3834,34 @@ section('vue app', [], () => {
   enforce('vue app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('svelte app', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add svelte-app` (#314): no Nx plugin for Svelte installs on this workspace, so
+   * the app is Vite's own svelte-ts template, wired in by mnci. Real generation, then
+   * every check CI runs and the zip.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'svelteapp')
+  run(`node ${CLI} new svelteapp --yes --registry npm --scope @sva`, temporary)
+  run(`node ${CLI} add svelte-app svweb`, root)
+  const manifest = JSON.parse(readFileSync(path.join(root, 'apps/svweb/package.json'), 'utf8'))
+  const rootManifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+  enforce(
+    'svelte app: the test tooling is in the app manifest, not the root one',
+    manifest.devDependencies?.vitest !== undefined && rootManifest.devDependencies?.vitest === undefined,
+    JSON.stringify(manifest.devDependencies),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,test,build --projects=svweb', root)
+  enforce('svelte app: lint, typecheck, test and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run svweb:package', root)
+  enforce(
+    'svelte app: package zips the bundle',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/svelte-app-svweb.zip')),
+    packaged.output.slice(-1500),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('svelte app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('function app dev', [], () => {
   /* ---------------------------------------------------------------------------
    * `<name>:dev` of a Node function app (#443): a build watcher beside `func start`,
