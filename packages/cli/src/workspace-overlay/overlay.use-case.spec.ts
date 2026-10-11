@@ -36,6 +36,7 @@ import {
   mergeOverrides,
   mnciConfig,
   NODE_VERSION,
+  LOCKFILE_REMEDY,
   NPM_VERSION,
   npmrcContent,
   NUGET_AZURE_SOURCE,
@@ -670,6 +671,30 @@ describe('VSCE_PAT in the release step', () => {
 
     expect(pipeline).toContain('VSCE_PAT: $(VSCE_PAT)')
     expect(workflow).toContain('VSCE_PAT: ${{ secrets.VSCE_PAT }}')
+  })
+})
+
+describe('a failed install names its usual cause (#428)', () => {
+  it('GitHub runs the remedy only when the install step itself failed, and the YAML still parses', () => {
+    const document_ = yaml.load(githubActionsYaml('ubuntu-latest', undefined, 'npm', 'github')) as {
+      jobs: { ci: { steps: { id?: string; if?: string; run?: string; name?: string }[] } }
+    }
+    const { steps } = document_.jobs.ci
+    const install = steps.findIndex(step => step.run === 'npm ci')
+
+    expect(steps[install].id).toBe('install')
+    expect(steps[install + 1].if).toBe("failure() && steps.install.outcome == 'failure'")
+    expect(steps[install + 1].run).toContain(LOCKFILE_REMEDY)
+    expect(LOCKFILE_REMEDY).toContain(`npx npm@${NPM_VERSION} install --package-lock-only`)
+  })
+
+  it('Azure prints the remedy on a failure, and the remedy never holds a colon and a space (a YAML mapping)', () => {
+    const { steps } = yaml.load(azurePipelinesYaml('ubuntu-latest', 'Build')) as { steps: { script?: string; condition?: string }[] }
+    const install = steps.findIndex(step => step.script === 'npm ci')
+
+    expect(steps[install + 1].condition).toBe('failed()')
+    expect(steps[install + 1].script).toContain(LOCKFILE_REMEDY)
+    expect(LOCKFILE_REMEDY).not.toContain(': ')
   })
 })
 

@@ -927,7 +927,7 @@ why a Windows-written lockfile or a Dependabot one failed on Linux. `npm install
 missing entries and moves no version. So `lockfile-completion/` (`completeLockfile`) runs that through `npx npm@<NPM_VERSION>` after the
 commands that write the lockfile: `mnci new`, `add`, `upgrade`, `install` and `up`. It is idempotent, skipped without a
 `package-lock.json`, and a failure only warns. Not covered: a lockfile edited by something else after the fact (Dependabot's own
-PRs), which still needs `npx npm@12 install --package-lock-only` by hand. Lockfiles written by npm 11.21 and npm 12 are
+PRs), which still needs `npx npm@12 install --package-lock-only` by hand. Both generated pipelines now follow the install with a step that runs only when it failed (GitHub: `steps.install.outcome == 'failure'`; Azure: `condition: failed()`) and prints that command (`LOCKFILE_REMEDY`, #428). Not covered: a Dependabot job that regenerates the lockfile, which needs a token that can trigger CI. Lockfiles written by npm 11.21 and npm 12 are
 interchangeable in both directions (measured when the pin moved to 12).
 
 ### A workspace with no registry (#228)

@@ -79,9 +79,14 @@ jobs:
         name: Pin npm to the major mnci verifies against
 
       - run: npm ci
+        id: install
         name: Install dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - if: failure() && steps.install.outcome == 'failure'
+        run: echo "::error title=npm ci::If npm ci reported Missing ... from lock file, the lockfile was written by an older npm than the pinned one. Run npx npm@12 install --package-lock-only and commit package-lock.json"
+        name: Explain a failed install
 
       # This repo ships the CLI that every pipeline phase below runs, so it builds the
       # CLI from source first and calls it by path. A generated workspace instead
