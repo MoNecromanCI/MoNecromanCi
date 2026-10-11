@@ -113,11 +113,57 @@ export function hasPlugin (workspaceRoot: string, packageName: string): boolean 
  * @typeParam None - this function has no generic type parameters.
  */
 export function ensurePlugin (workspaceRoot: string, packageName: string): void {
+  const prerequisites = PLUGIN_PREREQUISITES[packageName] ?? []
+  if (prerequisites.length > 0 && hasViteConfig(workspaceRoot)) {
+    for (const prerequisite of prerequisites) {
+      ensurePlugin(workspaceRoot, prerequisite)
+    }
+  }
   if (hasPlugin(workspaceRoot, packageName)) {
     return
   }
   logger.step(`Installing Nx plugin ${packageName}`)
   runNx(['add', packageName], workspaceRoot)
+}
+
+/**
+ * The plugins a plugin's generator needs installed BEFORE it runs, when the workspace already holds a Vite project.
+ *
+ * @remarks
+ * `@nx/react` and `@nx/vue` generators fetch `@nx/vite` on first use into a temporary directory, and Nx then asks that
+ * copy to read every `vite.config.ts` already in the workspace. Those files are written by `svelte-app` and `html-app`
+ * (which Nx has no plugin for), and the temporary copy cannot resolve `vite`, so the generator stopped with
+ * "Cannot find package 'vite'" (measured: `svelte-app` then `react-app`). With `@nx/vite` in the workspace the plugin
+ * loads from `node_modules`, where `vite` resolves. Only done when a Vite config exists, so a workspace without one
+ * is installed exactly as before.
+ */
+const PLUGIN_PREREQUISITES: Readonly<Record<string, readonly string[]>> = {
+  '@nx/react': ['@nx/vite'],
+  '@nx/vue':   ['@nx/vite'],
+}
+
+/**
+ * Whether any project under `apps/`, `libs/` or `packages/` has a Vite configuration file.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns True when one of the project folders holds a `vite.config.*`.
+ * @throws Never - a missing folder reads as empty.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function hasViteConfig (workspaceRoot: string): boolean {
+  const names = new Set(['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs'])
+  for (const folder of ['apps', 'libs', 'packages']) {
+    const parent = join(workspaceRoot, folder)
+    if (!existsSync(parent)) {
+      continue
+    }
+    const projects = readdirSync(parent, { withFileTypes: true }).filter(entry => entry.isDirectory())
+    if (projects.some(project => readdirSync(join(parent, project.name)).some(file => names.has(file)))) {
+      return true
+    }
+  }
+
+  return false
 }
 
 /**

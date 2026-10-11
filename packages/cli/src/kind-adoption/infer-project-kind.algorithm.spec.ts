@@ -13,6 +13,8 @@ describe('inferProjectKind (npm)', () => {
     ['an Angular app', { dependencies: { '@angular/core': '^22' } }, ['index.html'], 'angular-app', 'certain'],
     ['a Vue app', { dependencies: { vue: '^3' } }, ['index.html'], 'vue-app', 'certain'],
     ['a Svelte app', { devDependencies: { svelte: '^5' } }, ['index.html'], 'svelte-app', 'certain'],
+    ['an HTML app', { dependencies: { jquery: '^4' } }, ['index.html'], 'html-app', 'certain'],
+    ['a React p5 app', { dependencies: { react: '^19', p5: '^2' } }, ['index.html'], 'react-p5-app', 'certain'],
     ['a publishable React library', { peerDependencies: { react: '^19' } }, [], 'react-lib', 'certain'],
     ['a private React library', { private: true, peerDependencies: { react: '^19' } }, [], 'react-internal-lib', 'certain'],
     ['an express server', { dependencies: { express: '^4' } }, [], 'node-app', 'certain'],

@@ -696,6 +696,7 @@
         "choices": [
           "react-app",
           "react-p5-app",
+          "html-app",
           "angular-app",
           "angular-internal-lib",
           "vue-app",
