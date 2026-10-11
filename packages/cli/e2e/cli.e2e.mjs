@@ -4304,6 +4304,75 @@ section('php', [], () => {
   enforce('php: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('ruby', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add ruby-app|ruby-lib|ruby-internal-lib` (#472): Bundler projects and gems written by mnci (no Nx
+   * plugin exists for Ruby). Gated on ruby and bundle, reported SKIPPED without them.
+   * ------------------------------------------------------------------------- */
+  if (!hasTool('ruby --version') || !hasTool('bundle --version')) {
+    skip('the entire Ruby section', 'Ruby or Bundler is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'rbws')
+  run(`node ${CLI} new rbws --yes --registry npm --scope @rbw`, temporary)
+  run(`node ${CLI} add ruby-app hello`, root)
+  run(`node ${CLI} add ruby-internal-lib kit`, root)
+  run(`node ${CLI} add ruby-lib core`, root)
+  const rootGemfile = readFileSync(path.join(root, 'Gemfile'), 'utf8')
+  enforce(
+    'ruby: the root Gemfile holds RuboCop only, beside a .rubocop.yml',
+    /rubocop/.test(rootGemfile) && existsSync(path.join(root, '.rubocop.yml')),
+    rootGemfile,
+  )
+  const linked = tryRunCapture(`node ${CLI} i -w hello kit`, root)
+  const helloGemfile = readFileSync(path.join(root, 'apps/hello/Gemfile'), 'utf8')
+  const helloProject = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8'))
+  enforce(
+    'ruby: installing a sibling gem adds a path source and records the graph edge',
+    linked.ok && /gem ["']kit["'], path: ["']\.\.\/\.\.\/libs\/kit["']/.test(helloGemfile) && (helloProject.implicitDependencies ?? []).includes('kit'),
+    `${linked.output.slice(-800)}\n${helloGemfile}`,
+  )
+  writeFileSync(
+    path.join(root, 'apps/hello/bin/hello'),
+    "#!/usr/bin/env ruby\n# frozen_string_literal: true\n\nrequire 'bundler/setup'\nrequire 'kit'\n\nputs Kit::Greeting::GreetUseCase.greet('hello').message\n",
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,test,build --projects=hello,kit,core', root)
+  enforce('ruby: lint, test and build pass for an app, an internal library and a publishable one', checks.ok, checks.output.slice(-3000))
+  enforce('ruby: build makes the gem of a publishable library', existsSync(path.join(root, 'dist/gems/core.gem')), 'dist/gems/core.gem is missing')
+  const packaged = tryRunCapture('npx nx run hello:package', root)
+  enforce(
+    'ruby: package zips the app',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/ruby-app-hello.zip')),
+    packaged.output.slice(-1500),
+  )
+  const started = tryRunCapture('npx nx run hello:start', root)
+  enforce('ruby: start runs the script, which used the sibling gem', started.ok && /Hello, hello!/.test(started.output), started.output.slice(-800))
+  const stray = path.join(root, 'libs/kit/lib/kit/greeting/stuff.rb')
+  writeFileSync(stray, '# frozen_string_literal: true\n\nmodule Kit\n  module Greeting\n    # No role.\n    module Stuff\n    end\n  end\nend\n')
+  const rejected = tryRunCapture('npx nx run kit:slice-check --skip-nx-cache', root)
+  enforce('ruby: the slice check rejects a file with no role', !rejected.ok && /stuff\.rb/.test(rejected.output), rejected.output.slice(-1000))
+  rmSync(stray)
+  const added = tryRunCapture(`node ${CLI} i -w kit rake`, root)
+  const kitGemfile = readFileSync(path.join(root, 'libs/kit/Gemfile'), 'utf8')
+  enforce(
+    'ruby: installing a gem declares it in that project only',
+    added.ok && /gem ["']rake["']/.test(kitGemfile) && !readFileSync(path.join(root, 'apps/hello/Gemfile'), 'utf8').includes('rake'),
+    `${added.output.slice(-800)}\n${kitGemfile}`,
+  )
+  const removed = tryRunCapture(`node ${CLI} un -w kit rake`, root)
+  const kitAfter = readFileSync(path.join(root, 'libs/kit/Gemfile'), 'utf8')
+  enforce('ruby: uninstall removes it', removed.ok && !/gem ["']rake["']/.test(kitAfter), removed.output.slice(-800))
+  const toolsLint = tryRunCapture('npx eslint tools', root)
+  enforce('ruby: the generated tools/ scripts pass the shipped ESLint config', toolsLint.ok, toolsLint.output.slice(-1500))
+  run('git add -A', root)
+  run('git commit -m "feat: add the ruby projects"', root)
+  const release = tryRunCapture('npx nx release --dry-run', root)
+  enforce('ruby: nx release versions the publishable gem from its version.rb', release.ok && /core/.test(release.output), release.output.slice(-2000))
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('ruby: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('svelte app', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add svelte-app` (#314): no Nx plugin for Svelte installs on this workspace, so

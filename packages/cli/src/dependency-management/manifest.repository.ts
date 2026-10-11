@@ -101,7 +101,7 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   // A PHP project is located by its composer.json; its dependencies are read in a later slice (#471).
   composer: ['apps/*/composer.json', 'packages/*/composer.json', 'libs/*/composer.json'],
   // A Ruby project is located by its Gemfile; its gems are read in a later slice (#472).
-  bundler: ['apps/*/Gemfile', 'packages/*/Gemfile', 'libs/*/Gemfile'],
+  bundler:  ['apps/*/Gemfile', 'packages/*/Gemfile', 'libs/*/Gemfile'],
   // Single root module by design — there are no per-project Go manifests.
   go:       [],
 }
@@ -196,7 +196,7 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     cmake:    'CMakeLists.txt',
     maven:    'pom.xml',
     composer: 'composer.json',
-    bundler: 'Gemfile',
+    bundler:  'Gemfile',
   }
 
   // Either marker counts. A root file alone is the usual case, but a workspace
@@ -777,7 +777,7 @@ export function collectInventory (
     cmake:    () => [],
     maven:    () => [],
     composer: () => [],
-    bundler: () => [],
+    bundler:  () => [],
     go:       collectGo,
   }
 
@@ -817,7 +817,7 @@ const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
   cmake:    ['apps/*/CMakeLists.txt', 'libs/*/CMakeLists.txt', 'packages/*/CMakeLists.txt'],
   maven:    ['apps/*/pom.xml', 'libs/*/pom.xml', 'packages/*/pom.xml'],
   composer: ['apps/*/composer.json', 'libs/*/composer.json', 'packages/*/composer.json'],
-  bundler: ['apps/*/Gemfile', 'libs/*/Gemfile', 'packages/*/Gemfile'],
+  bundler:  ['apps/*/Gemfile', 'libs/*/Gemfile', 'packages/*/Gemfile'],
   go:       ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
 }
 
