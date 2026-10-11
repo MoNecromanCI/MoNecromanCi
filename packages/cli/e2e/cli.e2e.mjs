@@ -3806,6 +3806,10 @@ section('angular app', [], () => {
   )
   const doctor = tryRunCapture(`node ${CLI} doctor`, root)
   enforce('angular app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+  // --e2e pairs a Playwright project; its `e2e` target needs a browser, so lint and typecheck are what CI can run.
+  run(`node ${CLI} add angular-app ngshop --e2e`, root)
+  const paired = tryRunCapture('npx nx run-many -t lint,typecheck --projects=ngshop,ngshop-e2e', root)
+  enforce('angular app: --e2e adds a Playwright project that lints and type-checks', paired.ok, paired.output.slice(-2500))
 })
 
 section('vue app', [], () => {

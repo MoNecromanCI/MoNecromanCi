@@ -256,7 +256,7 @@ export function buildProgram (cliVersion: string): Command {
     .option('--port <port>', 'container only: the port the app listens on, exposed by the image and published by start')
     .option(
       '--e2e',
-      'react-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify',
+      'react-app and angular-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify',
     )
     .option(
       '--esm',

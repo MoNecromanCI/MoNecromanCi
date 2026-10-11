@@ -93,6 +93,42 @@ export function angularAppExampleFiles (name: string): Record<string, string> {
 }
 
 /**
+ * The Playwright spec of an Angular app's paired end-to-end project.
+ *
+ * @remarks
+ * Checks what the app really renders: the greeting, or for `--empty` that the root element is attached.
+ *
+ * @param name - The app's project name.
+ * @param empty - Whether the app is the bare variant.
+ * @returns The spec's source.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function angularAppE2eSpec (name: string, empty = false): string {
+  if (empty) {
+    return [
+      "import { expect, test } from '@playwright/test'",
+      '',
+      "test('renders the app', async ({ page }) => {",
+      "  await page.goto('/')",
+      "  await expect(page.locator('app-root')).toBeAttached()",
+      '})',
+      '',
+    ].join('\n')
+  }
+
+  return [
+    "import { expect, test } from '@playwright/test'",
+    '',
+    "test('shows the greeting', async ({ page }) => {",
+    "  await page.goto('/')",
+    `  await expect(page.getByText('Hello, ${name}!')).toBeVisible()`,
+    '})',
+    '',
+  ].join('\n')
+}
+
+/**
  * What `mnci add angular-app --empty` writes: a root component with nothing in it.
  *
  * @remarks

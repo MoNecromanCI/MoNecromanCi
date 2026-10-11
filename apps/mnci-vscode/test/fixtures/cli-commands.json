@@ -789,7 +789,7 @@
       {
         "name": "e2e",
         "flags": "--e2e",
-        "description": "react-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify",
+        "description": "react-app and angular-app only: also scaffold a Playwright end-to-end project, <name>-e2e, that runs the app and checks its greeting; its e2e target needs a browser (npx playwright install) and is not part of CI verify",
         "takesValue": "none",
         "variadic": false,
         "repeatable": false,

@@ -285,8 +285,8 @@ export async function runAdd (
   if (options.port !== undefined && !/^\d+$/.test(options.port)) {
     throw new Error(`--port ${options.port}: a port is a whole number.`)
   }
-  if (resolvedKind !== 'react-app' && options.e2e === true) {
-    throw new Error(`--e2e applies to react-app, not ${resolvedKind}.`)
+  if (resolvedKind !== 'react-app' && resolvedKind !== 'angular-app' && options.e2e === true) {
+    throw new Error(`--e2e applies to react-app and angular-app, not ${resolvedKind}.`)
   }
   const resolvedName = name ?? (await promptText('Project name'))
   // A workspace generated with --registry none releases only what is tagged for it, so a library added to it is never
@@ -329,7 +329,7 @@ export async function runAdd (
       break
     }
     case 'angular-app': {
-      addAngularApp(workspaceRoot, resolvedName, stack, options.empty === true)
+      addAngularApp(workspaceRoot, resolvedName, stack, options.empty === true, options.e2e === true)
       break
     }
     case 'react-app': {
