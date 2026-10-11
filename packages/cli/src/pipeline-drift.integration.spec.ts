@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as yaml from 'js-yaml'
-import { ACTION_VERSIONS, DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT_VERSION, githubActionsYaml, nugetFeedUrl, pythonPublishUrl, readMnciConfig } from './workspace-overlay'
+import { ACTION_VERSIONS, DOTNET_SDK_VERSION, FLUTTER_SDK_VERSION, GOLANGCI_LINT_VERSION, dependabotLockfileWorkflow, githubActionsYaml, nugetFeedUrl, pythonPublishUrl, readMnciConfig } from './workspace-overlay'
 
 /**
  * This repo's own CI must actually run the pipeline mnci ships.
@@ -316,5 +316,13 @@ describe('the e2e job provisions the toolchains its own suite needs', () => {
     // fails this until the workflow follows — the same drift guard the Flutter
     // version check above already has.
     expect(dotnetStep?.with?.['dotnet-version']).toBe(DOTNET_SDK_VERSION)
+  })
+})
+
+describe("this repo's dependabot-lockfile.yml (#428)", () => {
+  it('is byte-identical to what the generator writes here, since it is mnci-owned and has no extras', () => {
+    const actualFile = readFileSync(join(repoRoot, '.github/workflows/dependabot-lockfile.yml'), 'utf8').split(String.fromCodePoint(13)).join('')
+
+    expect(actualFile).toBe(dependabotLockfileWorkflow(registry.kind))
   })
 })
