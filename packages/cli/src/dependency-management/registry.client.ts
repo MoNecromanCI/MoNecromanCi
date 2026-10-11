@@ -310,6 +310,10 @@ export async function latestVersions (
     case 'cargo': {
       return await latestCargoVersions(names, cwd)
     }
+    // A CMake project declares no registry dependency yet (#473), so there is nothing to ask a registry.
+    case 'cmake': {
+      return new Map()
+    }
     case 'go': {
       return await latestGoVersions(cwd)
     }

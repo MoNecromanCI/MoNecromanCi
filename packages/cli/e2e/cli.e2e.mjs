@@ -498,6 +498,17 @@ function hasFunctionsHost () {
   }
 }
 
+/** Whether a tool answers its version command, which is how a section decides to run or to be reported SKIPPED. */
+function hasTool (versionCommand) {
+  try {
+    execSync(versionCommand, { stdio: 'ignore' })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Whether the Rust toolchain (cargo) is available to drive the Rust section. */
 function hasCargo () {
   try {
@@ -4066,6 +4077,52 @@ section('project removal', [], () => {
   enforce('remove: doctor passes on what is left', doctor.ok, doctor.output.slice(-1500))
   const graph = tryRunCapture('npx nx show projects', root)
   enforce('remove: Nx still builds its project graph', graph.ok, graph.output.slice(-800))
+})
+
+section('cpp', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add cpp-app|cpp-lib|cpp-internal-lib` (#473): CMake projects written by mnci (no plugin
+   * is maintained for C++). Gated on cmake, reported SKIPPED without it; lint is gated on cppcheck.
+   * ------------------------------------------------------------------------- */
+  if (!hasTool('cmake --version')) {
+    skip('the entire C++ section', 'CMake is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'cppws')
+  run(`node ${CLI} new cppws --yes --registry npm --scope @cpw`, temporary)
+  run(`node ${CLI} add cpp-app hello`, root)
+  run(`node ${CLI} add cpp-internal-lib kit`, root)
+  run(`node ${CLI} add cpp-lib core`, root)
+  // An internal library is consumed by add_subdirectory and a link, which mnci i writes; the app then really uses it.
+  const linked = tryRunCapture(`node ${CLI} i -w hello kit`, root)
+  const helloCmake = readFileSync(path.join(root, 'apps/hello/CMakeLists.txt'), 'utf8')
+  enforce(
+    'cpp: installing a sibling library links it into the consumer',
+    linked.ok && helloCmake.includes('add_subdirectory(../../libs/kit ${CMAKE_BINARY_DIR}/kit)') && helloCmake.includes('target_link_libraries(hello PRIVATE kit)'),
+    `${linked.output.slice(-600)}\n${helloCmake}`,
+  )
+  writeFileSync(
+    path.join(root, 'apps/hello/src/main.cpp'),
+    '#include <iostream>\n\n#include "kit/greeting/greeting.hpp"\n\nint main() {\n    std::cout << kit::greeting::greet("hello").message << "\\n";\n\n    return 0;\n}\n',
+  )
+  const checkTargets = hasTool('cppcheck --version') ? 'lint,test,build' : 'test,build'
+  const checks = tryRunCapture(`npx nx run-many -t ${checkTargets} --projects=hello,kit,core`, root)
+  enforce(`cpp: ${checkTargets} pass for an app, an internal library and a publishable one`, checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run hello:package', root)
+  enforce(
+    'cpp: package zips the executable',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/cpp-app-hello.zip')),
+    packaged.output.slice(-1500),
+  )
+  const started = tryRunCapture('npx nx run hello:start', root)
+  enforce('cpp: start runs the built executable, which used the linked library', started.ok && /Hello, hello!/.test(started.output), started.output.slice(-800))
+  run('git add -A', root)
+  run('git commit -m "feat: add the c++ projects"', root)
+  const release = tryRunCapture('npx nx release --dry-run', root)
+  enforce('cpp: nx release versions the publishable library from its CMakeLists.txt', release.ok && /core/.test(release.output), release.output.slice(-2000))
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('cpp: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
 section('svelte app', [], () => {

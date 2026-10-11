@@ -72,6 +72,11 @@ function readEvidence (repositoryRoot: string, location: ProjectLocation): Proje
 
       break
     }
+    case 'cmake': {
+      hasProgram = existsSync(join(directory, 'src', 'main.cpp'))
+
+      break
+    }
     default: {
       break
     }
