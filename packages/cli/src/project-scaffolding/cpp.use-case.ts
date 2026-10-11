@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 import { runCapture } from '../nx-workspace'
+import { nativeSliceCheckTarget, SLICE_CHECK_PATH, SLICE_CHECK_SCRIPT } from '../native-slice-check'
 import { type CppKind, cppCmakeLists, cppEmptyFiles, cppExampleFiles } from './cpp-example.algorithm'
 import { wireCppLibRelease } from './cpp-release.use-case'
 import { addProjectJsonTargets, ensureAdmZip, registerProjectCommands } from './post-generation.use-case'
@@ -78,10 +79,12 @@ export function cppTargets (name: string, directory: string, app: boolean): Reco
       dependsOn: ['build'],
       options:   { command: `ctest --test-dir ${build} -C Release --output-on-failure --no-tests=ignore` },
     },
-    'lint': {
-      cache:    true,
-      executor: 'nx:run-commands',
-      options:  {
+    'slice-check': nativeSliceCheckTarget('cpp', directory),
+    'lint':        {
+      cache:     true,
+      executor:  'nx:run-commands',
+      dependsOn: ['slice-check'],
+      options:   {
         command: `cppcheck --error-exitcode=1 --enable=warning,style,performance,portability --inline-suppr --suppress=missingIncludeSystem -I ${directory}/src ${directory}`,
       },
     },
@@ -150,6 +153,7 @@ export function addCppProject (workspaceRoot: string, name: string, kind: CppKin
       targets:     {},
     }, undefined, 2)}\n`,
   )
+  writeFileEnsured(join(workspaceRoot, SLICE_CHECK_PATH), SLICE_CHECK_SCRIPT)
   addProjectJsonTargets(join(projectRoot, 'project.json'), cppTargets(name, directory, app))
   if (kind === 'cpp-lib') {
     wireCppLibRelease(workspaceRoot, directory, name)

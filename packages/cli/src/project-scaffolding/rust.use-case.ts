@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { writeFileEnsured } from '../file-system'
+import { nativeSliceCheckTarget, SLICE_CHECK_PATH, SLICE_CHECK_SCRIPT } from '../native-slice-check'
 import { rustEmptyFiles, rustExampleFiles } from './rust-example.algorithm'
 import { wireRustLibRelease } from './rust-release.use-case'
 import {
@@ -51,22 +52,25 @@ const RUST_DIRECTORIES: Readonly<Record<RustKind, string>> = {
  *
  * @param name - The project name.
  * @param app - Whether the project is an executable.
+ * @param directory - The crate's workspace-relative directory, which the slice check reads.
  * @returns The Nx targets to merge into the project's `project.json`.
  * @throws Never - pure object construction.
  * @typeParam None - this function has no generic type parameters.
  */
-export function rustTargets (name: string, app: boolean): Record<string, unknown> {
+export function rustTargets (name: string, app: boolean, directory: string): Record<string, unknown> {
   const targetDir = `dist/target/${name}`
   const targets: Record<string, unknown> = {
-    lint: {
-      cache:    true,
-      executor: 'nx:run-commands',
-      options:  {
+    'slice-check': nativeSliceCheckTarget('rust', directory),
+    'lint':        {
+      cache:     true,
+      executor:  'nx:run-commands',
+      dependsOn: ['slice-check'],
+      options:   {
         commands: [`cargo fmt -p ${name} --check`, `cargo clippy -p ${name} --all-targets --target-dir ${targetDir} -- -D warnings`],
         parallel: false,
       },
     },
-    typecheck: {
+    'typecheck': {
       cache:    true,
       executor: 'nx:run-commands',
       options:  { command: `cargo check -p ${name} --all-targets --target-dir ${targetDir}` },
@@ -161,7 +165,8 @@ export function addRustProject (workspaceRoot: string, name: string, kind: RustK
   for (const [relative, contents] of Object.entries(files)) {
     writeFileEnsured(join(projectRoot, 'src', relative), contents)
   }
-  addProjectJsonTargets(join(projectRoot, 'project.json'), rustTargets(name, app))
+  writeFileEnsured(join(workspaceRoot, SLICE_CHECK_PATH), SLICE_CHECK_SCRIPT)
+  addProjectJsonTargets(join(projectRoot, 'project.json'), rustTargets(name, app, `${directory}/${name}`))
   if (kind === 'rust-lib') {
     wireRustLibRelease(workspaceRoot, `${directory}/${name}`, name)
   }

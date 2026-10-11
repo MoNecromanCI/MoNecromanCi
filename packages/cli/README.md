@@ -694,7 +694,11 @@ Measured with CMake 4.4, g++ 16 (MinGW) and cppcheck 2.21: generate, link, lint,
 
 Not covered yet (#473): a package manager for a project's own third-party dependencies (vcpkg manifest mode or Conan: an
 external package is refused with a message, not silently ignored); `clang-format` and `clang-tidy`; the toolchain in
-`mnci ci setup` and the devcontainer; a slice lint; a debugger launch configuration; `dev`.
+`mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`.
+
+**`slice-check`** (`tools/slice-check.cjs`, what `lint` depends on) holds the layout: a file under `src/` is
+`<snake>_<role>.cpp` (a test `<snake>_<role>_test.cpp`, a header `.hpp`), the root of `src/` holds only `main.cpp`, a slice's
+barrel is the header named for its folder, and no folder is a junk drawer.
 
 ## Rust projects (`mnci add rust-app | rust-lib | rust-internal-lib`)
 
@@ -735,7 +739,13 @@ A package that names another crate of the workspace is added by path (`mnci i -w
 `cargo add kit --path libs/kit`, which writes the version beside the path, so a publishable crate still publishes once its
 dependency is). That is how an internal library is consumed.
 
-Not covered yet (#469): a slice lint (`rust-slice-check`); a debugger launch configuration; `dev` (watch and restart).
+**`slice-check`** (`tools/slice-check.cjs`, shared with C++, and what `lint` depends on) holds the layout the example shows: a
+file under `src/` is `<snake>_<role>.rs`, the root of `src/` holds only `main.rs` and `lib.rs`, a slice's barrel is `mod.rs`,
+and no folder is `util`, `helper`, `common`, `shared`, `manager`, `processor`, `data` or `misc`. `tests/`, `benches/`,
+`examples/` and `build.rs` are cargo's own and are left alone.
+
+Not covered yet (#469): a debugger launch configuration; `dev` (watch and restart); `mnci upgrade` does not add the check to
+crates made before it.
 
 ## HTML apps (`mnci add html-app`)
 
