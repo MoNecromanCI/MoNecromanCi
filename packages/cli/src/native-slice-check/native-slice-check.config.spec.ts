@@ -171,6 +171,47 @@ describe('slice-check php', () => {
   })
 })
 
+describe('slice-check ruby', () => {
+  it('accepts the worked example: the barrel, a version, slice folders of role-named files and a mirrored spec', () => {
+    seed(
+      'app/lib/my_kit.rb',
+      'app/lib/my_kit/version.rb',
+      'app/lib/my_kit/greeting/greeting_contract.rb',
+      'app/lib/my_kit/greeting/greet_use_case.rb',
+      'app/spec/spec_helper.rb',
+      'app/spec/greeting/greet_use_case_spec.rb',
+    )
+
+    expect(run('ruby', 'app')).toMatchObject({ status: 0 })
+  })
+
+  it('rejects a file with no role, a stray file at the root of lib, a junk folder and a spec with no role', () => {
+    seed(
+      'app/lib/my_kit.rb',
+      'app/lib/my_kit/helpers.rb',
+      'app/lib/my_kit/greeting/stuff.rb',
+      'app/lib/my_kit/util/parse_use_case.rb',
+      'app/lib/loose.rb',
+      'app/spec/stuff_spec.rb',
+    )
+
+    const result = run('ruby', 'app')
+
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('app/lib/loose.rb - only the barrel')
+    expect(result.output).toContain('app/lib/my_kit/helpers.rb - a file is <snake>_<role>.rb')
+    expect(result.output).toContain('app/lib/my_kit/greeting/stuff.rb - a file is <snake>_<role>.rb')
+    expect(result.output).toContain('"util" is a junk drawer')
+    expect(result.output).toContain('app/spec/stuff_spec.rb - a spec is <snake>_<role>_spec.rb')
+  })
+
+  it('allows the smoke spec a bare project keeps', () => {
+    seed('app/lib/kit.rb', 'app/lib/kit/version.rb', 'app/spec/spec_helper.rb', 'app/spec/smoke_spec.rb')
+
+    expect(run('ruby', 'app')).toMatchObject({ status: 0 })
+  })
+})
+
 describe('slice-check usage', () => {
   it('refuses an unknown language', () => {
     expect(run('kotlin', 'app').status).toBe(1)

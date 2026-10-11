@@ -233,6 +233,22 @@ function inferPhp (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
+ * Proposes the kind of a Ruby (Bundler) project.
+ *
+ * @param evidence - What was read about it.
+ * @returns The proposal.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function inferRuby (evidence: ProjectEvidence): KindProposal {
+  if (evidence.hasProgram) {
+    return { kind: 'ruby-app', certainty: 'certain', reason: 'a script under bin/ is the entry point' }
+  }
+
+  return { kind: 'ruby-lib', certainty: 'guess', reason: 'a library, but internal or published is a choice only you can make' }
+}
+
+/**
  * Proposes the kind of a Rust crate.
  *
  * @param evidence - What was read about it.
@@ -308,6 +324,9 @@ export function inferProjectKind (evidence: ProjectEvidence): KindProposal {
     }
     case 'composer': {
       return inferPhp(evidence)
+    }
+    case 'bundler': {
+      return inferRuby(evidence)
     }
     case 'go': {
       return inferGo(evidence)

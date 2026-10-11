@@ -120,6 +120,7 @@ mnci add rust-app tool         # a Rust executable on @monodon/rust, see "Rust p
 mnci add cpp-app viewer        # a C++ executable built with CMake, see "C++ projects"
 mnci add java-app service      # a Java executable jar built with Maven, see "Java projects"
 mnci add php-app site          # a PHP application on Composer, see "PHP projects"
+mnci add ruby-app worker       # a Ruby application on Bundler, see "Ruby projects"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -776,6 +777,42 @@ devcontainer; a debugger launch configuration (Xdebug); `dev`; propagating a lib
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++ and Java, and what `lint` depends on) holds the layout: nothing
 sits at the root of `src/`, a slice folder is StudlyCase, a class is `<Name><Role>.php` (a test `<Name><Role>Test.php`), no
 folder is a junk drawer, and `tests/` may hold one `SmokeTest` at its root.
+
+## Ruby projects (`mnci add ruby-app | ruby-lib | ruby-internal-lib`)
+
+No Nx plugin exists for Ruby (`nx-ruby` and its scoped variants are all absent from npm), so mnci writes the project itself, as
+it writes a PHP or Java one. Apps live in `apps/`, publishable gems in `packages/`, private ones in `libs/`.
+
+- **Dependencies are per project; RuboCop is shared.** Each project has its own `Gemfile` and `Gemfile.lock`, and Bundler is run
+  in the project's directory, so it reads that project's gems and nothing else. RuboCop is the one tool at the root (a
+  `Gemfile` that lists only it, and a `.rubocop.yml` that is yours after the first write). RSpec is each project's own, in its
+  `Gemfile`'s `test` group: Bundler loads one bundle per process, so a spec run has to load the project's gems and the runner
+  together.
+- **The example is a slice, and Ruby's own convention already is one**: `lib/<name>.rb` is the barrel,
+  `lib/<name>/greeting/greeting_contract.rb` and `greet_use_case.rb` are one constant each, and the spec is mirrored under
+  `spec/greeting/greet_use_case_spec.rb`. A project named `my-tool` is `my_tool` on disk and `MyTool` in code. A library is a
+  gem (a gemspec that reads `lib/<name>/version.rb`; Bundler needs one to take it as a `path:` source), an app has a `bin/<name>`
+  that only wires.
+- **`build`** is `bundle install` in the project and, for a library, `gem build` into `dist/gems/<name>.gem`; **`test`** is
+  `bundle exec rspec`; **`lint`** is RuboCop, after the shared `slice-check`. An app has `start` (`bundle exec ruby bin/<name>`)
+  and `package` (a zip of `lib/`, `bin/` and the `Gemfile` and its lock).
+- **`mnci i -w app kit`** is `bundle add kit --path ../../libs/kit` plus an `implicitDependencies` edge (Nx infers none from a
+  `Gemfile`). **`mnci i -w kit rake`** is `bundle add` in that project (`--save-dev` is `--group development`, `name@1.2.3`
+  pins a version); `mnci un` is `bundle remove`.
+- **A publishable gem** is released by tag: `nx release` reads and writes the `VERSION` constant of `lib/<name>/version.rb`
+  (`tools/ruby-version-actions.cjs`), and its `nx-release-publish` says there is nothing to upload.
+
+Measured with Ruby 3.4.11 (RubyInstaller, x64-mingw-ucrt), Bundler 2.6.9, RSpec 3.13 and RuboCop 1.92 on Windows: generate, link,
+lint, test, build, package, run, install and uninstall, `nx release`, `mnci doctor`.
+
+Not covered yet (#472): publishing to RubyGems (`gem push` needs `GEM_HOST_API_KEY` passed to the release step by both
+providers); `mnci sync` / `mnci up` reading a project's gems; the Ruby version in `mnci ci setup` and the devcontainer; a debugger
+launch configuration; `dev`; a Rails template (#489).
+
+**`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++, Java and PHP, and what `lint` depends on) holds the layout:
+a file at the root of `lib/` is the barrel named for the folder beside it, a file is `<snake>_<role>.rb` (a spec
+`<snake>_<role>_spec.rb`, with `spec_helper.rb` and one `smoke_spec.rb` allowed), `version.rb` sits beside the slices, and no
+folder is a junk drawer.
 
 ## Rust projects (`mnci add rust-app | rust-lib | rust-internal-lib`)
 
