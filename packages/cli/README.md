@@ -116,6 +116,7 @@ mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
+mnci add docs-site handbook    # a Starlight (Astro) documentation site, see "Docs sites"
 mnci add node-app svc          # @nx/node (plain Node app, esbuild)
 mnci add node-app api --framework express  # ...or fastify | koa | nest
 mnci add npm-lib core --empty             # bare skeleton, no sample: every kind but container and vscode-extension
@@ -700,6 +701,23 @@ lint then build. `--empty` writes a template that declares nothing.
 
 Not covered: Terraform, `what-if` and deployment (the `deploy-*` pipeline templates are the place for it), `mnci projects`
 listing the project (it has no package manifest), and CI installing the Azure CLI (hosted GitHub and Azure agents have it).
+
+## Docs sites (`mnci add docs-site`)
+
+`mnci add docs-site <name>` scaffolds Astro's Starlight template with `create-astro` (pinned in `CREATE_ASTRO_VERSION`; there
+is no Nx plugin for Astro) and wires it in as Go and C# are:
+
+- **The template's own files are removed**: its `CLAUDE.md`/`AGENTS.md` (which would sit beside yours), README, editor folder,
+  mascot image and demo pages. The config and three pages (a landing page, a guide and a reference page) name this project.
+  Its `.gitignore` stays, since it keeps the generated `.astro/` types out of git.
+- **Targets are written explicitly**: `build` and `serve` (`astro build`/`astro dev`), `typecheck` (`astro check`, with
+  `@astrojs/check` in the site's own manifest; `build` depends on it, because both write `.astro/` and race otherwise) and `package` (zips `apps/<name>/dist` into `dist/drop/docs-site-<name>.zip`).
+  `lint` is the inferred ESLint one; there is no `test`. `:qa` is lint, typecheck and build.
+- `apps/*` is registered as an npm workspace, after which the site's dependencies (Astro, Starlight, `sharp`) are its own.
+- `@mnci/eslint-config` lets `src/content.config.ts` sit at the root of `src`, where Astro requires it.
+
+Not covered: `.astro` and `.mdx` files are not linted, deployment (its `base` setting in `astro.config.mjs` is yours when
+the site goes to GitHub Pages), and Docusaurus.
 
 ## A paired Playwright project (`mnci add react-app web --e2e`)
 

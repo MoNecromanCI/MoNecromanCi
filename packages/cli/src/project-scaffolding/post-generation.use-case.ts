@@ -1201,3 +1201,25 @@ export function relocateRootRuntimeDependencies (
     )
   }
 }
+
+/**
+ * Makes sure `apps/*` is one of the root manifest's npm workspaces.
+ *
+ * @remarks
+ * A workspace starts with `packages/*` only: the Nx generators that make an app add `apps/*` themselves, and this app is
+ * made by a scaffolding tool (`create-vite`, `create-astro`) that knows nothing of the root. Without it `npm install -w apps/<name>` finds no workspace and
+ * the app's dependencies are never linked.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns Nothing.
+ * @throws Propagates any `fs`/JSON error reading or writing the root manifest.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function registerAppsWorkspace (workspaceRoot: string): void {
+  const manifestPath = join(workspaceRoot, 'package.json')
+  const manifest = readJson<{ workspaces?: string[] } & Record<string, unknown>>(manifestPath)
+  const workspaces = manifest.workspaces ?? []
+  if (!workspaces.includes('apps/*')) {
+    writeFileEnsured(manifestPath, toJson({ ...manifest, workspaces: [...workspaces, 'apps/*'] }))
+  }
+}

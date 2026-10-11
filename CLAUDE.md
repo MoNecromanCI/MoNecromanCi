@@ -386,6 +386,9 @@ Nx plugin where none does:
   `bicep-iac` (`project-scaffolding/bicep.use-case.ts`, #314) is files written directly (no generator exists): `lint`/`build`/
   `package` are `az bicep` commands (measured with Bicep CLI 0.48), `bicepconfig.json` promotes the rules that catch real mistakes
   because `az bicep lint` exits 0 on warnings, and there is no `test` target. Terraform is not covered.
+  `docs-site` (`project-scaffolding/docs-site.use-case.ts`, #314) is Astro's Starlight template via `create-astro@CREATE_ASTRO_VERSION`
+  (no Nx plugin exists), wired like `svelte-app`: template assistant files removed, explicit `nx.targets` (`typecheck` is `astro check`),
+  `registerAppsWorkspace`, a plain install before `-w`. `content.config` is an entry name for the slice rules (Astro mandates it).
 - **Python** — `@mnci/nx-python-pip`, a real first-party `@nx/devkit` plugin (pip, Ruff,
   pytest, PyPA `build`/`twine`; no uv, no Poetry). Kinds: `python-app`, `python-lib`,
   `python-internal-lib`, `python-function-app`. Vendoring via `mnci add python-vendor`.

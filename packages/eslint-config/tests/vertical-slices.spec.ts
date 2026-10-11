@@ -221,5 +221,6 @@ describe('mnci({ verticalSlices })', () => {
     expect(slicesFor('packages/app/src/reports/reportHelper.ts')).toEqual(['vertical-slices/file-role', 'vertical-slices/file-role'])
     expect(slicesFor('packages/app/src/reports/deeper/inner.use-case.ts')).toEqual(['vertical-slices/file-role'])
     expect(slicesFor('packages/app/src/stray.ts')).toEqual(['vertical-slices/file-role'])
+    expect(slicesFor('packages/app/src/content.config.ts')).toEqual([])
   })
 })
