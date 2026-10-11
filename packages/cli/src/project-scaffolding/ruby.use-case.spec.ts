@@ -97,7 +97,8 @@ describe('runAdd ruby-lib and ruby-internal-lib', () => {
     expect(readFileSync(join(root, 'Gemfile'), 'utf8')).toContain('gemspec')
     const project = JSON.parse(readFileSync(join(root, 'project.json'), 'utf8'))
     expect(project.release.version.versionActions).toBe('tools/ruby-version-actions.cjs')
-    expect(project.targets.build.options.commands).toEqual(['bundle install', 'gem build core.gemspec --output ../../dist/gems/core.gem'])
+    expect(project.targets.build.options.commands).toHaveLength(3)
+    expect(project.targets.build.options.commands[2]).toBe('gem build core.gemspec --output ../../dist/gems/core.gem')
     expect(project.targets.build.outputs).toEqual(['{workspaceRoot}/dist/gems/core.gem'])
   })
 

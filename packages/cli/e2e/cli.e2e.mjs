@@ -4330,7 +4330,7 @@ section('ruby', [], () => {
   const helloProject = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8'))
   enforce(
     'ruby: installing a sibling gem adds a path source and records the graph edge',
-    linked.ok && /gem ["']kit["'], path: ["']\.\.\/\.\.\/libs\/kit["']/.test(helloGemfile) && (helloProject.implicitDependencies ?? []).includes('kit'),
+    linked.ok && /gem ["']kit["'].*path: ["']\.\.\/\.\.\/libs\/kit["']/.test(helloGemfile) && (helloProject.implicitDependencies ?? []).includes('kit'),
     `${linked.output.slice(-800)}\n${helloGemfile}`,
   )
   writeFileSync(

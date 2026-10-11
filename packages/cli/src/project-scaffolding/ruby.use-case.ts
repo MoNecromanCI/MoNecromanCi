@@ -22,6 +22,9 @@ const RUBY_DIRECTORIES: Readonly<Record<RubyKind, string>> = {
   'ruby-internal-lib': 'libs',
 }
 
+/** Creates `dist/gems` before `gem build` writes into it, which it does not do itself (it fails opening the file). */
+const GEM_OUTPUT_DIRECTORY = 'node -e "require(\'node:fs\').mkdirSync(\'../../dist/gems\',{recursive:true})"'
+
 /** The Nx project that installs the shared RuboCop once, and what each Ruby project's `lint` waits for. */
 const RUBY_TOOLS_PROJECT = 'ruby-tools'
 
@@ -54,7 +57,10 @@ export function rubyTargets (name: string, directory: string, kind: RubyKind): R
       outputs:  app ? [] : [`{workspaceRoot}/dist/gems/${name}.gem`],
       options:  {
         cwd:      directory,
-        commands: ['bundle install', ...(app ? [] : [`gem build ${name}.gemspec --output ../../dist/gems/${name}.gem`])],
+        commands: [
+          'bundle install',
+          ...(app ? [] : [GEM_OUTPUT_DIRECTORY, `gem build ${name}.gemspec --output ../../dist/gems/${name}.gem`]),
+        ],
         parallel: false,
       },
     },
