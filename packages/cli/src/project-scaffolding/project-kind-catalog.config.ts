@@ -47,6 +47,7 @@ export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'npm-lib', language: 'typescript', label: 'npm library', description: 'A library published to npm, bundled with Rollup', flags: ['scope', 'empty'], requiredFlags: [] },
   { kind: 'internal-lib', language: 'typescript', label: 'Internal library', description: 'A private TypeScript library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
   { kind: 'bicep-iac', language: 'bicep', label: 'Bicep infrastructure', description: 'An Azure Bicep template linted and compiled with az bicep, zipped for deployment', flags: ['empty'], requiredFlags: [] },
+  { kind: 'docs-site', language: 'typescript', label: 'Docs site', description: 'A Starlight (Astro) documentation site, zipped for deployment', flags: [], requiredFlags: [] },
   { kind: 'container', language: 'container', label: 'Container image', description: 'A Dockerfile and image targets for an existing Node, React or Go app', flags: ['app', 'port'], requiredFlags: ['app'] },
   { kind: 'vscode-extension', language: 'typescript', label: 'VS Code extension', description: 'A bundled Marketplace extension, optionally shipping a Go sidecar', flags: ['publisher', 'sidecar'], requiredFlags: [] },
   { kind: 'python-app', language: 'python', label: 'Python app', description: 'A pip-native Python application (Ruff, pytest)', flags: ['empty'], requiredFlags: [] },

@@ -29,7 +29,8 @@ function productionPattern (roles) {
 }
 const TEST = new RegExp(String.raw`\.(?:spec|test)${EXTENSION}$`)
 const SOURCE = new RegExp(`${EXTENSION}$`)
-const ENTRY = new RegExp(`^(?:index|main)${EXTENSION}$`)
+// `content.config` is Astro's: a framework-mandated name that must sit at the root of src, so it is an entry like main.
+const ENTRY = new RegExp(String.raw`^(?:index|main|content\.config)${EXTENSION}$`)
 const BARREL = new RegExp(`^index${EXTENSION}$`)
 const SIBLING = /^\.\.\/([^./][^/]*)(\/.*)?$/
 

@@ -20,6 +20,7 @@ import {
 import { addContainer } from './container.use-case'
 import { addAngularApp } from './angular-app.use-case'
 import { addBicepProject } from './bicep.use-case'
+import { addDocsSite } from './docs-site.use-case'
 import { addSvelteApp } from './svelte-app.use-case'
 import { addVueApp } from './vue-app.use-case'
 import { addReactApp } from './react-app.use-case'
@@ -129,6 +130,7 @@ export type ProjectKind =
   'vue-app' |
   'svelte-app' |
   'bicep-iac' |
+  'docs-site' |
   'react-lib' |
   'react-internal-lib' |
   'node-app' |
@@ -192,6 +194,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'vscode-extension',
   'container',
   'bicep-iac',
+  'docs-site',
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
@@ -309,6 +312,10 @@ export async function runAdd (
   ensureNxPeerOverrides(workspaceRoot)
 
   switch (resolvedKind) {
+    case 'docs-site': {
+      addDocsSite(workspaceRoot, resolvedName)
+      break
+    }
     case 'bicep-iac': {
       addBicepProject(workspaceRoot, resolvedName, options.empty === true)
       break

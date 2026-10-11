@@ -722,7 +722,8 @@
           "csharp-internal-lib",
           "vscode-extension",
           "container",
-          "bicep-iac"
+          "bicep-iac",
+          "docs-site"
         ]
       },
       {

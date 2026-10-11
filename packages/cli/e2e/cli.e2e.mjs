@@ -3891,6 +3891,30 @@ section('bicep infrastructure', [], () => {
   enforce('bicep: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('docs site', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add docs-site` (#314): Astro's Starlight template, wired in by mnci (no Nx
+   * plugin exists for Astro). Real generation, then lint, typecheck, build and the zip.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'docsite')
+  run(`node ${CLI} new docsite --yes --registry npm --scope @dcs`, temporary)
+  run(`node ${CLI} add docs-site handbook`, root)
+  enforce(
+    'docs site: the template assistant files are not left behind',
+    !existsSync(path.join(root, 'apps/handbook/CLAUDE.md')) && !existsSync(path.join(root, 'apps/handbook/AGENTS.md')),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,typecheck,build --projects=handbook', root)
+  enforce('docs site: lint, typecheck and build pass', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run handbook:package', root)
+  enforce(
+    'docs site: package zips the built site',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/docs-site-handbook.zip')),
+    packaged.output.slice(-1500),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('docs site: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('function app dev', [], () => {
   /* ---------------------------------------------------------------------------
    * `<name>:dev` of a Node function app (#443): a build watcher beside `func start`,
