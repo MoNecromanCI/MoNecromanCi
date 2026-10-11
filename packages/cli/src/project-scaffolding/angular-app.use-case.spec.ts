@@ -103,8 +103,8 @@ describe('runAdd angular-app', () => {
     await runAdd('angular-app', 'web', {})
 
     expect(compilerOptionsOf('tsconfig.json')).toMatchObject({ composite: false, emitDeclarationOnly: false, lib: ['es2022', 'dom'] })
-    expect(compilerOptionsOf('tsconfig.spec.json')).toMatchObject({ composite: false, module: 'preserve', moduleResolution: 'bundler' })
-    expect(compilerOptionsOf('tsconfig.app.json')).toMatchObject({ rootDir: 'src' })
+    expect(compilerOptionsOf('tsconfig.spec.json')).toMatchObject({ composite: false, module: 'preserve', moduleResolution: 'bundler', rootDir: '../..' })
+    expect(compilerOptionsOf('tsconfig.app.json')).toMatchObject({ noEmit: true, rootDir: '../..' })
   })
 
   it('moves the runner setup out of src, where only index and main may sit, and repoints what names it', async () => {
@@ -168,7 +168,7 @@ describe('runAdd angular-app', () => {
     const { targets } = JSON.parse(readFileSync(join(workspaceRoot, 'apps/web/project.json'), 'utf8'))
     expect(targets.package.options.command).toContain("addLocalFolder('dist/apps/web/browser')")
     expect(targets.package.dependsOn).toEqual(['build'])
-    expect(targets.typecheck.options.commands).toEqual(['tsc --noEmit -p tsconfig.app.json', 'tsc --noEmit -p tsconfig.spec.json'])
+    expect(targets.typecheck.options.commands).toEqual(['tsc --build tsconfig.app.json', 'tsc --noEmit -p tsconfig.spec.json'])
   })
 
   it('registers the per-project scripts, with serve as start and dev', async () => {

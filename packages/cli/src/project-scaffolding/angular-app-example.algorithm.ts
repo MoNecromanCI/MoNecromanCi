@@ -15,52 +15,7 @@
 export function angularAppExampleFiles (name: string): Record<string, string> {
   return {
     ...angularAppShellFiles(),
-    'greeting/greeting.contract.ts': [
-      '/** What greeting someone returns. */',
-      'export interface Greeting {',
-      '  message: string',
-      '}',
-      '',
-    ].join('\n'),
-    'greeting/greet.use-case.ts': [
-      "import type { Greeting } from './greeting.contract'",
-      '',
-      '/** Greets someone by name: a worked example of a use case. Replace it with your own. */',
-      'export function greet (name: string): Greeting {',
-      '  return { message: `Hello, ${name}!` }',
-      '}',
-      '',
-    ].join('\n'),
-    'greeting/greet.use-case.spec.ts': [
-      "import { greet } from './greet.use-case'",
-      '',
-      "describe('greet', () => {",
-      "  it('greets by name', () => {",
-      "    expect(greet('world')).toEqual({ message: 'Hello, world!' })",
-      '  })',
-      '})',
-      '',
-    ].join('\n'),
-    'greeting/greeting.component.ts': [
-      "import { Component, computed, input } from '@angular/core'",
-      "import { greet } from './greet.use-case'",
-      '',
-      '@Component({',
-      "  selector: 'app-greeting',",
-      "  template: '<h1>{{ greeting().message }}</h1>',",
-      '})',
-      'export class GreetingComponent {',
-      "  readonly name = input('world')",
-      '  protected readonly greeting = computed(() => greet(this.name()))',
-      '}',
-      '',
-    ].join('\n'),
-    'greeting/index.ts': [
-      "export { GreetingComponent } from './greeting.component'",
-      "export { greet } from './greet.use-case'",
-      "export type { Greeting } from './greeting.contract'",
-      '',
-    ].join('\n'),
+    ...angularGreetingFiles('app'),
     'app/app.component.ts': [
       "import { Component } from '@angular/core'",
       "import { GreetingComponent } from '../greeting'",
@@ -209,6 +164,114 @@ function angularAppShellFiles (): Record<string, string> {
       '} catch (error) {',
       '  console.error(error)',
       '}',
+      '',
+    ].join('\n'),
+  }
+}
+
+/**
+ * The `greeting` feature of an Angular project: contract, use case, component, specs and a barrel.
+ *
+ * @remarks
+ * Shared by the app and the library kinds, which differ only in the selector prefix: `app` for an application, `lib` for a
+ * library, the convention the generators themselves use.
+ *
+ * @param prefix - The component selector prefix.
+ * @returns The files, keyed by path relative to `src/`.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function angularGreetingFiles (prefix: string): Record<string, string> {
+  return {
+    'greeting/greeting.contract.ts': [
+      '/** What greeting someone returns. */',
+      'export interface Greeting {',
+      '  message: string',
+      '}',
+      '',
+    ].join('\n'),
+    'greeting/greet.use-case.ts': [
+      "import type { Greeting } from './greeting.contract'",
+      '',
+      '/** Greets someone by name: a worked example of a use case. Replace it with your own. */',
+      'export function greet (name: string): Greeting {',
+      '  return { message: `Hello, ${name}!` }',
+      '}',
+      '',
+    ].join('\n'),
+    'greeting/greet.use-case.spec.ts': [
+      "import { greet } from './greet.use-case'",
+      '',
+      "describe('greet', () => {",
+      "  it('greets by name', () => {",
+      "    expect(greet('world')).toEqual({ message: 'Hello, world!' })",
+      '  })',
+      '})',
+      '',
+    ].join('\n'),
+    'greeting/greeting.component.ts': [
+      "import { Component, computed, input } from '@angular/core'",
+      "import { greet } from './greet.use-case'",
+      '',
+      '@Component({',
+      `  selector: '${prefix}-greeting',`,
+      "  template: '<h1>{{ greeting().message }}</h1>',",
+      '})',
+      'export class GreetingComponent {',
+      "  readonly name = input('world')",
+      '  protected readonly greeting = computed(() => greet(this.name()))',
+      '}',
+      '',
+    ].join('\n'),
+    'greeting/index.ts': [
+      "export { GreetingComponent } from './greeting.component'",
+      "export { greet } from './greet.use-case'",
+      "export type { Greeting } from './greeting.contract'",
+      '',
+    ].join('\n'),
+  }
+}
+
+/**
+ * The worked example of an Angular internal library: the `greeting` feature behind the package barrel.
+ *
+ * @remarks
+ * The generator's `src/lib/<name>/` is replaced because `lib` is a technology bucket the slice rules forbid.
+ *
+ * @param None - this function takes no parameters.
+ * @returns The files to write, keyed by path relative to `src/`.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function angularLibExampleFiles (): Record<string, string> {
+  return {
+    'index.ts': ["export * from './greeting'", ''].join('\n'),
+    ...angularGreetingFiles('lib'),
+  }
+}
+
+/**
+ * What `mnci add angular-internal-lib --empty` writes: a barrel with nothing exported.
+ *
+ * @remarks
+ * Plus one spec that imports it, because a runner with no tests exits non-zero.
+ *
+ * @param None - this function takes no parameters.
+ * @returns The files to write, keyed by path relative to `src/`.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function angularLibEmptyFiles (): Record<string, string> {
+  return {
+    'index.ts':      ['export {}', ''].join('\n'),
+    'index.spec.ts': [
+      "import * as library from './index'",
+      '',
+      "describe('library', () => {",
+      "  it('exports nothing yet', () => {",
+      '    expect(Object.keys(library)).toEqual([])',
+      '  })',
+      '})',
       '',
     ].join('\n'),
   }
