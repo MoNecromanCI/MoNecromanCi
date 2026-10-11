@@ -175,6 +175,7 @@ mnci i -w api github.com/x/y  # ...go get in the Go module; dotnet/flutter/pip a
 mnci i -w ui -w web react     # ...-w repeats, to add to several projects at once
 mnci i -w svc jest -D         # ...--save-dev where the ecosystem has a dev-dependency notion
 mnci i                        # no -w: install/restore the whole workspace (the one-shot bootstrap)
+mnci remove web --dry-run       # what removing a project would change (then --yes, or answer the prompt)
 mnci uninstall -w web left-pad # take a dep out of ONE project (alias: mnci un); -w repeats, and there is no root form
 ```
 

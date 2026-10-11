@@ -4023,6 +4023,51 @@ ${manifestAfter}`,
   enforce('rust: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('project removal', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci remove` (#477): a project and every place that names it. A library with a dependent
+   * is refused (the graph is Nx's own), the dependent goes first, and the workspace is still
+   * healthy afterwards: no stale script, launch configuration or alias, doctor passes.
+   * ------------------------------------------------------------------------- */
+  const root = path.join(temporary, 'rmv')
+  run(`node ${CLI} new rmv --yes --registry npm --scope @rmv`, temporary)
+  run(`node ${CLI} add internal-lib kit`, root)
+  run(`node ${CLI} add node-app svc --empty`, root)
+  writeFileSync(path.join(root, 'apps/svc/src/main.ts'), "import { greet } from '@rmv/kit'\n\nconsole.log(greet('x').message)\n")
+  run(`node ${CLI} sync`, root)
+
+  const plan = tryRunCapture(`node ${CLI} remove svc --dry-run`, root)
+  enforce(
+    'remove: a dry run shows the plan and deletes nothing',
+    plan.ok && /delete apps\/svc\//.test(plan.output) && existsSync(path.join(root, 'apps/svc/package.json')),
+    plan.output.slice(-800),
+  )
+  const refused = tryRunCapture(`node ${CLI} remove kit --yes`, root)
+  enforce(
+    'remove: a library that another project imports is refused, and is still there',
+    !refused.ok && existsSync(path.join(root, 'libs/kit/package.json')) && /svc/.test(refused.output),
+    refused.output.slice(-800),
+  )
+  const app = tryRunCapture(`node ${CLI} remove svc --yes`, root)
+  const rootScripts = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts
+  enforce(
+    'remove: the dependent goes, with its folder and root scripts',
+    app.ok && !existsSync(path.join(root, 'apps/svc')) && Object.keys(rootScripts).every(key => !key.startsWith('svc:')),
+    app.output.slice(-800),
+  )
+  const library = tryRunCapture(`node ${CLI} remove kit --yes`, root)
+  const codeWorkspace = readFileSync(path.join(root, 'rmv.code-workspace'), 'utf8')
+  enforce(
+    'remove: then the library goes, and no launch configuration names either',
+    library.ok && !existsSync(path.join(root, 'libs/kit')) && !/mnci: (?:svc|kit) /.test(codeWorkspace),
+    library.output.slice(-800),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('remove: doctor passes on what is left', doctor.ok, doctor.output.slice(-1500))
+  const graph = tryRunCapture('npx nx show projects', root)
+  enforce('remove: Nx still builds its project graph', graph.ok, graph.output.slice(-800))
+})
+
 section('svelte app', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add svelte-app` (#314): no Nx plugin for Svelte installs on this workspace, so

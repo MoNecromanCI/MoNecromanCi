@@ -54,6 +54,12 @@
         "icon": "$(play)"
       },
       {
+        "command": "mnci.remove",
+        "title": "Remove a project",
+        "category": "MNCI",
+        "icon": "$(trash)"
+      },
+      {
         "command": "mnci.install",
         "title": "Install dependencies",
         "category": "MNCI",

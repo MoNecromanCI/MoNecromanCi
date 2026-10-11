@@ -105,6 +105,23 @@ export async function promptNxCloud (): Promise<boolean> {
 }
 
 /**
+ * Asks a yes/no question.
+ *
+ * @remarks
+ * For an action that cannot be undone from the command line, such as `mnci remove`. The default is given by the caller, and
+ * is `false` for anything destructive.
+ *
+ * @param message - The question.
+ * @param fallback - The answer taken on a bare Enter.
+ * @returns Whether the user said yes.
+ * @throws Propagates any error `@inquirer/prompts` raises (e.g. non-TTY stdin).
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function promptConfirm (message: string, fallback: boolean): Promise<boolean> {
+  return await confirm({ message, default: fallback })
+}
+
+/**
  * Prompts for the stack: unit-test runner and linter.
  *
  * @remarks
