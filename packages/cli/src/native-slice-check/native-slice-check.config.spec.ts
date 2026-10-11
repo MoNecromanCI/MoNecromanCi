@@ -87,16 +87,64 @@ describe('slice-check cpp', () => {
   })
 })
 
+/** Writes a module pom.xml for a group and artifact. */
+function seedPom (project: string, group: string, artifact: string): void {
+  mkdirSync(join(workspace, project), { recursive: true })
+  writeFileSync(
+    join(workspace, project, 'pom.xml'),
+    `<project><parent><groupId>x</groupId><artifactId>w</artifactId><version>0</version></parent><groupId>${group}</groupId><artifactId>${artifact}</artifactId></project>`,
+  )
+}
+
+describe('slice-check java', () => {
+  it('accepts the worked example: Main at the root of the base package, role-named types and a test', () => {
+    seedPom('app', 'com.example', 'my-app')
+    seed(
+      'app/src/main/java/com/example/myapp/Main.java',
+      'app/src/main/java/com/example/myapp/greeting/GreetUseCase.java',
+      'app/src/main/java/com/example/myapp/greeting/GreetingContract.java',
+      'app/src/test/java/com/example/myapp/greeting/GreetUseCaseTest.java',
+    )
+
+    expect(run('java', 'app')).toMatchObject({ status: 0 })
+  })
+
+  it('rejects a type with no role, a stray type at the root, a junk package and a source outside the base package', () => {
+    seedPom('app', 'com.example', 'app')
+    seed(
+      'app/src/main/java/com/example/app/Main.java',
+      'app/src/main/java/com/example/app/Helper.java',
+      'app/src/main/java/com/example/app/greeting/Stuff.java',
+      'app/src/main/java/com/example/app/util/ParseUseCase.java',
+      'app/src/main/java/org/other/Elsewhere.java',
+    )
+
+    const result = run('java', 'app')
+
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('only the entry point sits at the root of the base package')
+    expect(result.output).toContain('app/src/main/java/com/example/app/greeting/Stuff.java - a type is <Name><Role>.java')
+    expect(result.output).toContain('"util" is a junk drawer')
+    expect(result.output).toContain('sources live under the package com.example.app')
+  })
+
+  it('passes for a module with no pom.xml or no sources', () => {
+    seed('app/README.md')
+
+    expect(run('java', 'app')).toMatchObject({ status: 0 })
+  })
+})
+
 describe('slice-check usage', () => {
   it('refuses an unknown language', () => {
-    expect(run('java', 'app').status).toBe(1)
+    expect(run('kotlin', 'app').status).toBe(1)
   })
 
   it('has a cached target keyed on the sources and the script', () => {
     expect(nativeSliceCheckTarget('rust', 'apps/hello')).toEqual({
       executor: 'nx:run-commands',
       cache:    true,
-      inputs:   ['{projectRoot}/src/**/*', '{workspaceRoot}/tools/slice-check.cjs'],
+      inputs:   ['{projectRoot}/src/**/*', '{projectRoot}/pom.xml', '{workspaceRoot}/tools/slice-check.cjs'],
       options:  { command: 'node tools/slice-check.cjs rust apps/hello' },
     })
   })

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, globSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { locateProjects, type ProjectLocation } from '../dependency-management'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
@@ -74,6 +74,11 @@ function readEvidence (repositoryRoot: string, location: ProjectLocation): Proje
     }
     case 'cmake': {
       hasProgram = existsSync(join(directory, 'src', 'main.cpp'))
+
+      break
+    }
+    case 'maven': {
+      hasProgram = globSync('src/main/java/**/Main.java', { cwd: directory }).length > 0
 
       break
     }

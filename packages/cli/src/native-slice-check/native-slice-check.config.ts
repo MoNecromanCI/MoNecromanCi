@@ -21,14 +21,14 @@ export const SLICE_CHECK_PATH = 'tools/slice-check.cjs'
 export const SLICE_CHECK_SCRIPT = String.raw`#!/usr/bin/env node
 // Written by MoNecromanCI; mnci rewrites it, so local edits do not survive.
 //
-// node tools/slice-check.cjs <rust|cpp> <project directory>...
+// node tools/slice-check.cjs <rust|cpp|java> <project directory>...
 //
 // The Rust and C++ counterpart of the vertical-slices/file-role lint rule: a file under src/ is <snake>_<role>
 // (a C++ test <snake>_<role>_test), only the entry point sits at the root of src/, a slice's barrel is mod.rs (Rust) or
-// <folder>.hpp (C++), and no folder is a junk drawer (util, helper, common, shared, manager, processor, data, misc).
+// <folder>.hpp (C++), and no folder is a junk drawer; Java: a type is <Name><Role>.java inside its package (util, helper, common, shared, manager, processor, data, misc).
 // Exits 1 and names every violation.
 'use strict'
-const { existsSync, readdirSync } = require('node:fs')
+const { existsSync, readdirSync, readFileSync } = require('node:fs')
 const { extname, join, relative } = require('node:path')
 
 const ROLES = ['handler', 'use_case', 'algorithm', 'policy', 'model', 'contract', 'mapper', 'validator', 'repository', 'client', 'store', 'middleware', 'error', 'config', 'enum']
@@ -37,18 +37,18 @@ const ROLE_STEM = '[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(?:' + ROLES.join('|') + ')'
 
 const LANGUAGES = {
   rust: {
-    extensions: new Set(['.rs']),
+    extensions:  new Set(['.rs']),
     entryPoints: new Set(['main', 'lib']),
-    isBarrel: (stem) => stem === 'mod',
-    file: new RegExp('^' + ROLE_STEM + '$'),
-    shape: '<snake>_<role>.rs',
+    isBarrel:    (stem) => stem === 'mod',
+    file:        new RegExp('^' + ROLE_STEM + '$'),
+    shape:       '<snake>_<role>.rs',
   },
   cpp: {
-    extensions: new Set(['.cpp', '.cc', '.cxx', '.hpp', '.hh', '.h']),
+    extensions:  new Set(['.cpp', '.cc', '.cxx', '.hpp', '.hh', '.h']),
     entryPoints: new Set(['main']),
-    isBarrel: (stem, folder) => stem === folder,
-    file: new RegExp('^' + ROLE_STEM + '(?:_test)?$'),
-    shape: '<snake>_<role>.cpp (a test <snake>_<role>_test.cpp, a header .hpp)',
+    isBarrel:    (stem, folder) => stem === folder,
+    file:        new RegExp('^' + ROLE_STEM + '(?:_test)?$'),
+    shape:       '<snake>_<role>.cpp (a test <snake>_<role>_test.cpp, a header .hpp)',
   },
 }
 
@@ -57,7 +57,8 @@ function check (language, project) {
   const source = join(project, 'src')
   if (!existsSync(source)) return problems
   function walk (directory, folder) {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const entries = readdirSync(directory, { withFileTypes: true })
+    for (const entry of entries) {
       const path = join(directory, entry.name)
       const shown = relative(project, path).replaceAll('\\', '/')
       if (entry.isDirectory()) {
@@ -84,15 +85,93 @@ function check (language, project) {
   return problems
 }
 
+const JAVA_ROLES = ['Handler', 'UseCase', 'Algorithm', 'Policy', 'Model', 'Contract', 'Mapper', 'Validator', 'Repository', 'Client', 'Store', 'Middleware', 'Error', 'Config', 'Enum']
+const JAVA_ENTRY_POINTS = new Set(['Main', 'package-info'])
+const JAVA_TYPE = new RegExp('^[A-Z][A-Za-z0-9]*(?:' + JAVA_ROLES.join('|') + ')(?:Test)?$')
+
+// Java mandates a file named for its one public type, so the role sits in the type name (as it does for C#), and a package is
+// a slice. The base package is the pom's groupId plus its artifactId with every character that is not a letter or digit
+// removed, which is what the scaffold wrote.
+function javaBase (project) {
+  const pom = join(project, 'pom.xml')
+  if (!existsSync(pom)) return
+  const text = readFileSync(pom, 'utf8')
+  const own = text.replace(/<parent>[\s\S]*?<\/parent>/, '').split(/<(?:dependencies|dependencyManagement|build|profiles|properties)\b/, 1)[0]
+  const group = (/<groupId>\s*([^<\s]+)\s*<\/groupId>/.exec(own) || /<parent>[\s\S]*?<groupId>\s*([^<\s]+)/.exec(text) || [])[1]
+  const artifact = (/<artifactId>\s*([^<\s]+)\s*<\/artifactId>/.exec(own) || [])[1]
+  if (!group || !artifact) return
+  let segment = artifact.toLowerCase().replaceAll(/[^a-z0-9]+/g, '')
+  if (/^\d/.test(segment)) segment = '_' + segment
+
+  return [...group.split('.'), segment]
+}
+
+function checkJava (project) {
+  const problems = []
+  const base = javaBase(project)
+  if (!base) return problems
+  for (const tree of ['src/main/java', 'src/test/java']) {
+    const root = join(project, ...tree.split('/'))
+    if (!existsSync(root)) continue
+    const baseDirectory = join(root, ...base)
+    function walk (directory, depth) {
+      const entries = readdirSync(directory, { withFileTypes: true })
+      for (const entry of entries) {
+        const path = join(directory, entry.name)
+        const shown = relative(project, path).replaceAll('\\', '/')
+        if (entry.isDirectory()) {
+          if (FORBIDDEN_FOLDERS.has(entry.name)) {
+            problems.push(shown + '/ - "' + entry.name + '" is a junk drawer; name the package for the outcome it serves')
+          } else if (/^[a-z_][a-z0-9]*$/.test(entry.name)) {
+            walk(path, depth + 1)
+          } else {
+            problems.push(shown + '/ - a package is one lowercase word')
+          }
+          continue
+        }
+        if (extname(entry.name) !== '.java') continue
+        const stem = entry.name.slice(0, -'.java'.length)
+        if (depth === 0) {
+          if (!JAVA_ENTRY_POINTS.has(stem)) problems.push(shown + ' - only the entry point sits at the root of the base package; move this into a slice package')
+        } else if (stem !== 'package-info' && !JAVA_TYPE.test(stem)) {
+          problems.push(shown + ' - a type is <Name><Role>.java (roles: ' + JAVA_ROLES.join(', ') + '; a test <Name><Role>Test.java)')
+        }
+      }
+    }
+    if (existsSync(baseDirectory)) {
+      walk(baseDirectory, 0)
+    }
+    // Anything outside the base package is a file the layout cannot place.
+    const outside = (directory, parts) => {
+      const entries = readdirSync(directory, { withFileTypes: true })
+      for (const entry of entries) {
+        const path = join(directory, entry.name)
+        if (entry.isDirectory()) {
+          if (parts.length < base.length && entry.name === base[parts.length]) {
+            outside(path, [...parts, entry.name])
+          } else if (parts.length < base.length) {
+            problems.push(relative(project, path).replaceAll('\\', '/') + '/ - sources live under the package ' + base.join('.'))
+          }
+        } else if (extname(entry.name) === '.java' && parts.length < base.length) {
+          problems.push(relative(project, path).replaceAll('\\', '/') + ' - sources live under the package ' + base.join('.'))
+        }
+      }
+    }
+    outside(root, [])
+  }
+
+  return problems
+}
+
 const [name, ...projects] = process.argv.slice(2)
-const language = LANGUAGES[name]
+const language = name === 'java' ? { check: checkJava } : LANGUAGES[name]
 if (!language || projects.length === 0) {
-  console.error('Usage: node tools/slice-check.cjs <rust|cpp> <project directory>...')
+  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java> <project directory>...')
   process.exit(1)
 }
 let failed = 0
 for (const project of projects) {
-  const problems = check(language, project)
+  const problems = language.check ? language.check(project) : check(language, project)
   for (const problem of problems) console.error(project + '/' + problem)
   failed += problems.length
 }

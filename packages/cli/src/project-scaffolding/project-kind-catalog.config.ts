@@ -7,7 +7,7 @@ import type { ProjectKind } from './add-project.use-case'
  * The language families `add` offers; an editor groups its picker by them.
  * @typeParam None - this type has no generic type parameters.
  */
-export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'rust' | 'cpp' | 'bicep' | 'container'
+export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'rust' | 'cpp' | 'java' | 'bicep' | 'container'
 
 /**
  * One project kind, described for a picker: what it makes, in which language, and which `add` flags apply.
@@ -75,4 +75,7 @@ export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'cpp-app', language: 'cpp', label: 'C++ app', description: 'A C++ executable built with CMake and zipped for deployment', flags: ['empty'], requiredFlags: [] },
   { kind: 'cpp-lib', language: 'cpp', label: 'C++ library', description: 'A C++ library released by git tag', flags: ['empty'], requiredFlags: [] },
   { kind: 'cpp-internal-lib', language: 'cpp', label: 'C++ internal library', description: 'A private C++ library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
+  { kind: 'java-app', language: 'java', label: 'Java app', description: 'A Java executable jar built with Maven and zipped for deployment', flags: ['empty'], requiredFlags: [] },
+  { kind: 'java-lib', language: 'java', label: 'Java library', description: 'A Java library released by git tag', flags: ['empty'], requiredFlags: [] },
+  { kind: 'java-internal-lib', language: 'java', label: 'Java internal library', description: 'A private Java library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
 ]

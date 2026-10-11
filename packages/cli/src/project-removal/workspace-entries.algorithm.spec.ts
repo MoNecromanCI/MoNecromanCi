@@ -1,6 +1,7 @@
 import {
   removeCargoWorkspaceMember,
   removeGoWorkUse,
+  removeMavenModule,
   removePathAliases,
   removeProjectScripts,
   removePubspecWorkspaceMember,
@@ -72,5 +73,17 @@ describe('removePathAliases', () => {
 
   it('does not match a sibling that shares a prefix', () => {
     expect(removePathAliases({ '@org/kit2': ['libs/kit2/src/index.ts'] }, 'libs/kit').removed).toEqual([])
+  })
+})
+
+describe('removeMavenModule', () => {
+  const pom = ['<modules>', '    <module>apps/hello</module>', '    <module>apps/hello2</module>', '  </modules>', ''].join('\n')
+
+  it('drops the exact module line and keeps a module that merely starts with the same name', () => {
+    expect(removeMavenModule(pom, 'apps/hello')).toBe(['<modules>', '    <module>apps/hello2</module>', '  </modules>', ''].join('\n'))
+  })
+
+  it('leaves a pom that does not list the module unchanged', () => {
+    expect(removeMavenModule(pom, 'libs/kit')).toBe(pom)
   })
 })
