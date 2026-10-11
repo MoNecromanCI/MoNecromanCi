@@ -2659,6 +2659,15 @@ export const ACTION_VERSIONS = {
 export const NPM_VERSION = '12'
 
 /**
+ * The line CI prints when the install step fails, naming the usual cause and its fix (#428).
+ *
+ * @remarks
+ * A lockfile written by an npm older than the pinned one can be rejected by `npm ci` with `Missing ... from lock file` (#295).
+ * The message is a command argument in an unquoted YAML scalar, so it holds no colon followed by a space.
+ */
+export const LOCKFILE_REMEDY = `If npm ci reported Missing ... from lock file, the lockfile was written by an older npm than the pinned one. Run npx npm@${NPM_VERSION} install --package-lock-only and commit package-lock.json`
+
+/**
  * The .NET SDK version a generated workspace's C# projects are built and
  * tested against.
  *
@@ -2780,9 +2789,14 @@ function githubNativeJob (npmAuthName: string, npmAuthValue: string, runners: re
         name: Pin npm to the major mnci verifies against
 
       - run: npm ci
+        id: install
         name: Install dependencies
         env:
           ${npmAuthName}: ${npmAuthValue}
+
+      - if: failure() && steps.install.outcome == 'failure'
+        run: echo "::error title=npm ci::${LOCKFILE_REMEDY}"
+        name: Explain a failed install
 
       # The Go toolchain: the modules, and a checksum-verified golangci-lint put
       # on PATH. The other toolchains are skipped cleanly when absent.
@@ -3228,6 +3242,10 @@ steps:
 ${npmAuthenticateStep}  - script: npm ci
     displayName: Install dependencies${npmCiEnv}
 
+  - script: echo "${LOCKFILE_REMEDY}"
+    displayName: Explain a failed install
+    condition: failed()
+
 ${slotMarkers('after-install', '  ')}
 
   # Everything from here to the release is a command of the mnci CLI, a
@@ -3350,6 +3368,10 @@ ${slotMarkers('after-release', '  ')}
 
 ${npmAuthenticateStep}  - script: npm ci
     displayName: Install dependencies${npmCiEnv}
+
+  - script: echo "${LOCKFILE_REMEDY}"
+    displayName: Explain a failed install
+    condition: failed()
 
   # The Go toolchain: the modules, and a checksum-verified golangci-lint put on
   # PATH. The other toolchains are skipped cleanly when absent.
@@ -3514,9 +3536,14 @@ jobs:
         name: Pin npm to the major mnci verifies against
 
       - run: npm ci
+        id: install
         name: Install dependencies
         env:
           ${npmAuthName}: ${npmAuthValue}
+
+      - if: failure() && steps.install.outcome == 'failure'
+        run: echo "::error title=npm ci::${LOCKFILE_REMEDY}"
+        name: Explain a failed install
 
 ${slotMarkers('after-install', ' '.repeat(6))}
 
