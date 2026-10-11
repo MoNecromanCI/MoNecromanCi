@@ -4125,6 +4125,108 @@ section('cpp', [], () => {
   enforce('cpp: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('java', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add java-app|java-lib|java-internal-lib` (#470): Maven modules written by mnci (`@nx/maven` is
+   * inference-only and ships no project generator). Gated on mvn and a JDK, reported SKIPPED without them.
+   * ------------------------------------------------------------------------- */
+  if (!hasTool('mvn -v') || !hasTool('java -version')) {
+    skip('the entire Java section', 'Maven or a JDK is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'javaws')
+  run(`node ${CLI} new javaws --yes --registry npm --scope @jvw`, temporary)
+  run(`node ${CLI} add java-app hello`, root)
+  run(`node ${CLI} add java-internal-lib kit`, root)
+  run(`node ${CLI} add java-lib core`, root)
+  const rootPom = readFileSync(path.join(root, 'pom.xml'), 'utf8')
+  enforce(
+    'java: the aggregator pom.xml lists every module',
+    ['apps/hello', 'libs/kit', 'packages/core'].every(module => rootPom.includes(`<module>${module}</module>`)),
+    rootPom,
+  )
+  const linked = tryRunCapture(`node ${CLI} i -w hello kit`, root)
+  const helloPom = readFileSync(path.join(root, 'apps/hello/pom.xml'), 'utf8')
+  const helloProject = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8'))
+  enforce(
+    'java: installing a sibling module declares it and records the graph edge',
+    linked.ok && helloPom.includes('<artifactId>kit</artifactId>') && (helloProject.implicitDependencies ?? []).includes('kit'),
+    `${linked.output.slice(-600)}
+${helloPom}`,
+  )
+  const group = /<groupId>([^<]+)<\/groupId>/.exec(rootPom)[1]
+  writeFileSync(
+    path.join(root, 'apps/hello/src/main/java', ...group.split('.'), 'hello/Main.java'),
+    `package ${group}.hello;
+
+import ${group}.kit.greeting.GreetUseCase;
+
+/** Entry point. */
+public final class Main {
+  private Main() {
+  }
+
+  /**
+   * Prints the greeting.
+   *
+   * @param args Unused.
+   */
+  public static void main(final String[] args) {
+    System.out.println(GreetUseCase.greet("hello").message());
+  }
+}
+`,
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,test,build --projects=hello,kit,core', root)
+  enforce('java: lint, test and build pass for an app, an internal library and a publishable one', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run hello:package', root)
+  enforce(
+    'java: package zips the executable jar',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/java-app-hello.zip')),
+    packaged.output.slice(-1500),
+  )
+  const started = tryRunCapture('npx nx run hello:start', root)
+  enforce('java: start runs the jar, which used the sibling library', started.ok && /Hello, hello!/.test(started.output), started.output.slice(-800))
+  // The slice check names a type with no role, and lint fails on it.
+  const stray = path.join(root, 'libs/kit/src/main/java', ...group.split('.'), 'kit/greeting/Stuff.java')
+  writeFileSync(stray, `package ${group}.kit.greeting;
+
+/** A type with no role. */
+public final class Stuff {
+  private Stuff() {
+  }
+}
+`)
+  const rejected = tryRunCapture('npx nx run kit:slice-check --skip-nx-cache', root)
+  enforce('java: the slice check rejects a type with no role', !rejected.ok && /Stuff\.java/.test(rejected.output), rejected.output.slice(-1000))
+  rmSync(stray)
+  // An external library: the newest release is written, and uninstall takes it out again.
+  const added = tryRunCapture(`node ${CLI} i -w kit com.google.code.gson:gson`, root)
+  const kitPom = readFileSync(path.join(root, 'libs/kit/pom.xml'), 'utf8')
+  enforce(
+    'java: installing a coordinate declares it in that module only',
+    added.ok && /<artifactId>gson<\/artifactId>\s*<version>\d/.test(kitPom) && !readFileSync(path.join(root, 'apps/hello/pom.xml'), 'utf8').includes('gson'),
+    `${added.output.slice(-800)}
+${kitPom}`,
+  )
+  const removed = tryRunCapture(`node ${CLI} un -w kit com.google.code.gson:gson`, root)
+  enforce(
+    'java: uninstall removes it',
+    removed.ok && !readFileSync(path.join(root, 'libs/kit/pom.xml'), 'utf8').includes('gson'),
+    removed.output.slice(-800),
+  )
+  // The scripts mnci writes into tools/ are linted like any file: a generated workspace must lint clean from the first add.
+  const toolsLint = tryRunCapture('npx eslint tools', root)
+  enforce('java: the generated tools/ scripts pass the shipped ESLint config', toolsLint.ok, toolsLint.output.slice(-1500))
+  run('git add -A', root)
+  run('git commit -m "feat: add the java projects"', root)
+  const release = tryRunCapture('npx nx release --dry-run', root)
+  enforce('java: nx release versions the publishable library from its pom.xml', release.ok && /core/.test(release.output), release.output.slice(-2000))
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('java: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('svelte app', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add svelte-app` (#314): no Nx plugin for Svelte installs on this workspace, so

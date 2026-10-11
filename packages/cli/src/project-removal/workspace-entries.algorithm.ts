@@ -112,6 +112,24 @@ export function removeCargoWorkspaceMember (text: string, directory: string): st
 }
 
 /**
+ * Removes a module from the aggregator `pom.xml`'s `<modules>`.
+ *
+ * @remarks
+ * By the exact directory, so `apps/web` does not take `apps/web2` with it. The module's own folder is removed elsewhere.
+ *
+ * @param text - The text of the root `pom.xml`.
+ * @param directory - The module's workspace-relative directory.
+ * @returns The text without the module's line; the same text when it was not listed.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function removeMavenModule (text: string, directory: string): string {
+  const escaped = directory.replaceAll(/[\\^$.*+?()[\]{}|]/g, String.raw`\$&`)
+
+  return text.replace(new RegExp(String.raw`^[ \t]*<module>${escaped}</module>[ \t]*\r?\n`, 'm'), '')
+}
+
+/**
  * Removes a project's root scripts: every `<name>:<action>`.
  *
  * @remarks

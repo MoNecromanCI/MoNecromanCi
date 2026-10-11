@@ -22,6 +22,8 @@ interface ReleasableCounts {
   csharp: number
   dart:   number
   rust:   number
+  cpp:    number
+  java:   number
   vscode: number
   go:     number
 }
@@ -94,7 +96,7 @@ function releasedPythonManifests (workspaceRoot: string): string[] {
  * Counts the releasable projects of each ecosystem, the way the inline guard does.
  *
  * @remarks
- * Matches `release.projects` in the generated `nx.json`: npm/C#/Dart/Rust publishable
+ * Matches `release.projects` in the generated `nx.json`: npm/C#/Dart/Rust/C++/Java publishable
  * packages under `packages/*`, Python under `python-packages/*`, and the two
  * `apps/*` kinds that release by tag (a vscode-extension, a `--release` Go app).
  *
@@ -110,6 +112,8 @@ function releasableCounts (workspaceRoot: string): ReleasableCounts {
     python: releasedPythonManifests(workspaceRoot).length,
     dart:   globSync('packages/*/pubspec.yaml', { cwd: workspaceRoot }).length,
     rust:   globSync('packages/*/Cargo.toml', { cwd: workspaceRoot }).length,
+    cpp:    globSync('packages/*/CMakeLists.txt', { cwd: workspaceRoot }).length,
+    java:   globSync('packages/*/pom.xml', { cwd: workspaceRoot }).length,
     vscode: globSync('apps/*/package.json', { cwd: workspaceRoot }).filter(path => hasTag(workspaceRoot, path, VSCODE_EXTENSION_TAG)).length,
     go:     globSync('apps/*/project.json', { cwd: workspaceRoot }).filter(path => hasTag(workspaceRoot, path, GO_RELEASE_TAG)).length,
   }
@@ -354,7 +358,7 @@ async function runReleaseCommand (
   log: (message: string) => void,
   tee: ((command: string, arguments_: string[]) => Promise<{ status: number, output: string }>) | undefined,
 ): Promise<{ status: number, output: string }> {
-  const total = counts.npm + counts.python + counts.csharp + counts.dart + counts.rust + counts.vscode + counts.go
+  const total = counts.npm + counts.python + counts.csharp + counts.dart + counts.rust + counts.cpp + counts.java + counts.vscode + counts.go
   if (total === 0) {
     log('Nothing to release - skipping.')
 

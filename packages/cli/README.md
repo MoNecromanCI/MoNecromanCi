@@ -118,6 +118,7 @@ mnci add react-p5-app art      # a React app that draws with p5.js, see "React p
 mnci add html-app site         # plain HTML, CSS and jQuery on Vite, see "HTML apps"
 mnci add rust-app tool         # a Rust executable on @monodon/rust, see "Rust projects"
 mnci add cpp-app viewer        # a C++ executable built with CMake, see "C++ projects"
+mnci add java-app service      # a Java executable jar built with Maven, see "Java projects"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -699,6 +700,43 @@ external package is refused with a message, not silently ignored); `clang-format
 **`slice-check`** (`tools/slice-check.cjs`, what `lint` depends on) holds the layout: a file under `src/` is
 `<snake>_<role>.cpp` (a test `<snake>_<role>_test.cpp`, a header `.hpp`), the root of `src/` holds only `main.cpp`, a slice's
 barrel is the header named for its folder, and no folder is a junk drawer.
+
+## Java projects (`mnci add java-app | java-lib | java-internal-lib`)
+
+`@nx/maven` and `@nx/gradle` are inference-only (no project generator), and the community `@jnxplus` plugins carry their own idea
+of a layout, so mnci writes the Maven module itself, as it writes a C++ or Bicep project. Maven first; Gradle is a separate
+piece of work (#470). Apps live in `apps/`, publishable libraries in `packages/`, private ones in `libs/`.
+
+- **One aggregator `pom.xml` at the root** (mnci's, as `go.work` and the root `Cargo.toml` are) lists every module and pins the
+  plugin and test-library versions once, so a module's `pom.xml` names none and inherits them. `mvn -pl <module> -am` builds a
+  module with the siblings it uses from the reactor, so an internal library needs no `mvn install` first. The group id comes
+  from the git origin (`github.com/Acme/tools` is `com.github.acme`), `com.example` without one.
+- **The example is a slice**: the package `<group>.<project>.greeting` holds `GreetingContract.java` and `GreetUseCase.java`,
+  with `GreetUseCaseTest.java` beside them in `src/test/java`, and `Main` only wires. Java names a file for its one public type,
+  so the role is in the type name (as C# does). A project name with a hyphen is one lowercase word in the package.
+- **`lint`** is Checkstyle (`tools/checkstyle.xml`: imports, braces, `equals`/`hashCode`, naming) after the compiler's own
+  `-Xlint:all` with `failOnWarning`, which is part of `build`. `test` is Surefire with JUnit Jupiter. An app is shaded into one
+  jar named after it (`<name>.jar`); `start` runs it and `package` zips it.
+- **`mnci i -w app kit`** declares a sibling module in the app's own `pom.xml` and records an `implicitDependencies` edge
+  (Nx infers none from a `pom.xml`, so `nx affected` would otherwise miss the app). **`mnci i -w kit com.google.code.gson:gson`**
+  writes the newest release on Maven Central (`group:artifact@1.2.3` pins one; `--save-dev` writes `<scope>test</scope>`).
+  Maven has no "add to the manifest" verb, so this is an edit of the module's own `<dependencies>` by position, followed by
+  a compile that fetches it. `mnci un` removes by `group:artifact` or a unique artifact id.
+- **A publishable library** is released by tag: `nx release` reads and writes the module's own `<version>`
+  (`tools/maven-version-actions.cjs`; never the parent's or a dependency's), and its `nx-release-publish` says there is nothing
+  to upload until a Maven repository is chosen.
+
+Measured with JDK 21.0.12 (Temurin), Maven 3.10.0 and Checkstyle 14.3 on Windows: generate, link, lint, test, build, package,
+run, install and uninstall, `nx release`, `mnci doctor`.
+
+Not covered yet (#470): Gradle; `mnci sync` / `mnci up` reading a module's dependency versions; publishing to a Maven
+repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); the JDK in `mnci ci setup`
+and the devcontainer; a debugger launch configuration; `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
+lookup.
+
+**`slice-check`** (`tools/slice-check.cjs`, shared with Rust and C++, and what `lint` depends on) holds the layout: the root of the
+base package holds only `Main`, a type is `<Name><Role>.java` (a test `<Name><Role>Test.java`), a package is one lowercase word,
+no package is a junk drawer, and every source is under the base package.
 
 ## Rust projects (`mnci add rust-app | rust-lib | rust-internal-lib`)
 

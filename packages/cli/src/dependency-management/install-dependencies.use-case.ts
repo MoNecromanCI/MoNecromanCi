@@ -12,6 +12,7 @@ import {
   locateProjects,
 } from './manifest.repository'
 import { addCmakeSibling } from './cmake-sibling.algorithm'
+import { addMavenDependencies } from './maven-dependencies.use-case'
 import { resolveTarget } from './resolve-target-project.use-case'
 
 /**
@@ -47,6 +48,7 @@ const WHOLE_WORKSPACE_INSTALL: ReadonlyArray<readonly [Ecosystem, string, readon
   ['pub', 'flutter', ['pub', 'get']],
   ['nuget', 'npx', ['nx', 'run-many', '-t', 'restore']],
   ['cargo', 'cargo', ['fetch']],
+  ['maven', 'mvn', ['-B', '-ntp', 'compile']],
   ['go', 'go', ['work', 'sync']],
 ]
 
@@ -283,6 +285,11 @@ function installInto (
     }
     case 'cmake': {
       linkCmakeSiblings(workspaceRoot, location, packages, locations)
+
+      return
+    }
+    case 'maven': {
+      addMavenDependencies(workspaceRoot, location, packages, saveDev, locations)
 
       return
     }

@@ -6,6 +6,7 @@ import { logger } from '../terminal'
 import { completeLockfile } from '../lockfile-completion'
 import { type ProjectLocation, locateProjects } from './manifest.repository'
 import { findPackageImports } from './find-package-imports.use-case'
+import { removeMavenDependencies } from './maven-dependencies.use-case'
 import { removePipDependency } from './remove-pip-dependency.algorithm'
 import { resolveTarget } from './resolve-target-project.use-case'
 
@@ -124,6 +125,11 @@ function uninstallFrom (workspaceRoot: string, location: ProjectLocation, packag
     case 'cmake': {
       logger.warn(`${location.dir} is a C++ project with no package manager wired yet (#473), so it has no dependency to remove here.`)
       process.exitCode = 1
+
+      return
+    }
+    case 'maven': {
+      removeMavenDependencies(workspaceRoot, location, packages)
 
       return
     }

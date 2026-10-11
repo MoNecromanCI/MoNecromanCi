@@ -27,6 +27,7 @@ import { addVueApp } from './vue-app.use-case'
 import { addHtmlApp } from './html-app.use-case'
 import { addReactApp } from './react-app.use-case'
 import { addCppProject } from './cpp.use-case'
+import { addJavaProject } from './java.use-case'
 import { addRustProject } from './rust.use-case'
 import { addReactP5App } from './react-p5-app.use-case'
 import { addReactInternalLib, addReactLib } from './react-lib.use-case'
@@ -167,6 +168,9 @@ export type ProjectKind =
   'cpp-app' |
   'cpp-lib' |
   'cpp-internal-lib' |
+  'java-app' |
+  'java-lib' |
+  'java-internal-lib' |
   'vscode-extension' |
   'container'
 
@@ -214,6 +218,9 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'cpp-app',
   'cpp-lib',
   'cpp-internal-lib',
+  'java-app',
+  'java-lib',
+  'java-internal-lib',
   'vscode-extension',
   'container',
   'bicep-iac',
@@ -221,7 +228,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'react-p5-app', 'html-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib', 'rust-app', 'rust-lib', 'rust-internal-lib', 'cpp-app', 'cpp-lib', 'cpp-internal-lib'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'react-p5-app', 'html-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib', 'rust-app', 'rust-lib', 'rust-internal-lib', 'cpp-app', 'cpp-lib', 'cpp-internal-lib', 'java-app', 'java-lib', 'java-internal-lib'])
 
 /** The kinds a registry publishes: a workspace with no registry releases none of them. */
 const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
@@ -367,6 +374,12 @@ export async function runAdd (
     case 'cpp-lib':
     case 'cpp-internal-lib': {
       addCppProject(workspaceRoot, resolvedName, resolvedKind, options.empty === true)
+      break
+    }
+    case 'java-app':
+    case 'java-lib':
+    case 'java-internal-lib': {
+      addJavaProject(workspaceRoot, resolvedName, resolvedKind, options.empty === true)
       break
     }
     case 'rust-app':

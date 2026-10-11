@@ -314,6 +314,10 @@ export async function latestVersions (
     case 'cmake': {
       return new Map()
     }
+    // A Maven module's dependencies are not read yet (#470), so there is nothing to ask a repository.
+    case 'maven': {
+      return new Map()
+    }
     case 'go': {
       return await latestGoVersions(cwd)
     }

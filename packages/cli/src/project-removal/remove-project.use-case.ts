@@ -9,6 +9,7 @@ import { locateProjects } from '../dependency-management'
 import {
   removeCargoWorkspaceMember,
   removeGoWorkUse,
+  removeMavenModule,
   removePathAliases,
   removeProjectScripts,
   removePubspecWorkspaceMember,
@@ -200,6 +201,7 @@ function planRemoval (workspaceRoot: string, directory: string): RemovalPlan {
     ['go.work', text => removeGoWorkUse(text, directory)],
     ['pubspec.yaml', text => removePubspecWorkspaceMember(text, directory)],
     ['Cargo.toml', text => removeCargoWorkspaceMember(text, directory)],
+    ['pom.xml', text => removeMavenModule(text, directory)],
   ]
   for (const [path, edit] of edits) {
     const full = join(workspaceRoot, path)
@@ -289,6 +291,7 @@ function applyRemoval (workspaceRoot: string, directory: string, plan: RemovalPl
     ['go.work', text => removeGoWorkUse(text, directory)],
     ['pubspec.yaml', text => removePubspecWorkspaceMember(text, directory)],
     ['Cargo.toml', text => removeCargoWorkspaceMember(text, directory)],
+    ['pom.xml', text => removeMavenModule(text, directory)],
   ]
   for (const [path, edit] of edits) {
     const full = join(workspaceRoot, path)

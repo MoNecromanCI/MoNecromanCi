@@ -201,6 +201,22 @@ function inferCpp (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
+ * Proposes the kind of a Java (Maven) module.
+ *
+ * @param evidence - What was read about it.
+ * @returns The proposal.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function inferJava (evidence: ProjectEvidence): KindProposal {
+  if (evidence.hasProgram) {
+    return { kind: 'java-app', certainty: 'certain', reason: 'a class with a main method is the entry point' }
+  }
+
+  return { kind: 'java-lib', certainty: 'guess', reason: 'a library, but internal or published is a choice only you can make' }
+}
+
+/**
  * Proposes the kind of a Rust crate.
  *
  * @param evidence - What was read about it.
@@ -270,6 +286,9 @@ export function inferProjectKind (evidence: ProjectEvidence): KindProposal {
     }
     case 'cmake': {
       return inferCpp(evidence)
+    }
+    case 'maven': {
+      return inferJava(evidence)
     }
     case 'go': {
       return inferGo(evidence)
