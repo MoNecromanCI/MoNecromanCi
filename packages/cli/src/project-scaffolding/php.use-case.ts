@@ -26,6 +26,12 @@ const PHP_DIRECTORIES: Readonly<Record<PhpKind, string>> = {
   'php-internal-lib': 'libs',
 }
 
+/** The Nx project that installs the shared dev tools once, and what each PHP project's `test` and `lint` wait for. */
+const PHP_TOOLS_PROJECT = 'php-tools'
+
+/** The dependency every project's `test` and `lint` declare: the one task that installs the root `vendor/`. */
+const PHP_TOOLS_DEPENDENCY = { projects: [PHP_TOOLS_PROJECT], target: 'install' }
+
 /** The Composer flags every non-interactive call shares (`validate` has no `--no-progress`, so it spells its own). */
 const COMPOSER = 'composer --no-interaction --no-progress'
 
@@ -58,7 +64,6 @@ function phpTool (tool: string): string {
  * @typeParam None - this function has no generic type parameters.
  */
 export function phpTargets (name: string, directory: string, app: boolean): Record<string, unknown> {
-  const tools = `${COMPOSER} install`
   const sources = [`${directory}/src`, `${directory}/tests`, ...(app ? [`${directory}/bin`] : [])].join(' ')
   const targets: Record<string, unknown> = {
     'build': {
@@ -73,19 +78,15 @@ export function phpTargets (name: string, directory: string, app: boolean): Reco
     },
     'test': {
       executor:  'nx:run-commands',
-      dependsOn: ['build'],
-      options:   {
-        commands: [tools, `${phpTool('phpunit')} -c ${directory}/phpunit.xml.dist --do-not-fail-on-empty-test-suite`],
-        parallel: false,
-      },
+      dependsOn: ['build', PHP_TOOLS_DEPENDENCY],
+      options:   { command: `${phpTool('phpunit')} -c ${directory}/phpunit.xml.dist --do-not-fail-on-empty-test-suite` },
     },
     'slice-check': nativeSliceCheckTarget('php', directory),
     'lint':        {
       executor:  'nx:run-commands',
-      dependsOn: ['slice-check', 'build'],
+      dependsOn: ['slice-check', 'build', PHP_TOOLS_DEPENDENCY],
       options:   {
         commands: [
-          tools,
           `${phpTool('phpstan')} analyse -c ${directory}/phpstan.neon --no-progress`,
           `${phpTool('phpcs')} --standard=PSR12 ${sources}`,
         ],
@@ -110,6 +111,42 @@ export function phpTargets (name: string, directory: string, app: boolean): Reco
   }
 
   return targets
+}
+
+/**
+ * Writes the Nx project that installs the shared dev tools, once.
+ *
+ * @remarks
+ * Every PHP project's `test` and `lint` need the root `vendor/`, and each used to run `composer install` first: three
+ * projects linted at once ran three installs into one directory and one failed with "Permission denied" writing a download
+ * (measured). One task that all of them depend on runs once, and is cached on the root `composer.json` and lock. It is a
+ * project of its own (`tools/php-tools`) because Nx dedupes a task per project, and the root is not one. Idempotent.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns Nothing.
+ * @throws Error when the file cannot be written.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function ensurePhpToolsProject (workspaceRoot: string): void {
+  const path = join(workspaceRoot, 'tools', PHP_TOOLS_PROJECT, 'project.json')
+  if (fileExists(path)) {
+    return
+  }
+  writeFileEnsured(path, `${JSON.stringify({
+    name:        PHP_TOOLS_PROJECT,
+    $schema:     '../../node_modules/nx/schemas/project-schema.json',
+    projectType: 'library',
+    tags:        ['type:tooling'],
+    targets:     {
+      install: {
+        cache:    true,
+        executor: 'nx:run-commands',
+        inputs:   ['{workspaceRoot}/composer.json', '{workspaceRoot}/composer.lock'],
+        outputs:  ['{workspaceRoot}/vendor'],
+        options:  { command: `${COMPOSER} install`, cwd: '.' },
+      },
+    },
+  }, undefined, 2)}\n`)
 }
 
 /**
@@ -186,6 +223,7 @@ export function addPhpProject (workspaceRoot: string, name: string, kind: PhpKin
   if (kind === 'php-lib') {
     wirePhpLibRelease(workspaceRoot, directory, name)
   }
+  ensurePhpToolsProject(workspaceRoot)
   ensureVendorIgnored(workspaceRoot)
   registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start` } : { build: kind === 'php-lib' })
 
