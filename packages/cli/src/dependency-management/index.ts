@@ -8,6 +8,7 @@
 
 export * from './install-dependencies.use-case'
 export * from './uninstall-dependencies.use-case'
+export { addCmakeSibling, cppIdentifier } from './cmake-sibling.algorithm'
 export * from './sync-dependencies.use-case'
 export * from './update-dependencies.use-case'
 export { ECOSYSTEMS, locateProjects, type Ecosystem, type ProjectLocation } from './manifest.repository'

@@ -185,6 +185,22 @@ function inferCsharp (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
+ * Proposes the kind of a C++ project.
+ *
+ * @param evidence - What was read about it.
+ * @returns The proposal.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function inferCpp (evidence: ProjectEvidence): KindProposal {
+  if (evidence.hasProgram) {
+    return { kind: 'cpp-app', certainty: 'certain', reason: 'src/main.cpp is the entry point' }
+  }
+
+  return { kind: 'cpp-lib', certainty: 'guess', reason: 'a library, but internal or published is a choice only you can make' }
+}
+
+/**
  * Proposes the kind of a Rust crate.
  *
  * @param evidence - What was read about it.
@@ -251,6 +267,9 @@ export function inferProjectKind (evidence: ProjectEvidence): KindProposal {
     }
     case 'cargo': {
       return inferRust(evidence)
+    }
+    case 'cmake': {
+      return inferCpp(evidence)
     }
     case 'go': {
       return inferGo(evidence)

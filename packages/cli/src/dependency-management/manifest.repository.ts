@@ -15,7 +15,7 @@ import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-d
  *
  * @typeParam None - this type has no generic type parameters.
  */
-export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'go'
+export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'go'
 
 /**
  * Every ecosystem, in the order commands report them.
@@ -25,7 +25,7 @@ export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'go'
  * because it is the one with nothing to reconcile — every other ecosystem,
  * NuGet included, has a real per-project manifest whose versions can drift.
  */
-export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'go']
+export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'go']
 
 /**
  * The label shown for the workspace root, which is not a project.
@@ -94,6 +94,8 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   nuget: ['apps/*/*.csproj', 'packages/*/*.csproj', 'libs/*/*.csproj'],
   // One `Cargo.toml` per crate; the workspace root's lists members and holds no dependencies of its own.
   cargo: ['apps/*/Cargo.toml', 'packages/*/Cargo.toml', 'libs/*/Cargo.toml'],
+  // A CMake project is located by its CMakeLists.txt; it declares no dependency a registry could be asked about yet (#473).
+  cmake: ['apps/*/CMakeLists.txt', 'packages/*/CMakeLists.txt', 'libs/*/CMakeLists.txt'],
   // Single root module by design — there are no per-project Go manifests.
   go:    [],
 }
@@ -185,6 +187,7 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     pip:   'requirements-dev.txt',
     pub:   'pubspec.yaml',
     cargo: 'Cargo.toml',
+    cmake: 'CMakeLists.txt',
   }
 
   // Either marker counts. A root file alone is the usual case, but a workspace
@@ -762,6 +765,7 @@ export function collectInventory (
     pub:   collectPub,
     nuget: collectNuget,
     cargo: collectCargo,
+    cmake: () => [],
     go:    collectGo,
   }
 
@@ -798,6 +802,7 @@ export function collectInventory (
 const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
   ...MANIFEST_GLOBS,
   cargo: ['apps/*/Cargo.toml', 'libs/*/Cargo.toml', 'packages/*/Cargo.toml'],
+  cmake: ['apps/*/CMakeLists.txt', 'libs/*/CMakeLists.txt', 'packages/*/CMakeLists.txt'],
   go:    ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],
 }
 

@@ -121,6 +121,12 @@ function uninstallFrom (workspaceRoot: string, location: ProjectLocation, packag
 
       return
     }
+    case 'cmake': {
+      logger.warn(`${location.dir} is a C++ project with no package manager wired yet (#473), so it has no dependency to remove here.`)
+      process.exitCode = 1
+
+      return
+    }
     case 'cargo': {
       shell(workspaceRoot, 'cargo', ['remove', ...packages, '--manifest-path', location.manifestPath], location)
 

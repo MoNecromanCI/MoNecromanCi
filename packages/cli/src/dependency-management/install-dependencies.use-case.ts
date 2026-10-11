@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { runShell } from '../nx-workspace'
 import { writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
@@ -11,6 +11,7 @@ import {
   hasEcosystem,
   locateProjects,
 } from './manifest.repository'
+import { addCmakeSibling } from './cmake-sibling.algorithm'
 import { resolveTarget } from './resolve-target-project.use-case'
 
 /**
@@ -111,6 +112,52 @@ export function runInstall (
   }
   if (locations.some(location => location.ecosystem === 'npm')) {
     completeLockfile(workspaceRoot)
+  }
+}
+
+/**
+ * Links sibling C++ libraries into a C++ project; any other package is not wired yet.
+ *
+ * @remarks
+ * A package that names another C++ project of the workspace is added to the consumer's `CMakeLists.txt`
+ * (`add_subdirectory` and `target_link_libraries`). Anything else would come from a package manager (vcpkg or Conan), which is
+ * not wired yet (#473): that is said, and the exit code is set, rather than doing nothing and looking as if it worked.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param location - The C++ project that gains the dependencies.
+ * @param packages - The packages to add, by name.
+ * @param locations - Every project of the workspace.
+ * @returns Nothing.
+ * @throws Never - an unreadable file is reported as a warning.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function linkCmakeSiblings (
+  workspaceRoot: string,
+  location: ProjectLocation,
+  packages: readonly string[],
+  locations: readonly ProjectLocation[],
+): void {
+  const siblings = new Map(
+    locations
+      .filter(candidate => candidate.ecosystem === 'cmake' && candidate.dir !== location.dir)
+      .map(candidate => [candidate.name, candidate] as const),
+  )
+  for (const name of packages) {
+    const sibling = siblings.get(name)
+    if (sibling === undefined) {
+      logger.warn(`${name} is not a C++ project of this workspace, and installing an external dependency into ${location.dir} needs a package manager (vcpkg or Conan), which is not wired yet (#473).`)
+      process.exitCode = 1
+      continue
+    }
+    const relativePath = relative(join(workspaceRoot, location.dir), join(workspaceRoot, sibling.dir)).split(sep).join('/')
+    const text = readFileSync(location.manifestPath, 'utf8')
+    const next = addCmakeSibling(text, relativePath, sibling.name, location.name)
+    if (next === text) {
+      logger.info(`${name} is already linked into ${location.dir} — left as is`)
+    } else {
+      writeFileEnsured(location.manifestPath, next)
+      logger.step(`${location.dir}: linked ${name} (add_subdirectory ${relativePath})`)
+    }
   }
 }
 
@@ -231,6 +278,11 @@ function installInto (
         return
       }
       addCrates(workspaceRoot, location, packages, saveDev, locations)
+
+      return
+    }
+    case 'cmake': {
+      linkCmakeSiblings(workspaceRoot, location, packages, locations)
 
       return
     }

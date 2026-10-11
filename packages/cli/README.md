@@ -117,6 +117,7 @@ mnci add angular-internal-lib kit # a private Angular library an Angular app imp
 mnci add react-p5-app art      # a React app that draws with p5.js, see "React p5 apps"
 mnci add html-app site         # plain HTML, CSS and jQuery on Vite, see "HTML apps"
 mnci add rust-app tool         # a Rust executable on @monodon/rust, see "Rust projects"
+mnci add cpp-app viewer        # a C++ executable built with CMake, see "C++ projects"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
 mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
@@ -667,6 +668,33 @@ its typecheck is `tsc --build`, since a referenced project may not disable emit.
 replaced by a `greeting` feature behind the barrel, with `lib-` selectors.
 
 Not covered: SSR, a per-environment build as React has, and a publishable Angular library (ng-packagr).
+
+## C++ projects (`mnci add cpp-app | cpp-lib | cpp-internal-lib`)
+
+No Nx plugin is maintained for C++ (`nx-cmake` pins Nx 18) and CMake has no `new` verb, so mnci writes the project itself, as
+it writes a Bicep one: a `CMakeLists.txt`, a worked example and explicit targets. Apps live in `apps/`, publishable libraries in
+`packages/`, private ones in `libs/`.
+
+- **Each project builds on its own**, into `dist/cmake/<name>` (a debug build into `<name>-debug`), so Nx clearing a target's
+  outputs on a cache restore cannot delete another project's artifacts. No generator is named: CMake picks the one the machine
+  has, which is why every command passes `--config`.
+- **The example is a slice**: `src/<name>/greeting/` holds `greeting_contract.hpp`, `greet_use_case.hpp/.cpp` and a barrel
+  `greeting.hpp`, with a test beside them that needs no framework (a function that returns non-zero, registered with CTest).
+  `main.cpp` only wires. Files are `snake_case`, the namespace and the include folder are the project name as an identifier.
+- **`lint`** is `cppcheck` (warnings, style, performance, portability; any finding fails it), and every target is compiled with
+  `-Wall -Wextra -Wpedantic -Werror` (`/W4 /WX` on MSVC), so a warning fails `build`. `test` is CTest. An app has `start`
+  and `package` (a zip of the executable).
+- **An internal library is consumed** with `mnci i -w app kit`, which adds `add_subdirectory` and `target_link_libraries` to
+  the app's `CMakeLists.txt` (idempotent, and commented so the next reader knows where it came from).
+- **A publishable library** is released by tag, as Flutter libraries are, there being no central C++ registry: `nx release`
+  reads and writes the `VERSION` of its `project()` call (`tools/cmake-version-actions.cjs`), and its `nx-release-publish`
+  says there is nothing to upload.
+
+Measured with CMake 4.4, g++ 16 (MinGW) and cppcheck 2.21: generate, link, lint, test, build, package, run, `nx release`.
+
+Not covered yet (#473): a package manager for a project's own third-party dependencies (vcpkg manifest mode or Conan: an
+external package is refused with a message, not silently ignored); `clang-format` and `clang-tidy`; the toolchain in
+`mnci ci setup` and the devcontainer; a slice lint; a debugger launch configuration; `dev`.
 
 ## Rust projects (`mnci add rust-app | rust-lib | rust-internal-lib`)
 
