@@ -13,5 +13,5 @@
  * @typeParam None - this function has no generic type parameters.
  */
 export function singleQuoteGemLines (text: string): string {
-  return text.replaceAll(/^([ \t]*gem\b.*)$/gm, line => line.replaceAll(/"([^"'\\#]*)"/g, '\'$1\''))
+  return text.replaceAll(/^[ \t]*gem\b.*$/gm, line => line.replaceAll(/"([^"'\\#]*)"/g, (_whole, body: string) => `'${body}'`))
 }
