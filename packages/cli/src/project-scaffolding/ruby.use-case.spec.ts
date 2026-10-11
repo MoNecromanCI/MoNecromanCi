@@ -60,6 +60,8 @@ describe('runAdd ruby-app', () => {
     expect(rootGemfile).not.toContain('rspec')
     expect(readFileSync(join(workspaceRoot, 'apps/hello/Gemfile'), 'utf8')).toContain("gem 'rspec'")
     expect(readFileSync(join(workspaceRoot, '.rubocop.yml'), 'utf8')).toContain('TargetRubyVersion: 3.3')
+    const tools = JSON.parse(readFileSync(join(workspaceRoot, 'tools/ruby-tools/project.json'), 'utf8'))
+    expect(tools.targets.install.options).toEqual({ command: 'bundle install', cwd: '.' })
   })
 
   it('has build, test, slice-check, lint, start and package targets; Bundler runs in the project directory', async () => {
@@ -70,8 +72,8 @@ describe('runAdd ruby-app', () => {
     expect(tags).toEqual(['type:ruby-app'])
     expect(targets.build.options.cwd).toBe('apps/hello')
     expect(targets.test.options).toEqual({ cwd: 'apps/hello', command: 'bundle exec rspec' })
-    expect(targets.lint.dependsOn).toEqual(['slice-check'])
-    expect(targets.lint.options.commands).toEqual(['bundle install', 'bundle exec rubocop --config .rubocop.yml apps/hello'])
+    expect(targets.lint.dependsOn).toEqual(['slice-check', { projects: ['ruby-tools'], target: 'install' }])
+    expect(targets.lint.options.command).toBe('bundle exec rubocop --config .rubocop.yml apps/hello')
     expect(targets.package.outputs).toEqual(['{workspaceRoot}/dist/drop/ruby-app-hello.zip'])
   })
 

@@ -22,6 +22,12 @@ const RUBY_DIRECTORIES: Readonly<Record<RubyKind, string>> = {
   'ruby-internal-lib': 'libs',
 }
 
+/** The Nx project that installs the shared RuboCop once, and what each Ruby project's `lint` waits for. */
+const RUBY_TOOLS_PROJECT = 'ruby-tools'
+
+/** The dependency every project's `lint` declares: the one task that installs the root bundle. */
+const RUBY_TOOLS_DEPENDENCY = { projects: [RUBY_TOOLS_PROJECT], target: 'install' }
+
 /**
  * The targets of a Ruby project, written explicitly because nothing infers them.
  *
@@ -60,11 +66,8 @@ export function rubyTargets (name: string, directory: string, kind: RubyKind): R
     'slice-check': nativeSliceCheckTarget('ruby', directory),
     'lint':        {
       executor:  'nx:run-commands',
-      dependsOn: ['slice-check'],
-      options:   {
-        commands: ['bundle install', `bundle exec rubocop --config .rubocop.yml ${directory}`],
-        parallel: false,
-      },
+      dependsOn: ['slice-check', RUBY_TOOLS_DEPENDENCY],
+      options:   { command: `bundle exec rubocop --config .rubocop.yml ${directory}` },
     },
   }
   if (app) {
@@ -84,6 +87,39 @@ export function rubyTargets (name: string, directory: string, kind: RubyKind): R
   }
 
   return targets
+}
+
+/**
+ * Writes the Nx project that installs the shared dev tools, once.
+ *
+ * @remarks
+ * Every Ruby project's `lint` needs the root bundle, and each used to run `bundle install` first: projects linting at once
+ * ran the install concurrently (the same race that made three PHP projects fail writing into one `vendor/`). One task all
+ * of them depend on runs once. It is not cached: the gems are installed into the machine's gem home, which a cache restore
+ * would not bring back, so a cache hit on another machine would skip an install that is needed. Idempotent.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns Nothing.
+ * @throws Error when the file cannot be written.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function ensureRubyToolsProject (workspaceRoot: string): void {
+  const path = join(workspaceRoot, 'tools', RUBY_TOOLS_PROJECT, 'project.json')
+  if (fileExists(path)) {
+    return
+  }
+  writeFileEnsured(path, `${JSON.stringify({
+    name:        RUBY_TOOLS_PROJECT,
+    $schema:     '../../node_modules/nx/schemas/project-schema.json',
+    projectType: 'library',
+    tags:        ['type:tooling'],
+    targets:     {
+      install: {
+        executor: 'nx:run-commands',
+        options:  { command: 'bundle install', cwd: '.' },
+      },
+    },
+  }, undefined, 2)}\n`)
 }
 
 /**
@@ -140,6 +176,7 @@ export function addRubyProject (workspaceRoot: string, name: string, kind: RubyK
   if (kind === 'ruby-lib') {
     wireRubyLibRelease(workspaceRoot, directory, name)
   }
+  ensureRubyToolsProject(workspaceRoot)
   registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start` } : { build: kind === 'ruby-lib' })
 
   for (const tool of ['ruby', 'bundle']) {
