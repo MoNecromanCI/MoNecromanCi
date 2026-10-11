@@ -115,6 +115,7 @@ mnci add react-app web         # @nx/react (Vite + Jest)
 mnci add angular-app site      # @nx/angular (esbuild + Jest), see "Angular apps"
 mnci add vue-app shop          # @nx/vue (Vite + Vitest), see "Vue apps"
 mnci add svelte-app blog       # Vite's svelte-ts template + Vitest, see "Svelte apps"
+mnci add bicep-iac infra       # an Azure Bicep template, linted and compiled by az bicep, see "Bicep"
 mnci add node-app svc          # @nx/node (plain Node app, esbuild)
 mnci add node-app api --framework express  # ...or fastify | koa | nest
 mnci add npm-lib core --empty             # bare skeleton, no sample: every kind but container and vscode-extension
@@ -681,6 +682,24 @@ No Nx plugin for Svelte installs on this workspace (`@nxext/svelte` peers on Typ
 
 Not covered: `.svelte` files are not linted (the ESLint configuration has no Svelte parser; `svelte-check` is their
 check), `--e2e`, SvelteKit, and a Svelte library kind.
+
+## Bicep infrastructure (`mnci add bicep-iac`)
+
+`mnci add bicep-iac <name>` writes `apps/<name>` with `main.bicep` (one parameterised storage account), `main.bicepparam`,
+a `bicepconfig.json` and a `project.json` tagged `type:bicep-iac`. Everything goes through `az bicep`, which downloads
+the Bicep CLI on first use, so the Azure CLI is the one prerequisite:
+
+| Target    | Runs                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------- |
+| `lint`    | `az bicep lint`. `bicepconfig.json` makes `no-unused-params`, `no-unused-vars` and `no-hardcoded-location` errors, since lint exits 0 on warnings |
+| `build`   | `main.bicep` to `main.json` and `main.bicepparam` to `main.parameters.json`, in `dist/apps/<name>`           |
+| `package` | zips that folder into `dist/drop/bicep-<name>.zip`, which a deployment pipeline takes                        |
+
+There is no `test` target (Bicep has no unit test runner; `build` fails on a template that does not compile), so `:qa` is
+lint then build. `--empty` writes a template that declares nothing.
+
+Not covered: Terraform, `what-if` and deployment (the `deploy-*` pipeline templates are the place for it), `mnci projects`
+listing the project (it has no package manifest), and CI installing the Azure CLI (hosted GitHub and Azure agents have it).
 
 ## A paired Playwright project (`mnci add react-app web --e2e`)
 

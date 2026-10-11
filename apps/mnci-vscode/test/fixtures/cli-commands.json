@@ -721,7 +721,8 @@
           "csharp-lib",
           "csharp-internal-lib",
           "vscode-extension",
-          "container"
+          "container",
+          "bicep-iac"
         ]
       },
       {
