@@ -83,7 +83,7 @@ function readEvidence (repositoryRoot: string, location: ProjectLocation): Proje
       break
     }
     case 'composer': {
-      hasProgram = globSync('bin/*.php', { cwd: directory }).length > 0
+      hasProgram = globSync('bin/*.php', { cwd: directory }).length > 0 || existsSync(join(directory, 'artisan'))
 
       break
     }

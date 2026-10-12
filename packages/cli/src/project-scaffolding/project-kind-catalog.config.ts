@@ -78,7 +78,7 @@ export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'java-app', language: 'java', label: 'Java app', description: 'A Java executable jar built with Maven and zipped for deployment', flags: ['empty'], requiredFlags: [] },
   { kind: 'java-lib', language: 'java', label: 'Java library', description: 'A Java library released by git tag', flags: ['empty'], requiredFlags: [] },
   { kind: 'java-internal-lib', language: 'java', label: 'Java internal library', description: 'A private Java library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
-  { kind: 'php-app', language: 'php', label: 'PHP app', description: 'A PHP application with a bin/ entry script, packaged as a zip', flags: ['empty'], requiredFlags: [] },
+  { kind: 'php-app', language: 'php', label: 'PHP app', description: 'A PHP application with a bin/ entry script, packaged as a zip; --template laravel scaffolds a Laravel app', flags: ['empty', 'template'], requiredFlags: [] },
   { kind: 'php-lib', language: 'php', label: 'PHP library', description: 'A Composer package released by git tag, which Packagist reads', flags: ['empty'], requiredFlags: [] },
   { kind: 'php-internal-lib', language: 'php', label: 'PHP internal library', description: 'A private Composer package for apps in this workspace', flags: ['empty'], requiredFlags: [] },
   { kind: 'ruby-app', language: 'ruby', label: 'Ruby app', description: 'A Ruby application on Bundler with a bin/ script, packaged as a zip', flags: ['empty'], requiredFlags: [] },

@@ -4304,6 +4304,60 @@ section('php', [], () => {
   enforce('php: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('php laravel', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add php-app --template laravel` (#488): the framework's own installer, then the worked example.
+   * Gated on php and composer, reported SKIPPED without them (needs network for create-project).
+   * ------------------------------------------------------------------------- */
+  if (!hasTool('php --version') || !hasTool('composer --version')) {
+    skip('the entire php laravel section', 'PHP or Composer is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'laravelws')
+  run(`node ${CLI} new laravelws --yes --registry npm --scope @lrv`, temporary)
+  const added = tryRunCapture(`node ${CLI} add php-app blog --template laravel`, root)
+  enforce(
+    'laravel: add scaffolds the skeleton with the framework installer',
+    added.ok && existsSync(path.join(root, 'apps/blog/artisan')) && existsSync(path.join(root, 'apps/blog/app/Features/Greeting/GreetUseCase.php')),
+    added.output.slice(-2500),
+  )
+  const project = JSON.parse(readFileSync(path.join(root, 'apps/blog/project.json'), 'utf8'))
+  enforce(
+    'laravel: the project is a php-app with no slice-check (the framework mandates its names)',
+    project.tags.includes('type:php-app') && project.targets['slice-check'] === undefined && project.targets.start !== undefined,
+    JSON.stringify(project, undefined, 2).slice(0, 1500),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,test,build --projects=blog', root)
+  enforce('laravel: lint (Pint and Larastan), test and build pass', checks.ok, checks.output.slice(-3000))
+  const routeTest = tryRunCapture('npx nx run blog:test --skip-nx-cache', root)
+  enforce('laravel: the example route test and use case test ran', routeTest.ok && /passed/.test(routeTest.output), routeTest.output.slice(-1500))
+  const packaged = tryRunCapture('npx nx run blog:package', root)
+  enforce(
+    'laravel: package zips the app with its vendor/ and no local database',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/php-app-blog.zip')),
+    packaged.output.slice(-1500),
+  )
+  const installed = tryRunCapture(`node ${CLI} i -w blog league/csv`, root)
+  enforce(
+    'laravel: installing a package is composer require in the app',
+    installed.ok && readFileSync(path.join(root, 'apps/blog/composer.json'), 'utf8').includes('league/csv') && !readFileSync(path.join(root, 'package.json'), 'utf8').includes('league/csv'),
+    installed.output.slice(-1000),
+  )
+  const eslint = tryRunCapture('npx eslint .', root)
+  enforce('laravel: the workspace ESLint run passes with the app in it', eslint.ok, eslint.output.slice(-2500))
+  run('git add -A', root)
+  run('git commit -m "feat: add the laravel app"', root)
+  const tracked = tryRunCapture('git ls-files', root)
+  enforce(
+    'laravel: no vendor, .env or sqlite file is tracked',
+    tracked.ok && !/(?:^|\/)vendor\//m.test(tracked.output) && !/(?:^|\/)\.env$/m.test(tracked.output) && !/\.sqlite$/m.test(tracked.output),
+    tracked.output.slice(-800),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('laravel: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('ruby', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add ruby-app|ruby-lib|ruby-internal-lib` (#472): Bundler projects and gems written by mnci (no Nx
