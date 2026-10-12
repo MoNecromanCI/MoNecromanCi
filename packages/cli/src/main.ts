@@ -315,8 +315,8 @@ export function buildProgram (cliVersion: string): Command {
       'go-app only: the app needs a C toolchain (a tray icon, a native GUI, a cgo driver), so CI builds it on a runner of each OS instead of cross-compiling',
     )
     .addOption(
-      new Option('--template <template>', 'php-app only: scaffold with the framework\'s own installer (laravel)')
-        .choices(['laravel']),
+      new Option('--template <template>', 'php-app (laravel) or ruby-app (rails): scaffold with the framework\'s own installer')
+        .choices(['laravel', 'rails']),
     )
     .option(
       '--web <react-app>',

@@ -827,7 +827,28 @@ lint, test, build, package, run, install and uninstall, `nx release`, `mnci doct
 
 Not covered yet (#472): publishing to RubyGems (`gem push` needs `GEM_HOST_API_KEY` passed to the release step by both
 providers); `mnci sync` / `mnci up` reading a project's gems; the Ruby version in `mnci ci setup` and the devcontainer; a debugger
-launch configuration; `dev`; a Rails template (#489).
+launch configuration; `dev`.
+
+### Rails (`mnci add ruby-app <name> --template rails`, #489)
+
+The scaffold is the framework's own generator, `rails new apps/<name>` (with `--skip-git --skip-bundle --skip-ci --skip-docker
+--skip-kamal --skip-thruster`: the CI, container and deploy files are the workspace's), then `bundle install` in the app. When
+`rails` is absent mnci runs `gem install rails --no-document` first (measured: about 20 s and 95 MB of gems). The app keeps its own
+`Gemfile`, `Gemfile.lock`, Minitest and the omakase RuboCop config Rails writes, and runs them from its folder:
+
+- **`test`** is `bundle exec ruby bin/rails test`, **`lint`** is `bundle exec rubocop` with the app's own `.rubocop.yml` (not the
+  workspace's shared one), **`build`** is `bundle install`, **`start`** is `bundle exec ruby bin/rails server`, **`package`** zips
+  `app`, `bin`, `config`, `db` (no `*.sqlite3`), `lib`, `public`, `Gemfile`, `Gemfile.lock`, `config.ru` and `Rakefile` (gems are
+  installed on the target with `bundle install`; nothing is vendored).
+- **The worked example** is `app/features/greeting` (a contract and a use case, `<snake>_<role>.rb`) called by a
+  `HelloController` on `/hello/:name`, with a unit test and a route test (the skeleton itself ships no tests).
+- **Exception to the slice rules** (the `ruby` `slice-check` is not wired for a Rails app): the framework mandates `app/models`,
+  `app/controllers/*_controller.rb`, `app/views`, `app/helpers`, `config/` and `db/migrate`, which a `<snake>_<role>` check would
+  reject. Permanent for the template; new hand-written code goes in `app/features/<slice>/` (an autoload root, so a folder there
+  is a module) and follows the rules. `--empty` is refused with a template.
+- `.gitignore` is written by mnci (`--skip-git` writes none): log, tmp, storage, `*.sqlite3`, `config/*.key`, `.env*`.
+  Not covered: Hotwire/importmap assets beyond what the skeleton ships, `rails credentials`, Active Job workers, Docker/Kamal
+  deploys, the Windows MSYS2 toolchain for gems that need compiling (`sqlite3` installs prebuilt on `x64-mingw-ucrt`).
 
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++, Java and PHP, and what `lint` depends on) holds the layout:
 a file at the root of `lib/` is the barrel named for the folder beside it, a file is `<snake>_<role>.rb` (a spec
