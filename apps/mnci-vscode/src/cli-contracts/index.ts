@@ -7,4 +7,5 @@
  */
 
 export type * from './command-description.contract'
+export type * from './update-report.contract'
 export type * from './workspace-report.contract'

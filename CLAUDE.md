@@ -606,8 +606,11 @@ tooling) and runs the CLI in the `MNCI` terminal. Slices: `cli-access` (locate t
 install, global, npx; run it for JSON), `cli-session` (one cache of the answers, shared by the views),
 `invocation` (the prompts: generic from a command's own description, plus `add` and `install` flows),
 `sidebar` (Commands / Projects / Update views), `doctor-check` (findings become Problems-panel entries with their
-remedy), `cli-update`, `commands` (the `mnci.*` registrations) and `watching` (manifest changes refresh the
-views). `package-manifest.integration.spec.ts` fails when `package.json` and the code disagree, or the CLI gains a
+remedy), `cli-update`, `commands` (the `mnci.*` registrations), `updates-panel` (#498: `mnci.up` opens a webview built from
+`mnci up --json`, grouped patch/minor/major with the projects and a link to each release page; Update selected runs
+`mnci up <names...>` in the MNCI terminal; names the page posts are checked against a package-name pattern and the
+report, links render only as `https:`, scripts only by nonce; needs CLI 4.99.0) and `watching` (manifest changes
+refresh the views). `package-manifest.integration.spec.ts` fails when `package.json` and the code disagree, or the CLI gains a
 command the extension does not offer (it compares with `test/fixtures/cli-commands.json`, a snapshot of
 `mnci commands --json`; regenerate it when the CLI changes). Two repo-specific traps: this repo's
 `jest.preset.mjs` is a `createConfig` factory, not a Jest preset, so the project uses a `jest.config.mjs` and not the
