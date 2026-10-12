@@ -82,6 +82,11 @@ function readEvidence (repositoryRoot: string, location: ProjectLocation): Proje
 
       break
     }
+    case 'gradle': {
+      hasProgram = globSync('src/main/kotlin/**/Main.kt', { cwd: directory }).length > 0
+
+      break
+    }
     case 'composer': {
       hasProgram = globSync('bin/*.php', { cwd: directory }).length > 0 || existsSync(join(directory, 'artisan'))
 

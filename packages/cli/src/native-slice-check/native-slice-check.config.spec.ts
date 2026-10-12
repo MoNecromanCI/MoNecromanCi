@@ -135,6 +135,55 @@ describe('slice-check java', () => {
   })
 })
 
+/** Writes a module build.gradle.kts with a group; the project directory's name is what the package segment comes from. */
+function seedBuild (project: string, group: string): void {
+  mkdirSync(join(workspace, project), { recursive: true })
+  writeFileSync(join(workspace, project, 'build.gradle.kts'), `plugins {}
+
+group = "${group}"
+version = "0.1.0"
+`)
+}
+
+describe('slice-check kotlin', () => {
+  it('accepts the worked example: Main at the root of the base package, role-named types and a test', () => {
+    seedBuild('apps/my-app', 'com.example')
+    seed(
+      'apps/my-app/src/main/kotlin/com/example/myapp/Main.kt',
+      'apps/my-app/src/main/kotlin/com/example/myapp/greeting/GreetUseCase.kt',
+      'apps/my-app/src/main/kotlin/com/example/myapp/greeting/GreetingContract.kt',
+      'apps/my-app/src/test/kotlin/com/example/myapp/greeting/GreetUseCaseTest.kt',
+    )
+
+    expect(run('kotlin', 'apps/my-app')).toMatchObject({ status: 0 })
+  })
+
+  it('rejects a type with no role, a stray type at the root, a junk package and a source outside the base package', () => {
+    seedBuild('apps/app', 'com.example')
+    seed(
+      'apps/app/src/main/kotlin/com/example/app/Main.kt',
+      'apps/app/src/main/kotlin/com/example/app/Helper.kt',
+      'apps/app/src/main/kotlin/com/example/app/greeting/Stuff.kt',
+      'apps/app/src/main/kotlin/com/example/app/util/ParseUseCase.kt',
+      'apps/app/src/main/kotlin/org/other/Elsewhere.kt',
+    )
+
+    const result = run('kotlin', 'apps/app')
+
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('only the entry point sits at the root of the base package')
+    expect(result.output).toContain('apps/app/src/main/kotlin/com/example/app/greeting/Stuff.kt - a type is <Name><Role>.kt')
+    expect(result.output).toContain('"util" is a junk drawer')
+    expect(result.output).toContain('sources live under the package com.example.app')
+  })
+
+  it('passes for a project with no build file or no sources', () => {
+    seed('apps/app/README.md')
+
+    expect(run('kotlin', 'apps/app')).toMatchObject({ status: 0 })
+  })
+})
+
 describe('slice-check php', () => {
   it('accepts the worked example: slice folders with role-named classes and a test beside them in tests/', () => {
     seed(
@@ -214,14 +263,14 @@ describe('slice-check ruby', () => {
 
 describe('slice-check usage', () => {
   it('refuses an unknown language', () => {
-    expect(run('kotlin', 'app').status).toBe(1)
+    expect(run('swift', 'app').status).toBe(1)
   })
 
   it('has a cached target keyed on the sources and the script', () => {
     expect(nativeSliceCheckTarget('rust', 'apps/hello')).toEqual({
       executor: 'nx:run-commands',
       cache:    true,
-      inputs:   ['{projectRoot}/src/**/*', '{projectRoot}/pom.xml', '{workspaceRoot}/tools/slice-check.cjs'],
+      inputs:   ['{projectRoot}/src/**/*', '{projectRoot}/pom.xml', '{projectRoot}/build.gradle.kts', '{workspaceRoot}/tools/slice-check.cjs'],
       options:  { command: 'node tools/slice-check.cjs rust apps/hello' },
     })
   })

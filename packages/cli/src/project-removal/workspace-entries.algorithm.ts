@@ -112,6 +112,24 @@ export function removeCargoWorkspaceMember (text: string, directory: string): st
 }
 
 /**
+ * Removes a project from `settings.gradle.kts`: its `include` and its `projectDir` line.
+ *
+ * @remarks
+ * Matches the exact project name, so a project whose name merely starts the same is kept.
+ *
+ * @param text - The text of the root `settings.gradle.kts`.
+ * @param name - The Gradle project name (its directory's name).
+ * @returns The text without the project's two lines; unchanged when it is not there.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function removeGradleProject (text: string, name: string): string {
+  const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+
+  return text.replaceAll(new RegExp(String.raw`^(?:include\(":${escaped}"\)|project\(":${escaped}"\)\.projectDir = .*)\r?\n`, 'gm'), '')
+}
+
+/**
  * Removes a module from the aggregator `pom.xml`'s `<modules>`.
  *
  * @remarks

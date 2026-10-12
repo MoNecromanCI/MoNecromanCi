@@ -11,11 +11,11 @@
  * @throws Never - pure object construction.
  * @typeParam None - this function has no generic type parameters.
  */
-export function nativeSliceCheckTarget (language: 'rust' | 'cpp' | 'java' | 'php' | 'ruby', projectRoot: string): Record<string, unknown> {
+export function nativeSliceCheckTarget (language: 'rust' | 'cpp' | 'java' | 'kotlin' | 'php' | 'ruby', projectRoot: string): Record<string, unknown> {
   return {
     executor: 'nx:run-commands',
     cache:    true,
-    inputs:   ['{projectRoot}/src/**/*', '{projectRoot}/pom.xml', '{workspaceRoot}/tools/slice-check.cjs'],
+    inputs:   ['{projectRoot}/src/**/*', '{projectRoot}/pom.xml', '{projectRoot}/build.gradle.kts', '{workspaceRoot}/tools/slice-check.cjs'],
     options:  { command: `node tools/slice-check.cjs ${language} ${projectRoot}` },
   }
 }

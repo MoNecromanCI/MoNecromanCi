@@ -8,6 +8,7 @@ import { type ProjectLocation, locateProjects } from './manifest.repository'
 import { findPackageImports } from './find-package-imports.use-case'
 import { removeBundlerGems } from './bundler-dependencies.use-case'
 import { removeComposerPackages } from './composer-dependencies.use-case'
+import { removeGradleDependencies } from './gradle-dependencies.use-case'
 import { removeMavenDependencies } from './maven-dependencies.use-case'
 import { removePipDependency } from './remove-pip-dependency.algorithm'
 import { resolveTarget } from './resolve-target-project.use-case'
@@ -138,6 +139,11 @@ function uninstallFrom (
     }
     case 'maven': {
       removeMavenDependencies(workspaceRoot, location, packages)
+
+      return
+    }
+    case 'gradle': {
+      removeGradleDependencies(workspaceRoot, location, packages, locations)
 
       return
     }

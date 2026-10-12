@@ -15,7 +15,7 @@ import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-d
  *
  * @typeParam None - this type has no generic type parameters.
  */
-export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'maven' | 'composer' | 'bundler' | 'go'
+export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'maven' | 'gradle' | 'composer' | 'bundler' | 'go'
 
 /**
  * Every ecosystem, in the order commands report them.
@@ -25,7 +25,7 @@ export type Ecosystem = 'npm' | 'pip' | 'pub' | 'nuget' | 'cargo' | 'cmake' | 'm
  * because it is the one with nothing to reconcile — every other ecosystem,
  * NuGet included, has a real per-project manifest whose versions can drift.
  */
-export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'maven', 'composer', 'bundler', 'go']
+export const ECOSYSTEMS: readonly Ecosystem[] = ['npm', 'pip', 'pub', 'nuget', 'cargo', 'cmake', 'maven', 'gradle', 'composer', 'bundler', 'go']
 
 /**
  * The label shown for the workspace root, which is not a project.
@@ -98,6 +98,8 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   cmake:    ['apps/*/CMakeLists.txt', 'packages/*/CMakeLists.txt', 'libs/*/CMakeLists.txt'],
   // A Maven module is located by its pom.xml; its dependencies are read in a later slice (#470).
   maven:    ['apps/*/pom.xml', 'packages/*/pom.xml', 'libs/*/pom.xml'],
+  // A Gradle project is located by its build.gradle.kts; its dependencies live in the version catalog and its own block.
+  gradle:   ['apps/*/build.gradle.kts', 'packages/*/build.gradle.kts', 'libs/*/build.gradle.kts'],
   // A PHP project is located by its composer.json; its dependencies are read in a later slice (#471).
   composer: ['apps/*/composer.json', 'packages/*/composer.json', 'libs/*/composer.json'],
   // A Ruby project is located by its Gemfile; its gems are read in a later slice (#472).
@@ -195,6 +197,7 @@ export function hasEcosystem (workspaceRoot: string, ecosystem: Ecosystem): bool
     cargo:    'Cargo.toml',
     cmake:    'CMakeLists.txt',
     maven:    'pom.xml',
+    gradle:   'settings.gradle.kts',
     composer: 'composer.json',
     bundler:  'Gemfile',
   }
@@ -776,6 +779,7 @@ export function collectInventory (
     cargo:    collectCargo,
     cmake:    () => [],
     maven:    () => [],
+    gradle:   () => [],
     composer: () => [],
     bundler:  () => [],
     go:       collectGo,
@@ -816,6 +820,7 @@ const PROJECT_GLOBS: Record<Ecosystem, string[]> = {
   cargo:    ['apps/*/Cargo.toml', 'libs/*/Cargo.toml', 'packages/*/Cargo.toml'],
   cmake:    ['apps/*/CMakeLists.txt', 'libs/*/CMakeLists.txt', 'packages/*/CMakeLists.txt'],
   maven:    ['apps/*/pom.xml', 'libs/*/pom.xml', 'packages/*/pom.xml'],
+  gradle:   ['apps/*/build.gradle.kts', 'libs/*/build.gradle.kts', 'packages/*/build.gradle.kts'],
   composer: ['apps/*/composer.json', 'libs/*/composer.json', 'packages/*/composer.json'],
   bundler:  ['apps/*/Gemfile', 'libs/*/Gemfile', 'packages/*/Gemfile'],
   go:       ['apps/*/go.mod', 'libs/*/go.mod', 'packages/*/go.mod'],

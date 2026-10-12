@@ -733,7 +733,7 @@ piece of work (#470). Apps live in `apps/`, publishable libraries in `packages/`
 Measured with JDK 21.0.12 (Temurin), Maven 3.10.0 and Checkstyle 14.3 on Windows: generate, link, lint, test, build, package,
 run, install and uninstall, `nx release`, `mnci doctor`.
 
-Not covered yet (#470): Gradle; `mnci sync` / `mnci up` reading a module's dependency versions; publishing to a Maven
+Not covered yet (#470): Gradle (see Kotlin below, #492); `mnci sync` / `mnci up` reading a module's dependency versions; publishing to a Maven
 repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); the JDK in `mnci ci setup`
 and the devcontainer; a debugger launch configuration; `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
 lookup.
@@ -741,6 +741,46 @@ lookup.
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust and C++, and what `lint` depends on) holds the layout: the root of the
 base package holds only `Main`, a type is `<Name><Role>.java` (a test `<Name><Role>Test.java`), a package is one lowercase word,
 no package is a junk drawer, and every source is under the base package.
+
+## Kotlin projects (`mnci add kotlin-app | kotlin-lib | kotlin-internal-lib`)
+
+`@nx/gradle` is inference-only (no project generator), so mnci writes the Gradle project itself, as it writes a Java or C++ one.
+Apps live in `apps/`, publishable libraries in `packages/`, private ones in `libs/`. Gradle and a JDK 21 must be on `PATH`
+(no wrapper is written yet).
+
+- **One `settings.gradle.kts` at the root** (mnci's, as `go.work` and the root `pom.xml` are) has the repository every project
+  resolves from and, between `// mnci:projects` markers, an `include(":<name>")` plus `projectDir = file("apps/<name>")` per
+  project, so a task path is `:<name>:test`. **`gradle/libs.versions.toml`** is the version catalog (Kotlin, ktlint and every
+  library mnci adds). `gradle.properties` is written once and is yours.
+- **A `build.gradle.kts` is a program, so mnci edits only what it wrote.** Each project's build file is a fixed shape: plugins
+  from the catalog, `group`, `version`, the build directory moved to `dist/gradle/<name>`, `kotlin { jvmToolchain(21) }`, and a
+  `dependencies { }` block with two marker comments (`// mnci:dependencies` ... `// mnci:dependencies-end`) between which
+  `mnci install` and `mnci uninstall` write. A build file with no markers (one the team reshaped) is **refused with a message,
+  never guessed at**.
+- **Targets** (run from the root against `:<name>`): `build` is `assemble` (and waits for `^build`, so two Gradle runs do not
+  compile the same sibling at once), `test` is `test`, `lint` is **ktlint** (`org.jlleitschuh.gradle.ktlint`, official code style)
+  after the shared `slice-check`, an app has `start` (`run`) and `package` (`distZip` into `dist/drop/kotlin-app-<name>.zip`).
+  No `typecheck`: compiling is the check.
+- **The worked example** is a package slice, `<group>.<name>.greeting`, with `GreetingContract`, `GreetUseCase` and
+  `GreetUseCaseTest`; an app's `Main.kt` only wires. The `group` is the git origin reversed (`com.github.acme`), or `com.example`.
+- **`mnci install -w <project> <sibling>`** writes `implementation(project(":sibling"))` and an `implicitDependencies` edge;
+  **`group:artifact[@version]`** puts the library in the catalog (alias `artifact`, newest Maven Central release when no
+  version) and `implementation(libs.<alias>)` in that project; `--save-dev` is `testImplementation`. `mnci uninstall` removes
+  the line and, when no project uses it, the catalog entry. `mnci remove` drops the project's `include`.
+- **A `kotlin-lib` releases by tag**: `tools/gradle-version-actions.cjs` reads and writes the `version = "x"` line, and
+  `nx-release-publish` is a no-op until a repository is chosen. The CI release phase counts `packages/*/build.gradle.kts`.
+- **`slice-check`** (`kotlin` mode of the shared script, what `lint` depends on): the root of the base package holds only
+  `Main`, a type is `<Name><Role>.kt` (a test `<Name><Role>Test.kt`), a package is one lowercase word, no package is a junk
+  drawer, and every source is under the base package (the build file's `group` plus the directory name).
+- `.gradle/` and `.kotlin/` are added to `.gitignore`.
+
+Measured with Gradle 9.8.1, Kotlin 2.4.21 (the portal's 2.5 releases are betas), ktlint plugin 14.2 and JDK 21 on Windows: a
+cold build downloads for about a minute, a warm one takes seconds, and two Gradle invocations at once in one root did not
+clash (no configuration cache is used).
+
+Not covered yet (#492): the Gradle wrapper (`gradlew`); `mnci sync` / `mnci up` reading the catalog; publishing to a Maven
+repository; the JDK and Gradle in `mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`
+(`gradle --continuous`); Kotlin Multiplatform; a `--build-tool gradle` option for the Java kinds; Android (#493).
 
 ## PHP projects (`mnci add php-app | php-lib | php-internal-lib`)
 
