@@ -173,6 +173,8 @@ mnci sync --check             # ...report and exit non-zero, writing nothing
 
 mnci up                       # what has a newer release, grouped; pick what to update
 mnci up --check               # ...report only (the default when output is piped)
+mnci up @nx/js ts-jest      # ...update exactly these packages, no prompt
+mnci up --json                # ...the updates as one JSON document, with a link to each release (what the editor reads)
 
 mnci i -w web left-pad        # add a dep to ONE project, using its toolchain (alias: mnci install)
 mnci i -w api github.com/x/y  # ...go get in the Go module; dotnet/flutter/pip all dispatched the same way
@@ -386,6 +388,12 @@ A selected Go module is upgraded with `go get <module>@<version>`, never by
 editing `go.mod` — that file is the toolchain's to write. It runs inside each module that declares the
 package (a multi-module workspace has no root module to run it in), and the reinstall is `go work sync`
 (`go mod tidy` for a flat repository).
+
+Name packages to update exactly those without a prompt (`mnci up @nx/js ts-jest`); a name with nothing to update
+is said so and exits non-zero. `--json` prints one document (`name`, `ecosystem`, `kind`, `current`, `latest`, `link`,
+`projects`, `sections` per update, in report order) and writes nothing: `link` is the registry page of the new version
+(npmjs, PyPI, pub.dev, NuGet, crates.io, pkg.go.dev, RubyGems, Packagist, Maven Central), where the changelog is one
+click away. It is what the editor extension reads.
 
 Flags: `--check` (report only; also the automatic behaviour when stdout is not a
 TTY, so a piped or CI run reports instead of hanging on a prompt), `-y/--yes`

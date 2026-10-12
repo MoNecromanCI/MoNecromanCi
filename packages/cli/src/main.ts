@@ -207,15 +207,17 @@ export function buildProgram (cliVersion: string): Command {
 
   program
     .command('up')
+    .argument('[packages...]', 'update exactly these packages, without a prompt')
     .description(
       'Show every dependency with a newer published release — grouped patch/minor/major/non-semver, with the projects declaring each one — and interactively update the ones you pick',
     )
     .option('--check', 'report only; never prompt and never write (the default when piped, unless --yes)')
     .option('-y, --yes', 'select every available update without prompting')
+    .option('--json', 'print the available updates as one JSON document (with a link to each release); never prompt, never write')
     .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | nuget | cargo | go')
     .option('--no-install', 'update the manifests but skip the reinstall step')
-    .action(async (options: UpOptions) => {
-      await runUp(process.cwd(), options)
+    .action(async (packages: string[] | undefined, options: UpOptions) => {
+      await runUp(process.cwd(), options, packages ?? [])
     })
 
   program

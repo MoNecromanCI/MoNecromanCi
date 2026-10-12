@@ -348,6 +348,59 @@ describe('runUp', () => {
     expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.9.0')
   })
 
+  it('updates exactly the packages named on the command line, without a prompt', async () => {
+    seedWorkspace()
+    write('packages/auth/package.json', JSON.stringify({ dependencies: { axios: '^1.7.2', ms: '^2.0.0' } }))
+    write('node_modules/ms/package.json', JSON.stringify({ version: '2.0.0' }))
+    mockLatestVersions.mockResolvedValue(new Map([['axios', '1.9.0'], ['ms', '2.1.3']]))
+
+    await runUp(workspaceRoot, { install: false }, ['axios'])
+
+    expect(mockCheckbox).not.toHaveBeenCalled()
+    expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.9.0')
+    expect(readManifest('packages/auth/package.json').dependencies.ms).toBe('^2.0.0')
+  })
+
+  it('says so, and exits non-zero, for a named package that has nothing to update', async () => {
+    seedWorkspace()
+    mockLatestVersions.mockResolvedValue(new Map([['axios', '1.9.0']]))
+    const previous = process.exitCode
+
+    await runUp(workspaceRoot, { install: false }, ['left-pad'])
+
+    expect(process.exitCode).toBe(1)
+    expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.7.2')
+    process.exitCode = previous
+  })
+
+  it('--json prints one document with a release link and writes nothing', async () => {
+    seedWorkspace()
+    mockLatestVersions.mockResolvedValue(new Map([['axios', '1.9.0']]))
+    const written: string[] = []
+    jest.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      written.push(String(chunk))
+
+      return true
+    })
+
+    await runUp(workspaceRoot, { json: true })
+
+    expect(mockCheckbox).not.toHaveBeenCalled()
+    expect(logged).toEqual([])
+    const report = JSON.parse(written.join('')) as { updates: Array<Record<string, unknown>> }
+    expect(report.updates).toEqual([{
+      name:      'axios',
+      ecosystem: 'npm',
+      kind:      'minor',
+      current:   '1.7.2',
+      latest:    '1.9.0',
+      link:      'https://www.npmjs.com/package/axios/v/1.9.0',
+      projects:  ['packages/api', 'packages/auth'],
+      sections:  ['dep'],
+    }])
+    expect(readManifest('packages/auth/package.json').dependencies.axios).toBe('^1.7.2')
+  })
+
   it('--yes writes when stdout is piped, and --check still does not (#310)', async () => {
     Object.defineProperty(process.stdout, 'isTTY', { value: undefined, configurable: true, writable: true })
     seedWorkspace()

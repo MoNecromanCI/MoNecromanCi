@@ -12,6 +12,8 @@ import {
   type Ecosystem,
 } from './manifest.repository'
 import { latestVersions } from './registry.client'
+import type { Outdated } from './outdated.contract'
+import { toUpdateReport } from './update-report.mapper'
 import {
   UPDATE_KINDS,
   UPDATE_KIND_LABELS,
@@ -21,14 +23,15 @@ import {
   isNewer,
   rangeOperator,
   specVersion,
-  type UpdateKind,
 } from './semver.algorithm'
 import { runFormatter, runShell } from '../nx-workspace'
 import { fileExists, readJson } from '../file-system'
-import { logger } from '../terminal'
+import { logger, printJson } from '../terminal'
 import { resolveEcosystems, syncProjectReferences } from './sync-dependencies.use-case'
 import { reportToolVersions } from '../tool-versions'
 import { completeLockfile } from '../lockfile-completion'
+
+export type { Outdated } from './outdated.contract'
 
 /**
  * Options accepted by `mnci up`.
@@ -45,36 +48,12 @@ export interface UpOptions {
   check?:     boolean
   /** Select every available update without prompting. */
   yes?:       boolean
+  /** Print the available updates as one JSON document; never prompt and never write. */
+  json?:      boolean
   /** Restrict the run to one ecosystem. */
   ecosystem?: string
   /** Commander sets this to `false` for `--no-install`. */
   install?:   boolean
-}
-
-/**
- * One package with a newer release available.
- *
- * @remarks
- * `current` is one version even though `sites` may declare several ranges: it
- * is what the workspace actually resolved, which is the only version an upgrade
- * is meaningfully measured from. A workspace whose sites genuinely disagree is
- * `mnci sync`'s problem, not this command's.
- *
- * @typeParam None - this interface has no generic type parameters.
- */
-export interface Outdated {
-  /** The package name. */
-  name:      string
-  /** Which ecosystem it belongs to. */
-  ecosystem: Ecosystem
-  /** The version currently in use. */
-  current:   string
-  /** The newest published version. */
-  latest:    string
-  /** Which `npm-check` section this upgrade belongs in. */
-  kind:      UpdateKind
-  /** Every place it is declared — the column `npm-check` does not have. */
-  sites:     DependencySite[]
 }
 
 /**
@@ -533,6 +512,34 @@ function applyGoUpdates (workspaceRoot: string, entries: readonly Outdated[]): v
 }
 
 /**
+ * The updates for the packages the user named on the command line.
+ *
+ * @remarks
+ * A name that is not outdated (up to date, or not declared) is said so and sets the exit code, so a script that asked
+ * for a package it mistyped does not read a clean exit as "updated".
+ *
+ * @param outdated - Everything with an update available.
+ * @param names - The package names given as arguments.
+ * @returns The matching updates, in the order they were asked for.
+ * @throws Never - an unknown name is a warning and a non-zero exit code.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function selectNamed (outdated: readonly Outdated[], names: readonly string[]): Outdated[] {
+  const selected: Outdated[] = []
+  for (const name of names) {
+    const entry = outdated.find(candidate => candidate.name === name)
+    if (entry === undefined) {
+      logger.warn(`${name} has no newer release, or is not declared in this workspace.`)
+      process.exitCode = 1
+    } else if (!selected.includes(entry)) {
+      selected.push(entry)
+    }
+  }
+
+  return selected
+}
+
+/**
  * Reports every outdated dependency across the workspace and offers to update.
  *
  * @remarks
@@ -552,27 +559,35 @@ function applyGoUpdates (workspaceRoot: string, entries: readonly Outdated[]): v
  * `--ecosystem` flag names something unknown.
  * @typeParam None - this function has no generic type parameters.
  */
-export async function runUp (workspaceRoot: string, options: UpOptions): Promise<void> {
+export async function runUp (workspaceRoot: string, options: UpOptions, packages: readonly string[] = []): Promise<void> {
   if (!fileExists(join(workspaceRoot, 'nx.json'))) {
     throw new Error(`No nx.json found in ${workspaceRoot} — run 'mnci up' from the workspace root.`)
   }
+  const quiet = options.json === true
 
   const ecosystems = resolveEcosystems(options.ecosystem)
   for (const ecosystem of ecosystems) {
-    if (!hasEcosystem(workspaceRoot, ecosystem)) {
+    if (!quiet && !hasEcosystem(workspaceRoot, ecosystem)) {
       logger.info(`⊘ SKIPPED ${ecosystem} — no ${ecosystem} project in this workspace.`)
     }
   }
 
   // The tools mnci pins are not requirements of any manifest, so they are reported on their own, and only for a full
   // run: `--ecosystem` asks about one kind of dependency, not about mnci's own pins (#241).
-  if (options.ecosystem === undefined) {
+  if (!quiet && options.ecosystem === undefined) {
     await reportToolVersions()
   }
 
-  logger.step('Querying registries for the latest published versions')
+  if (!quiet) {
+    logger.step('Querying registries for the latest published versions')
+  }
   const outdated = await collectOutdated(workspaceRoot, ecosystems)
 
+  if (options.json) {
+    printJson(toUpdateReport(outdated))
+
+    return
+  }
   if (outdated.length === 0) {
     logger.success('Every dependency is on its latest published version.')
 
@@ -580,7 +595,7 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
   }
 
   // `--yes` is the non-interactive way to write, so a pipe (CI, a script) must not turn it back into a report.
-  const readOnly = options.check ?? (options.yes ? false : !process.stdout.isTTY)
+  const readOnly = options.check ?? (options.yes || packages.length > 0 ? false : !process.stdout.isTTY)
   if (readOnly) {
     reportOutdated(outdated)
     logger.info('')
@@ -589,7 +604,14 @@ export async function runUp (workspaceRoot: string, options: UpOptions): Promise
     return
   }
 
-  const selected = options.yes ? [...outdated] : await promptForUpdates(outdated)
+  let selected: Outdated[]
+  if (packages.length > 0) {
+    selected = selectNamed(outdated, packages)
+  } else if (options.yes) {
+    selected = [...outdated]
+  } else {
+    selected = await promptForUpdates(outdated)
+  }
   if (selected.length === 0) {
     logger.info('Nothing selected; no manifest was changed.')
 

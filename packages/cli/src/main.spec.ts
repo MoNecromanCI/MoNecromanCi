@@ -129,9 +129,19 @@ jest.mock('commander', () => {
           positionals.push(token)
         }
       }
-      while (positionals.length < subcommand.argumentNames.length) positionals.push(undefined)
+      // A variadic argument (`[packages...]`) takes every remaining positional as ONE array, and nothing when none
+      // was given, as commander does; without this each name arrived as a separate parameter.
+      const parameters: unknown[] = []
+      for (const [index, argumentName] of subcommand.argumentNames.entries()) {
+        if (argumentName.endsWith('...')) {
+          const rest = positionals.splice(index)
+          parameters.push(rest.length > 0 ? rest : undefined)
+        } else {
+          parameters.push(positionals[index])
+        }
+      }
 
-      await subcommand.actionHandler?.(...positionals, options)
+      await subcommand.actionHandler?.(...parameters, options)
 
       return this
     }
@@ -353,6 +363,17 @@ describe('buildProgram', () => {
     expect(mockRunUp).toHaveBeenCalledWith(
       '/somewhere/demo',
       expect.objectContaining({ yes: true }),
+      [],
+    )
+  })
+
+  it('routes the packages named after `up` to runUp, and --json with them', async () => {
+    jest.spyOn(process, 'cwd').mockReturnValue('/somewhere/demo')
+    await buildProgram('1.0.0').parseAsync(['node', 'mnci', 'up', '@nx/js', 'ts-jest', '--json'])
+    expect(mockRunUp).toHaveBeenCalledWith(
+      '/somewhere/demo',
+      expect.objectContaining({ json: true }),
+      ['@nx/js', 'ts-jest'],
     )
   })
 
@@ -375,6 +396,7 @@ describe('buildProgram', () => {
     expect(mockRunUp).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ install: false }),
+      [],
     )
   })
 
