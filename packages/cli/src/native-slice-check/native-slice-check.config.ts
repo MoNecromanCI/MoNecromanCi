@@ -21,7 +21,7 @@ export const SLICE_CHECK_PATH = 'tools/slice-check.cjs'
 export const SLICE_CHECK_SCRIPT = String.raw`#!/usr/bin/env node
 // Written by MoNecromanCI; mnci rewrites it, so local edits do not survive.
 //
-// node tools/slice-check.cjs <rust|cpp|java|kotlin|php|ruby> <project directory>...
+// node tools/slice-check.cjs <rust|cpp|java|kotlin|android|php|ruby> <project directory>...
 //
 // The Rust and C++ counterpart of the vertical-slices/file-role lint rule: a file under src/ is <snake>_<role>
 // (a C++ test <snake>_<role>_test), only the entry point sits at the root of src/, a slice's barrel is mod.rs (Rust) or
@@ -88,6 +88,15 @@ function check (language, project) {
 const JAVA_ROLES = ['Handler', 'UseCase', 'Algorithm', 'Policy', 'Model', 'Contract', 'Mapper', 'Validator', 'Repository', 'Client', 'Store', 'Middleware', 'Error', 'Config', 'Enum']
 const JAVA_ENTRY_POINTS = new Set(['Main', 'package-info'])
 const JAVA_TYPE = new RegExp('^[A-Z][A-Za-z0-9]*(?:' + JAVA_ROLES.join('|') + ')(?:Test)?$')
+const JAVA_VOCABULARY = { entries: JAVA_ENTRY_POINTS, roles: JAVA_ROLES, type: JAVA_TYPE }
+// An Android UI is a front end, so it also has the front-end roles (a composable is <Name>Component.kt), and its entry point
+// is the activity the manifest names rather than a Main.
+const ANDROID_ROLES = [...JAVA_ROLES, 'Component', 'Route', 'Section', 'Style', 'Content']
+const ANDROID_VOCABULARY = {
+  entries: new Set(['MainActivity', 'package-info']),
+  roles: ANDROID_ROLES,
+  type: new RegExp('^[A-Z][A-Za-z0-9]*(?:' + ANDROID_ROLES.join('|') + ')(?:Test)?$'),
+}
 
 // Java mandates a file named for its one public type, so the role sits in the type name (as it does for C#), and a package is
 // a slice. The base package is the pom's groupId plus its artifactId with every character that is not a letter or digit
@@ -106,7 +115,7 @@ function javaBase (project) {
   return [...group.split('.'), segment]
 }
 
-function checkJvm (project, base, trees, extension) {
+function checkJvm (project, base, trees, extension, vocabulary = JAVA_VOCABULARY) {
   const problems = []
   for (const tree of trees) {
     const root = join(project, ...tree.split('/'))
@@ -130,9 +139,9 @@ function checkJvm (project, base, trees, extension) {
         if (extname(entry.name) !== extension) continue
         const stem = entry.name.slice(0, -extension.length)
         if (depth === 0) {
-          if (!JAVA_ENTRY_POINTS.has(stem)) problems.push(shown + ' - only the entry point sits at the root of the base package; move this into a slice package')
-        } else if (stem !== 'package-info' && !JAVA_TYPE.test(stem)) {
-          problems.push(shown + ' - a type is <Name><Role>' + extension + ' (roles: ' + JAVA_ROLES.join(', ') + '; a test <Name><Role>Test' + extension + ')')
+          if (!vocabulary.entries.has(stem)) problems.push(shown + ' - only the entry point sits at the root of the base package; move this into a slice package')
+        } else if (stem !== 'package-info' && !vocabulary.type.test(stem)) {
+          problems.push(shown + ' - a type is <Name><Role>' + extension + ' (roles: ' + vocabulary.roles.join(', ') + '; a test <Name><Role>Test' + extension + ')')
         }
       }
     }
@@ -186,6 +195,16 @@ function checkKotlin (project) {
   const base = kotlinBase(project)
 
   return base ? checkJvm(project, base, ['src/main/kotlin', 'src/test/kotlin'], '.kt') : []
+}
+
+// An Android module is a Kotlin one whose base package is the namespace its build file declares (the manifest and the
+// generated R class use it, so it is the package the sources must live in).
+function checkAndroid (project) {
+  const build = join(project, 'build.gradle.kts')
+  if (!existsSync(build)) return []
+  const namespace = (/^\s*namespace\s*=\s*"([^"\s]+)"/m.exec(readFileSync(build, 'utf8')) || [])[1]
+
+  return namespace ? checkJvm(project, namespace.split('.'), ['src/main/kotlin', 'src/test/kotlin'], '.kt', ANDROID_VOCABULARY) : []
 }
 
 // PHP: PSR-4 names a class file for its one class, so the role is in the class name and the folder and namespace are the
@@ -279,10 +298,10 @@ function checkRuby (project) {
 }
 
 const [name, ...projects] = process.argv.slice(2)
-const CHECKERS = { java: { check: checkJava }, kotlin: { check: checkKotlin }, php: { check: checkPhp }, ruby: { check: checkRuby } }
+const CHECKERS = { android: { check: checkAndroid }, java: { check: checkJava }, kotlin: { check: checkKotlin }, php: { check: checkPhp }, ruby: { check: checkRuby } }
 const language = CHECKERS[name] || LANGUAGES[name]
 if (!language || projects.length === 0) {
-  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|kotlin|php|ruby> <project directory>...')
+  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|kotlin|android|php|ruby> <project directory>...')
   process.exit(1)
 }
 let failed = 0

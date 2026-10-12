@@ -4333,6 +4333,113 @@ ${kitBuild}`,
   enforce('kotlin: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('android', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add android-app|android-lib|android-internal-lib` (#493): Gradle projects on the Android Gradle Plugin, written
+   * by mnci. Gated on gradle, a JDK and an Android SDK (ANDROID_HOME), reported SKIPPED without them. The licences are
+   * the person's to accept, so the section never installs the SDK.
+   * ------------------------------------------------------------------------- */
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
+  if (sdk === undefined || !hasTool('gradle --version') || !hasTool('java -version') || !existsSync(sdk)) {
+    skip('the entire Android section', 'Gradle, a JDK or the Android SDK (ANDROID_HOME) is not available')
+
+    return
+  }
+  const root = path.join(temporary, 'androidws')
+  run(`node ${CLI} new androidws --yes --registry npm --scope @adw`, temporary)
+  run(`node ${CLI} add android-app hello`, root)
+  run(`node ${CLI} add android-internal-lib kit`, root)
+  run(`node ${CLI} add android-lib core`, root)
+  const settings = readFileSync(path.join(root, 'settings.gradle.kts'), 'utf8')
+  enforce(
+    'android: settings.gradle.kts includes every project and resolves from google()',
+    ['hello', 'kit', 'core'].every(project => settings.includes(`include(":${project}")`)) && /pluginManagement[\s\S]*google\(\)/.test(settings),
+    settings,
+  )
+  const linked = tryRunCapture(`node ${CLI} i -w hello kit`, root)
+  const helloBuild = readFileSync(path.join(root, 'apps/hello/build.gradle.kts'), 'utf8')
+  const helloProject = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8'))
+  enforce(
+    'android: installing a sibling project declares it and records the graph edge',
+    linked.ok && helloBuild.includes('implementation(project(":kit"))') && (helloProject.implicitDependencies ?? []).includes('kit'),
+    `${linked.output.slice(-600)}
+${helloBuild}`,
+  )
+  const group = /^group = "([^"]+)"/m.exec(helloBuild)[1]
+  writeFileSync(
+    path.join(root, 'apps/hello/src/main/kotlin', ...group.split('.'), 'hello/MainActivity.kt'),
+    `package ${group}.hello
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import ${group}.hello.greeting.Greeting
+import ${group}.hello.greeting.GreetingContract
+import ${group}.kit.greeting.GreetUseCase
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            Greeting(GreetingContract(GreetUseCase.greet("kit").message))
+        }
+    }
+}
+`,
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,test,build --projects=hello,kit,core', root)
+  enforce('android: lint, test and build pass for an app, an internal library and a publishable one', checks.ok, checks.output.slice(-3000))
+  const apk = path.join(root, 'dist/gradle/hello/outputs/apk/debug/hello-debug.apk')
+  const aar = path.join(root, 'dist/gradle/core/outputs/aar/core-release.aar')
+  enforce('android: the APK and the AAR land in dist/gradle/<name>, not beside the sources', existsSync(apk) && existsSync(aar) && !existsSync(path.join(root, 'apps/hello/build')), checks.output.slice(-800))
+  const packaged = tryRunCapture('npx nx run hello:package', root)
+  enforce(
+    'android: package puts the APK in dist/drop',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/android-app-hello.apk')),
+    packaged.output.slice(-1500),
+  )
+  // The slice check names a type with no role, and lint fails on it.
+  const stray = path.join(root, 'libs/kit/src/main/kotlin', ...group.split('.'), 'kit/greeting/Stuff.kt')
+  writeFileSync(stray, `package ${group}.kit.greeting
+
+/** A type with no role. */
+object Stuff
+`)
+  const rejected = tryRunCapture('npx nx run kit:slice-check --skip-nx-cache', root)
+  enforce('android: the slice check rejects a type with no role', !rejected.ok && /Stuff\.kt/.test(rejected.output), rejected.output.slice(-1000))
+  rmSync(stray)
+  // An AndroidX library lives on Google's Maven repository, so it takes an explicit version.
+  const added = tryRunCapture(`node ${CLI} i -w kit androidx.annotation:annotation@1.9.1`, root)
+  const kitBuild = readFileSync(path.join(root, 'libs/kit/build.gradle.kts'), 'utf8')
+  const androidCatalog = readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8')
+  enforce(
+    'android: installing an AndroidX coordinate declares it in the catalog and resolves from Google',
+    added.ok && kitBuild.includes('implementation(libs.annotation)') && /annotation = \{ module = "androidx\.annotation:annotation"/.test(androidCatalog),
+    `${added.output.slice(-800)}
+${kitBuild}`,
+  )
+  const removed = tryRunCapture(`node ${CLI} un -w kit androidx.annotation:annotation`, root)
+  enforce(
+    'android: uninstall removes it from the project and the catalog',
+    removed.ok && !readFileSync(path.join(root, 'libs/kit/build.gradle.kts'), 'utf8').includes('annotation') && !readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8').includes('androidx.annotation'),
+    removed.output.slice(-800),
+  )
+  const toolsLint = tryRunCapture('npx eslint tools', root)
+  enforce('android: the generated tools/ scripts pass the shipped ESLint config', toolsLint.ok, toolsLint.output.slice(-1500))
+  run('git add -A', root)
+  run('git commit -m "feat: add the android projects"', root)
+  const tracked = tryRunCapture('git ls-files', root)
+  enforce(
+    'android: no .gradle, build output or local.properties is tracked',
+    tracked.ok && !/(?:^|\/)\.gradle\//m.test(tracked.output) && !/^dist\//m.test(tracked.output) && !/(?:^|\/)local\.properties$/m.test(tracked.output) && !/^build\//m.test(tracked.output),
+    tracked.output.slice(-800),
+  )
+  const release = tryRunCapture('npx nx release --dry-run', root)
+  enforce('android: nx release versions the publishable library from its build file', release.ok && /core/.test(release.output), release.output.slice(-2000))
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('android: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('php', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add php-app|php-lib|php-internal-lib` (#471): Composer packages written by mnci (no

@@ -18,9 +18,23 @@ import type { ProjectLocation } from './manifest.repository'
 /** The version catalog, relative to the workspace root: the declarative surface `mnci install` edits. */
 const CATALOG = 'gradle/libs.versions.toml'
 
-/** Compiles the project's main sources, which is what makes Gradle resolve and download its dependencies. */
+/**
+ * Compiles the project's main sources, which is what makes Gradle resolve and download its dependencies.
+ *
+ * @remarks
+ * An Android module has no `classes` task (its variants are compiled by `compileDebugKotlin`), so the task follows the
+ * plugin the build file applies.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param location - The project.
+ * @returns Nothing.
+ * @throws Never - a failure is a warning.
+ * @typeParam None - this function has no generic type parameters.
+ */
 function resolve (workspaceRoot: string, location: ProjectLocation): void {
-  const arguments_ = ['--console=plain', '-q', `:${location.name}:classes`]
+  const buildFile = join(workspaceRoot, location.dir, 'build.gradle.kts')
+  const android = fileExists(buildFile) && /com\.android\.|plugins\.android\./.test(readFileSync(buildFile, 'utf8'))
+  const arguments_ = ['--console=plain', '-q', `:${location.name}:${android ? 'compileDebugKotlin' : 'classes'}`]
   logger.step(`${location.dir}: gradle ${arguments_.join(' ')}`)
   if (runShell('gradle', arguments_, workspaceRoot) !== 0) {
     logger.warn(`gradle failed for ${location.name}: a dependency may not exist, or may not be reachable (a private repository is declared in settings.gradle.kts)`)

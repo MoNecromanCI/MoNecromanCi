@@ -106,15 +106,16 @@ export function kotlinTargets (name: string, directory: string, app: boolean): R
  * workspace root, and `git add -A` after a build would commit them. Idempotent.
  *
  * @param workspaceRoot - Absolute path to the workspace.
+ * @param extra - Further entries to ignore (an Android workspace adds `local.properties`).
  * @returns Nothing.
  * @throws Error when `.gitignore` cannot be read or written.
  * @typeParam None - this function has no generic type parameters.
  */
-function ensureGradleIgnored (workspaceRoot: string): void {
+export function ensureGradleIgnored (workspaceRoot: string, extra: readonly string[] = []): void {
   const path = join(workspaceRoot, '.gitignore')
   const current = fileExists(path) ? readFileSync(path, 'utf8') : ''
   const lines = new Set(current.split('\n').map(line => line.trim()))
-  const missing = ['.gradle/', '.kotlin/'].filter(entry => !lines.has(entry) && !lines.has(`/${entry}`))
+  const missing = ['.gradle/', '.kotlin/', ...extra].filter(entry => !lines.has(entry) && !lines.has(`/${entry}`))
   if (missing.length === 0) {
     return
   }
@@ -136,7 +137,7 @@ function ensureGradleIgnored (workspaceRoot: string): void {
  * @throws Error when a file cannot be read or written.
  * @typeParam None - this function has no generic type parameters.
  */
-function registerKotlinProject (workspaceRoot: string, name: string, directory: string): void {
+export function registerKotlinProject (workspaceRoot: string, name: string, directory: string): void {
   const settings = join(workspaceRoot, GRADLE_SETTINGS_PATH)
   if (fileExists(settings)) {
     const text = readFileSync(settings, 'utf8')
