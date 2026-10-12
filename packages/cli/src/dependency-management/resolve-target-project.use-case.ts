@@ -21,18 +21,36 @@ export function resolveTarget (
   locations: readonly ProjectLocation[],
   target: string,
 ): ProjectLocation | undefined {
-  const byDir = locations.find(location => location.dir === target)
-  if (byDir !== undefined) {
-    return byDir
+  const byDir = locations.filter(location => location.dir === target)
+  if (byDir.length > 0) {
+    return preferred(byDir)
   }
   const byName = locations.filter(location => location.name === target)
-  if (byName.length > 1) {
+  const directories = [...new Set(byName.map(match => match.dir))]
+  if (directories.length > 1) {
     logger.error(
-      `'${target}' matches ${byName.length} projects (${byName.map(match => match.dir).join(', ')}) — name it by directory`,
+      `'${target}' matches ${directories.length} projects (${directories.join(', ')}) — name it by directory`,
     )
 
     return undefined
   }
 
-  return byName[0]
+  return preferred(byName)
+}
+
+/**
+ * Chooses the project's own toolchain among the manifests one folder holds.
+ *
+ * @remarks
+ * A Laravel app is a Composer project that also ships a `package.json` for its front-end assets, and a Rails app likewise;
+ * the folder is one project, and its dependencies belong to the framework's package manager. npm is therefore only the
+ * answer when nothing else owns the folder.
+ *
+ * @param candidates - The manifests found in one folder (or none).
+ * @returns The non-npm one when there is one, else the first; `undefined` for none.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function preferred (candidates: readonly ProjectLocation[]): ProjectLocation | undefined {
+  return candidates.find(candidate => candidate.ecosystem !== 'npm') ?? candidates[0]
 }

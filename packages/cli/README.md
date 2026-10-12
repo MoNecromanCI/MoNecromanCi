@@ -771,6 +771,26 @@ Measured with PHP 8.4.25, Composer 2.10.3, PHPUnit 12.5, PHPStan 2.1 and PHP_Cod
 test, build, package, run, install and uninstall, `nx release`, `mnci doctor`. The PHP that winget installs has no `php.ini`:
 enable `openssl`, `mbstring`, `curl`, `zip` and `fileinfo` (and set `extension_dir`) or Composer cannot download.
 
+### Laravel (`mnci add php-app <name> --template laravel`, #488)
+
+The scaffold is the framework's own installer, `composer create-project laravel/laravel apps/<name>`, so no template is
+maintained here against Laravel's releases (Laravel 13 on PHP 8.3 or newer; SQLite is its default database, so `pdo_sqlite`
+and `sqlite3` must be enabled in `php.ini`). Larastan is added beside the app's own Pint and PHPUnit. The app keeps its own
+`composer.json` and `vendor/` and runs its own tools from its folder:
+
+- **`test`** is `php artisan test`, **`lint`** is `pint --test` then PHPStan with Larastan at level 5, **`build`** is
+  `composer install`, **`start`** is `php artisan serve`, **`package`** zips `app`, `bootstrap`, `config`, `database` (no
+  `*.sqlite`), `public`, `resources`, `routes`, `storage`, `vendor`, `artisan` and the manifest.
+- **The worked example** is `app/Features/Greeting` (a contract and a use case, the role in the class name) called by a
+  `/hello/{name}` route added to `routes/web.php`, with a unit test and a route test.
+- **Exception to the slice rules** (the `php` `slice-check` is not wired for a Laravel app): the framework mandates
+  `app/Http/Controllers/*Controller.php`, `app/Models`, `app/Providers`, `routes/`, `database/migrations` and
+  `<Name>ServiceProvider`, which a StudlyCase `<Name><Role>` check would reject. Permanent for the template; new hand-written
+  code goes in `app/Features/<Slice>/` and follows the rules. `--empty` is refused with a template.
+- `.env` and `database/database.sqlite` are created by the installer and ignored by the app's own `.gitignore`; only
+  `.env.example` is committed. Not covered: the front-end assets (`npm`/Vite) the skeleton ships, a starter kit
+  (Breeze, Jetstream), queues and a worker, Sail.
+
 Not covered yet (#471): `mnci sync` / `mnci up` reading a project's requirements; the PHP version in `mnci ci setup` and the
 devcontainer; a debugger launch configuration (Xdebug); `dev`; propagating a library's new version to a consumer's `^` range.
 

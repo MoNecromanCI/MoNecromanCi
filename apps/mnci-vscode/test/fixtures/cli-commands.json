@@ -940,6 +940,18 @@
         "negated": false
       },
       {
+        "name": "template",
+        "flags": "--template <template>",
+        "description": "php-app only: scaffold with the framework's own installer (laravel)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false,
+        "choices": [
+          "laravel"
+        ]
+      },
+      {
         "name": "web",
         "flags": "--web <react-app>",
         "description": "go-app only: embed and serve this React app (apps/<react-app>, added first): built before the Go app, staged for go:embed, with a dev target that runs both",

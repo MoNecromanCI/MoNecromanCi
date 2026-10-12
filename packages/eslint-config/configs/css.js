@@ -14,4 +14,11 @@ export default [
       'css/no-invalid-properties': 'error',
     },
   },
+  {
+    // A framework's front-end assets (a Laravel app's `resources/css`) are Tailwind 4 sources: `@theme`, `@source` and
+    // `@utility` are not CSS at-rules the validator knows, so the whole skeleton failed its own lint.
+    name:  'mnci/css-framework-assets',
+    files: ['**/resources/css/**/*.css'],
+    rules: { 'css/no-invalid-at-rules': 'off' },
+  },
 ]

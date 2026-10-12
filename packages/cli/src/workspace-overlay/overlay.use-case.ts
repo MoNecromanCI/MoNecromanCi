@@ -1570,6 +1570,7 @@ export const ESLINT_BLOCK_INVENTORY = `// WHAT IS IN HERE. Each line is one conf
 //                                 pyproject.toml is a syntax error, nothing is styled
 //   mnci/markdown                 @eslint/markdown
 //   mnci/css                      @eslint/css
+//   mnci/css-framework-assets     Tailwind 4 at-rules in a framework's resources/css
 //   mnci/html                     @html-eslint/eslint-plugin
 //   mnci/tests                    *.spec/*.test relaxations — eslint-plugin-jest
 //                                 (Vitest's globals too; the two stacks share them)

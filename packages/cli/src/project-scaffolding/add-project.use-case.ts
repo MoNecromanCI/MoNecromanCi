@@ -28,6 +28,7 @@ import { addHtmlApp } from './html-app.use-case'
 import { addReactApp } from './react-app.use-case'
 import { addCppProject } from './cpp.use-case'
 import { addJavaProject } from './java.use-case'
+import { addLaravelApp } from './laravel.use-case'
 import { addPhpProject } from './php.use-case'
 import { addRubyProject } from './ruby.use-case'
 import { addRustProject } from './rust.use-case'
@@ -310,6 +311,14 @@ export async function runAdd (
   if (options.empty === true && options.web !== undefined) {
     throw new Error('--empty and --web cannot be combined: --web writes the app\'s main.go and the embedded page itself.')
   }
+  if (options.template !== undefined) {
+    if (resolvedKind !== 'php-app') {
+      throw new Error(`--template ${options.template} applies to php-app, not ${resolvedKind}.`)
+    }
+    if (options.empty === true) {
+      throw new Error(`--empty and --template ${options.template} cannot be combined: the framework's installer writes the skeleton, so there is no bare variant.`)
+    }
+  }
   if (options.esm === true) {
     if (resolvedKind !== 'node-app' && resolvedKind !== 'node-function-app') {
       throw new Error(`--esm applies to node-app and node-function-app, not ${resolvedKind}.`)
@@ -399,6 +408,10 @@ export async function runAdd (
     case 'php-app':
     case 'php-lib':
     case 'php-internal-lib': {
+      if (options.template === 'laravel') {
+        addLaravelApp(workspaceRoot, resolvedName)
+        break
+      }
       addPhpProject(workspaceRoot, resolvedName, resolvedKind, options.empty === true)
       break
     }

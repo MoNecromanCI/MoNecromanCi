@@ -314,6 +314,10 @@ export function buildProgram (cliVersion: string): Command {
       '--cgo',
       'go-app only: the app needs a C toolchain (a tray icon, a native GUI, a cgo driver), so CI builds it on a runner of each OS instead of cross-compiling',
     )
+    .addOption(
+      new Option('--template <template>', 'php-app only: scaffold with the framework\'s own installer (laravel)')
+        .choices(['laravel']),
+    )
     .option(
       '--web <react-app>',
       'go-app only: embed and serve this React app (apps/<react-app>, added first): built before the Go app, staged for go:embed, with a dev target that runs both',
