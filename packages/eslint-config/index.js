@@ -69,6 +69,9 @@ export const ignores = [
   // Composer's and Bundler's install folders. A PHP project's `vendor/` holds every dependency's own README and
   // frontend scripts (a Laravel app's alone is 23,000 findings), and nothing else ignores it.
   '**/vendor',
+  // A Rails app's PWA templates (`app/views/pwa/*.js`): comment-only files Rails renders as views and serves as classic
+  // scripts. `unicorn/no-empty-file` rejects them, and `export {}` would turn a service worker into a module.
+  '**/app/views/pwa',
   // A VS Code extension's integration tests (#244): `@vscode/test-cli` downloads a whole VS Code
   // into `.vscode-test/` (thousands of bundled JS files), and `tsc` writes the compiled tests to
   // `out-integration/`. Linting them hung `mnci upgrade`'s `eslint --fix` for minutes in a 6 GB
