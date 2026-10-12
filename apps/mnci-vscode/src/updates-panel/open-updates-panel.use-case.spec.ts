@@ -2,7 +2,7 @@ import type { CliLocation } from '../cli-access'
 import type { UpdateReport } from '../cli-contracts'
 import { openUpdatesPanel, type UpdatesSurface } from './open-updates-panel.use-case'
 
-const LOCATION: CliLocation = { command: 'mnci', prefix: [], source: 'global' } as CliLocation
+const LOCATION: CliLocation = { command: 'mnci', prefix: [], source: 'path' }
 
 const REPORT: UpdateReport = {
   updates: [
