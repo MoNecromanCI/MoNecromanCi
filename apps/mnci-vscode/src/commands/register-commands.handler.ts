@@ -1,7 +1,9 @@
 import * as vscode from 'vscode'
+import { runMnciJson } from '../cli-access'
 import { updateCli } from '../cli-update'
 import type { CliSession } from '../cli-session'
 import { runDoctorCheck } from '../doctor-check'
+import { openUpdatesPanel, showUpdatesPanel } from '../updates-panel'
 import { invokeCommand, runCommandInTerminal, runInTerminal, VSCODE_PROMPTER } from '../invocation'
 import { nameFrom } from './command-arguments.algorithm'
 import { CLI_COMMAND_NAMES, commandId } from './extension-commands.config'
@@ -34,7 +36,16 @@ export function registerCommands (session: CliSession): vscode.Disposable[] {
 
   const handlers: Record<string, (...arguments_: unknown[]) => Promise<void> | void> = {
     ...Object.fromEntries(CLI_COMMAND_NAMES.map(name => [name, async () => { await invokeCommand(name, invokeDependencies) }])),
-    doctor:    async () => { await runDoctorCheck(session, doctorSurface) },
+    doctor: async () => { await runDoctorCheck(session, doctorSurface) },
+    up:     async () => {
+      await openUpdatesPanel({
+        location:      () => session.location(),
+        workspaceRoot: session.workspaceRoot,
+        run:           runMnciJson,
+        runInTerminal: arguments_ => { runInTerminal(session.location(), { arguments: arguments_ }, session.workspaceRoot) },
+        surface:       showUpdatesPanel(),
+      })
+    },
     refresh:   () => { session.refresh() },
     runTarget: async (project, target) => {
       await runTarget(
