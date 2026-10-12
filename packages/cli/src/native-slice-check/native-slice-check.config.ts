@@ -21,7 +21,7 @@ export const SLICE_CHECK_PATH = 'tools/slice-check.cjs'
 export const SLICE_CHECK_SCRIPT = String.raw`#!/usr/bin/env node
 // Written by MoNecromanCI; mnci rewrites it, so local edits do not survive.
 //
-// node tools/slice-check.cjs <rust|cpp|java|php|ruby> <project directory>...
+// node tools/slice-check.cjs <rust|cpp|java|kotlin|php|ruby> <project directory>...
 //
 // The Rust and C++ counterpart of the vertical-slices/file-role lint rule: a file under src/ is <snake>_<role>
 // (a C++ test <snake>_<role>_test), only the entry point sits at the root of src/, a slice's barrel is mod.rs (Rust) or
@@ -106,11 +106,9 @@ function javaBase (project) {
   return [...group.split('.'), segment]
 }
 
-function checkJava (project) {
+function checkJvm (project, base, trees, extension) {
   const problems = []
-  const base = javaBase(project)
-  if (!base) return problems
-  for (const tree of ['src/main/java', 'src/test/java']) {
+  for (const tree of trees) {
     const root = join(project, ...tree.split('/'))
     if (!existsSync(root)) continue
     const baseDirectory = join(root, ...base)
@@ -129,12 +127,12 @@ function checkJava (project) {
           }
           continue
         }
-        if (extname(entry.name) !== '.java') continue
-        const stem = entry.name.slice(0, -'.java'.length)
+        if (extname(entry.name) !== extension) continue
+        const stem = entry.name.slice(0, -extension.length)
         if (depth === 0) {
           if (!JAVA_ENTRY_POINTS.has(stem)) problems.push(shown + ' - only the entry point sits at the root of the base package; move this into a slice package')
         } else if (stem !== 'package-info' && !JAVA_TYPE.test(stem)) {
-          problems.push(shown + ' - a type is <Name><Role>.java (roles: ' + JAVA_ROLES.join(', ') + '; a test <Name><Role>Test.java)')
+          problems.push(shown + ' - a type is <Name><Role>' + extension + ' (roles: ' + JAVA_ROLES.join(', ') + '; a test <Name><Role>Test' + extension + ')')
         }
       }
     }
@@ -152,7 +150,7 @@ function checkJava (project) {
           } else if (parts.length < base.length) {
             problems.push(relative(project, path).replaceAll('\\', '/') + '/ - sources live under the package ' + base.join('.'))
           }
-        } else if (extname(entry.name) === '.java' && parts.length < base.length) {
+        } else if (extname(entry.name) === extension && parts.length < base.length) {
           problems.push(relative(project, path).replaceAll('\\', '/') + ' - sources live under the package ' + base.join('.'))
         }
       }
@@ -161,6 +159,33 @@ function checkJava (project) {
   }
 
   return problems
+}
+
+function checkJava (project) {
+  const base = javaBase(project)
+
+  return base ? checkJvm(project, base, ['src/main/java', 'src/test/java'], '.java') : []
+}
+
+// Kotlin on Gradle: the same layout as Java (a file is named for its one type, so the role is in the type name, and a package
+// is a slice), under src/main/kotlin and src/test/kotlin. The base package is the build file's group plus the project's
+// directory name with every character that is not a letter or digit removed, which is what the scaffold wrote.
+function kotlinBase (project) {
+  const build = join(project, 'build.gradle.kts')
+  if (!existsSync(build)) return
+  const group = (/^\s*group\s*=\s*"([^"\s]+)"/m.exec(readFileSync(build, 'utf8')) || [])[1]
+  if (!group) return
+  const name = project.replaceAll('\\', '/').split('/').filter(Boolean).pop()
+  let segment = name.toLowerCase().replaceAll(/[^a-z0-9]+/g, '')
+  if (/^\d/.test(segment)) segment = '_' + segment
+
+  return [...group.split('.'), segment]
+}
+
+function checkKotlin (project) {
+  const base = kotlinBase(project)
+
+  return base ? checkJvm(project, base, ['src/main/kotlin', 'src/test/kotlin'], '.kt') : []
 }
 
 // PHP: PSR-4 names a class file for its one class, so the role is in the class name and the folder and namespace are the
@@ -254,10 +279,10 @@ function checkRuby (project) {
 }
 
 const [name, ...projects] = process.argv.slice(2)
-const CHECKERS = { java: { check: checkJava }, php: { check: checkPhp }, ruby: { check: checkRuby } }
+const CHECKERS = { java: { check: checkJava }, kotlin: { check: checkKotlin }, php: { check: checkPhp }, ruby: { check: checkRuby } }
 const language = CHECKERS[name] || LANGUAGES[name]
 if (!language || projects.length === 0) {
-  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|php|ruby> <project directory>...')
+  console.error('Usage: node tools/slice-check.cjs <rust|cpp|java|kotlin|php|ruby> <project directory>...')
   process.exit(1)
 }
 let failed = 0

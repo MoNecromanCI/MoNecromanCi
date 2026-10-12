@@ -9,6 +9,7 @@ import { locateProjects } from '../dependency-management'
 import {
   removeCargoWorkspaceMember,
   removeGoWorkUse,
+  removeGradleProject,
   removeMavenModule,
   removePathAliases,
   removeProjectScripts,
@@ -202,6 +203,7 @@ function planRemoval (workspaceRoot: string, directory: string): RemovalPlan {
     ['pubspec.yaml', text => removePubspecWorkspaceMember(text, directory)],
     ['Cargo.toml', text => removeCargoWorkspaceMember(text, directory)],
     ['pom.xml', text => removeMavenModule(text, directory)],
+    ['settings.gradle.kts', text => removeGradleProject(text, basename(directory))],
   ]
   for (const [path, edit] of edits) {
     const full = join(workspaceRoot, path)
@@ -292,6 +294,7 @@ function applyRemoval (workspaceRoot: string, directory: string, plan: RemovalPl
     ['pubspec.yaml', text => removePubspecWorkspaceMember(text, directory)],
     ['Cargo.toml', text => removeCargoWorkspaceMember(text, directory)],
     ['pom.xml', text => removeMavenModule(text, directory)],
+    ['settings.gradle.kts', text => removeGradleProject(text, basename(directory))],
   ]
   for (const [path, edit] of edits) {
     const full = join(workspaceRoot, path)

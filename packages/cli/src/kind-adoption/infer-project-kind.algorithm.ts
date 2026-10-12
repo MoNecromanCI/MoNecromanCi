@@ -217,6 +217,22 @@ function inferJava (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
+ * Proposes the kind of a Kotlin (Gradle) project.
+ *
+ * @param evidence - What was read about it.
+ * @returns The proposal.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function inferKotlin (evidence: ProjectEvidence): KindProposal {
+  if (evidence.hasProgram) {
+    return { kind: 'kotlin-app', certainty: 'certain', reason: 'a Main.kt with a main function is the entry point' }
+  }
+
+  return { kind: 'kotlin-lib', certainty: 'guess', reason: 'a library, but internal or published is a choice only you can make' }
+}
+
+/**
  * Proposes the kind of a PHP (Composer) project.
  *
  * @param evidence - What was read about it.
@@ -321,6 +337,9 @@ export function inferProjectKind (evidence: ProjectEvidence): KindProposal {
     }
     case 'maven': {
       return inferJava(evidence)
+    }
+    case 'gradle': {
+      return inferKotlin(evidence)
     }
     case 'composer': {
       return inferPhp(evidence)

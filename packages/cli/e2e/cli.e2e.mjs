@@ -4227,6 +4227,112 @@ ${kitPom}`,
   enforce('java: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('kotlin', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add kotlin-app|kotlin-lib|kotlin-internal-lib` (#492): Gradle projects written by mnci (`@nx/gradle` is
+   * inference-only and ships no project generator). Gated on gradle and a JDK, reported SKIPPED without them.
+   * ------------------------------------------------------------------------- */
+  if (!hasTool('gradle --version') || !hasTool('java -version')) {
+    skip('the entire Kotlin section', 'Gradle or a JDK is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'kotlinws')
+  run(`node ${CLI} new kotlinws --yes --registry npm --scope @ktw`, temporary)
+  run(`node ${CLI} add kotlin-app hello`, root)
+  run(`node ${CLI} add kotlin-internal-lib kit`, root)
+  run(`node ${CLI} add kotlin-lib core`, root)
+  const settings = readFileSync(path.join(root, 'settings.gradle.kts'), 'utf8')
+  enforce(
+    'kotlin: settings.gradle.kts includes every project',
+    ['hello', 'kit', 'core'].every(project => settings.includes(`include(":${project}")`)),
+    settings,
+  )
+  const linked = tryRunCapture(`node ${CLI} i -w hello kit`, root)
+  const helloBuild = readFileSync(path.join(root, 'apps/hello/build.gradle.kts'), 'utf8')
+  const helloProject = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8'))
+  enforce(
+    'kotlin: installing a sibling project declares it and records the graph edge',
+    linked.ok && helloBuild.includes('implementation(project(":kit"))') && (helloProject.implicitDependencies ?? []).includes('kit'),
+    `${linked.output.slice(-600)}
+${helloBuild}`,
+  )
+  const group = /^group = "([^"]+)"/m.exec(helloBuild)[1]
+  writeFileSync(
+    path.join(root, 'apps/hello/src/main/kotlin', ...group.split('.'), 'hello/Main.kt'),
+    `package ${group}.hello
+
+import ${group}.kit.greeting.GreetUseCase
+
+fun main() {
+    println(GreetUseCase.greet("hello").message)
+}
+`,
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,test,build --projects=hello,kit,core', root)
+  enforce('kotlin: lint, test and build pass for an app, an internal library and a publishable one', checks.ok, checks.output.slice(-2500))
+  const packaged = tryRunCapture('npx nx run hello:package', root)
+  enforce(
+    'kotlin: package zips the distribution',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/kotlin-app-hello.zip')),
+    packaged.output.slice(-1500),
+  )
+  const started = tryRunCapture('npx nx run hello:start', root)
+  enforce('kotlin: start runs the app, which used the sibling library', started.ok && /Hello, hello!/.test(started.output), started.output.slice(-800))
+  // The slice check names a type with no role, and lint fails on it.
+  const stray = path.join(root, 'libs/kit/src/main/kotlin', ...group.split('.'), 'kit/greeting/Stuff.kt')
+  writeFileSync(stray, `package ${group}.kit.greeting
+
+/** A type with no role. */
+object Stuff
+`)
+  const rejected = tryRunCapture('npx nx run kit:slice-check --skip-nx-cache', root)
+  enforce('kotlin: the slice check rejects a type with no role', !rejected.ok && /Stuff\.kt/.test(rejected.output), rejected.output.slice(-1000))
+  rmSync(stray)
+  // An external library: the newest release goes into the catalog, and uninstall takes it out again.
+  const added = tryRunCapture(`node ${CLI} i -w kit com.google.code.gson:gson`, root)
+  const catalog = readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8')
+  const kitBuild = readFileSync(path.join(root, 'libs/kit/build.gradle.kts'), 'utf8')
+  enforce(
+    'kotlin: installing a coordinate declares it in the catalog and in that project only',
+    added.ok && /gson = \{ module = "com\.google\.code\.gson:gson", version = "\d/.test(catalog) && kitBuild.includes('implementation(libs.gson)') && !readFileSync(path.join(root, 'apps/hello/build.gradle.kts'), 'utf8').includes('gson'),
+    `${added.output.slice(-800)}
+${catalog}
+${kitBuild}`,
+  )
+  const removed = tryRunCapture(`node ${CLI} un -w kit com.google.code.gson:gson`, root)
+  enforce(
+    'kotlin: uninstall removes it from the project and the catalog',
+    removed.ok && !readFileSync(path.join(root, 'libs/kit/build.gradle.kts'), 'utf8').includes('gson') && !readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8').includes('gson'),
+    removed.output.slice(-800),
+  )
+  // A build file the team reshaped (no markers) is refused with a message, never guessed at.
+  const kitPath = path.join(root, 'libs/kit/build.gradle.kts')
+  const original = readFileSync(kitPath, 'utf8')
+  writeFileSync(kitPath, original.replaceAll(/\s*\/\/ mnci:dependencies(-end)?/g, ''))
+  const refused = tryRunCapture(`node ${CLI} i -w kit com.google.code.gson:gson`, root)
+  enforce(
+    'kotlin: a build file with no dependency markers is refused',
+    !refused.ok && /mnci:dependencies/.test(refused.output) && !readFileSync(kitPath, 'utf8').includes('gson'),
+    refused.output.slice(-800),
+  )
+  writeFileSync(kitPath, original)
+  const toolsLint = tryRunCapture('npx eslint tools', root)
+  enforce('kotlin: the generated tools/ scripts pass the shipped ESLint config', toolsLint.ok, toolsLint.output.slice(-1500))
+  run('git add -A', root)
+  run('git commit -m "feat: add the kotlin projects"', root)
+  const tracked = tryRunCapture('git ls-files', root)
+  enforce(
+    'kotlin: no .gradle, .kotlin or build output is tracked',
+    tracked.ok && !/(?:^|\/)\.gradle\//m.test(tracked.output) && !/(?:^|\/)\.kotlin\//m.test(tracked.output) && !/^dist\//m.test(tracked.output),
+    tracked.output.slice(-800),
+  )
+  const release = tryRunCapture('npx nx release --dry-run', root)
+  enforce('kotlin: nx release versions the publishable library from its build file', release.ok && /core/.test(release.output), release.output.slice(-2000))
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('kotlin: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('php', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add php-app|php-lib|php-internal-lib` (#471): Composer packages written by mnci (no

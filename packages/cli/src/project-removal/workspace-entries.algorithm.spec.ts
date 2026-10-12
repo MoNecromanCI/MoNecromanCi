@@ -1,6 +1,7 @@
 import {
   removeCargoWorkspaceMember,
   removeGoWorkUse,
+  removeGradleProject,
   removeMavenModule,
   removePathAliases,
   removeProjectScripts,
@@ -85,5 +86,27 @@ describe('removeMavenModule', () => {
 
   it('leaves a pom that does not list the module unchanged', () => {
     expect(removeMavenModule(pom, 'libs/kit')).toBe(pom)
+  })
+})
+
+describe('removeGradleProject', () => {
+  const SETTINGS = [
+    '// mnci:projects',
+    'include(":hello")',
+    'project(":hello").projectDir = file("apps/hello")',
+    'include(":hello-world")',
+    'project(":hello-world").projectDir = file("apps/hello-world")',
+    '// mnci:projects-end',
+    '',
+  ].join('\n')
+
+  it('removes both lines of a project and not a project whose name starts the same', () => {
+    expect(removeGradleProject(SETTINGS, 'hello')).toBe(
+      ['// mnci:projects', 'include(":hello-world")', 'project(":hello-world").projectDir = file("apps/hello-world")', '// mnci:projects-end', ''].join('\n'),
+    )
+  })
+
+  it('returns the text unchanged when the project is not there', () => {
+    expect(removeGradleProject(SETTINGS, 'missing')).toBe(SETTINGS)
   })
 })

@@ -14,6 +14,7 @@ import {
 import { addCmakeSibling } from './cmake-sibling.algorithm'
 import { addBundlerGems } from './bundler-dependencies.use-case'
 import { addComposerPackages } from './composer-dependencies.use-case'
+import { addGradleDependencies } from './gradle-dependencies.use-case'
 import { addMavenDependencies } from './maven-dependencies.use-case'
 import { resolveTarget } from './resolve-target-project.use-case'
 
@@ -51,6 +52,7 @@ const WHOLE_WORKSPACE_INSTALL: ReadonlyArray<readonly [Ecosystem, string, readon
   ['nuget', 'npx', ['nx', 'run-many', '-t', 'restore']],
   ['cargo', 'cargo', ['fetch']],
   ['maven', 'mvn', ['-B', '-ntp', 'compile']],
+  ['gradle', 'gradle', ['--console=plain', '-q', 'assemble']],
   // The shared dev tools at the root, then each project's own dependencies through its build target.
   ['composer', 'composer', ['install', '--no-interaction']],
   ['composer', 'npx', ['nx', 'run-many', '-t', 'build', '--projects=tag:type:php-*']],
@@ -297,6 +299,11 @@ function installInto (
     }
     case 'maven': {
       addMavenDependencies(workspaceRoot, location, packages, saveDev, locations)
+
+      return
+    }
+    case 'gradle': {
+      addGradleDependencies(workspaceRoot, location, packages, saveDev, locations)
 
       return
     }

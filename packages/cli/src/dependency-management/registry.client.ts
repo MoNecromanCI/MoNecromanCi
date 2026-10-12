@@ -318,6 +318,10 @@ export async function latestVersions (
     case 'maven': {
       return new Map()
     }
+    // A Gradle project's dependencies are not read yet (#492), so there is nothing to ask a repository.
+    case 'gradle': {
+      return new Map()
+    }
     // A PHP project's dependencies are not read yet (#471), so there is nothing to ask Packagist.
     case 'composer': {
       return new Map()
