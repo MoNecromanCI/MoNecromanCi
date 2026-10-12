@@ -184,6 +184,57 @@ describe('slice-check kotlin', () => {
   })
 })
 
+/** Writes an Android module build.gradle.kts declaring its namespace. */
+function seedAndroidBuild (project: string, namespace: string): void {
+  mkdirSync(join(workspace, project), { recursive: true })
+  writeFileSync(join(workspace, project, 'build.gradle.kts'), `plugins {}
+
+android {
+    namespace = "${namespace}"
+}
+`)
+}
+
+describe('slice-check android', () => {
+  it('accepts MainActivity at the root of the namespace, a composable component and a contract', () => {
+    seedAndroidBuild('apps/hello', 'com.example.hello')
+    seed(
+      'apps/hello/src/main/kotlin/com/example/hello/MainActivity.kt',
+      'apps/hello/src/main/kotlin/com/example/hello/greeting/GreetingComponent.kt',
+      'apps/hello/src/main/kotlin/com/example/hello/greeting/GreetUseCase.kt',
+      'apps/hello/src/main/kotlin/com/example/hello/greeting/GreetingContract.kt',
+      'apps/hello/src/test/kotlin/com/example/hello/greeting/GreetUseCaseTest.kt',
+    )
+
+    expect(run('android', 'apps/hello')).toMatchObject({ status: 0 })
+  })
+
+  it('does not take a Component in a plain Kotlin project, whose roles have no UI', () => {
+    seedBuild('apps/server', 'com.example')
+    seed('apps/server/src/main/kotlin/com/example/server/greeting/GreetingComponent.kt')
+
+    const result = run('kotlin', 'apps/server')
+
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('a type is <Name><Role>.kt')
+  })
+
+  it('rejects a stray type at the root and a type with no role, naming the front-end roles', () => {
+    seedAndroidBuild('apps/hello', 'com.example.hello')
+    seed(
+      'apps/hello/src/main/kotlin/com/example/hello/Helper.kt',
+      'apps/hello/src/main/kotlin/com/example/hello/greeting/Stuff.kt',
+    )
+
+    const result = run('android', 'apps/hello')
+
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('only the entry point sits at the root of the base package')
+    expect(result.output).toContain('roles: Handler')
+    expect(result.output).toContain('Component')
+  })
+})
+
 describe('slice-check php', () => {
   it('accepts the worked example: slice folders with role-named classes and a test beside them in tests/', () => {
     seed(

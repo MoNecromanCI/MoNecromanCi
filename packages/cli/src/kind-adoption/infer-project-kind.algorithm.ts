@@ -217,7 +217,7 @@ function inferJava (evidence: ProjectEvidence): KindProposal {
 }
 
 /**
- * Proposes the kind of a Kotlin (Gradle) project.
+ * Proposes the kind of a Kotlin (Gradle) project, or of an Android one when the Android Gradle Plugin is applied.
  *
  * @param evidence - What was read about it.
  * @returns The proposal.
@@ -225,6 +225,12 @@ function inferJava (evidence: ProjectEvidence): KindProposal {
  * @typeParam None - this function has no generic type parameters.
  */
 function inferKotlin (evidence: ProjectEvidence): KindProposal {
+  if (/com\.android\.application|plugins\.android\.application/.test(evidence.text)) {
+    return { kind: 'android-app', certainty: 'certain', reason: 'the Android application plugin is applied' }
+  }
+  if (/com\.android\.library|plugins\.android\.library/.test(evidence.text)) {
+    return { kind: 'android-lib', certainty: 'guess', reason: 'an Android library, but internal or published is a choice only you can make' }
+  }
   if (evidence.hasProgram) {
     return { kind: 'kotlin-app', certainty: 'certain', reason: 'a Main.kt with a main function is the entry point' }
   }

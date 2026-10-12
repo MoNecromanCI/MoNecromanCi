@@ -28,6 +28,7 @@ import { addHtmlApp } from './html-app.use-case'
 import { addReactApp } from './react-app.use-case'
 import { addCppProject } from './cpp.use-case'
 import { addJavaProject } from './java.use-case'
+import { addAndroidProject } from './android.use-case'
 import { addKotlinProject } from './kotlin.use-case'
 import { addLaravelApp } from './laravel.use-case'
 import { addRailsApp } from './rails.use-case'
@@ -179,6 +180,9 @@ export type ProjectKind =
   'kotlin-app' |
   'kotlin-lib' |
   'kotlin-internal-lib' |
+  'android-app' |
+  'android-lib' |
+  'android-internal-lib' |
   'php-app' |
   'php-lib' |
   'php-internal-lib' |
@@ -238,6 +242,9 @@ export const PROJECT_KINDS: ProjectKind[] = [
   'kotlin-app',
   'kotlin-lib',
   'kotlin-internal-lib',
+  'android-app',
+  'android-lib',
+  'android-internal-lib',
   'php-app',
   'php-lib',
   'php-internal-lib',
@@ -251,7 +258,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
 ]
 
 /** The kinds that can scaffold a bare slice skeleton (`--empty`). More join as their samples are reshaped. */
-const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'react-p5-app', 'html-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib', 'rust-app', 'rust-lib', 'rust-internal-lib', 'cpp-app', 'cpp-lib', 'cpp-internal-lib', 'java-app', 'java-lib', 'java-internal-lib', 'kotlin-app', 'kotlin-lib', 'kotlin-internal-lib', 'php-app', 'php-lib', 'php-internal-lib', 'ruby-app', 'ruby-lib', 'ruby-internal-lib'])
+const EMPTY_KINDS: ReadonlySet<string> = new Set(['npm-lib', 'internal-lib', 'react-lib', 'react-internal-lib', 'node-function-app', 'react-app', 'react-p5-app', 'html-app', 'angular-app', 'angular-internal-lib', 'vue-app', 'svelte-app', 'bicep-iac', 'node-app', 'go-app', 'go-function-app', 'go-lib', 'go-internal-lib', 'python-app', 'python-function-app', 'python-lib', 'python-internal-lib', 'flutter-app', 'flutter-lib', 'flutter-internal-lib', 'csharp-app', 'csharp-function-app', 'csharp-lib', 'csharp-internal-lib', 'rust-app', 'rust-lib', 'rust-internal-lib', 'cpp-app', 'cpp-lib', 'cpp-internal-lib', 'java-app', 'java-lib', 'java-internal-lib', 'kotlin-app', 'kotlin-lib', 'kotlin-internal-lib', 'android-app', 'android-lib', 'android-internal-lib', 'php-app', 'php-lib', 'php-internal-lib', 'ruby-app', 'ruby-lib', 'ruby-internal-lib'])
 
 /** The kinds a registry publishes: a workspace with no registry releases none of them. */
 const PUBLISHABLE_KINDS: ReadonlySet<ProjectKind> = new Set<ProjectKind>(['npm-lib', 'react-lib', 'python-lib', 'csharp-lib', 'flutter-lib'])
@@ -418,6 +425,12 @@ export async function runAdd (
     case 'kotlin-lib':
     case 'kotlin-internal-lib': {
       addKotlinProject(workspaceRoot, resolvedName, resolvedKind, options.empty === true)
+      break
+    }
+    case 'android-app':
+    case 'android-lib':
+    case 'android-internal-lib': {
+      addAndroidProject(workspaceRoot, resolvedName, resolvedKind, options.empty === true)
       break
     }
     case 'php-app':

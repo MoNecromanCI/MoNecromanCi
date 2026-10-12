@@ -11,7 +11,7 @@
  * @throws Never - pure object construction.
  * @typeParam None - this function has no generic type parameters.
  */
-export function nativeSliceCheckTarget (language: 'rust' | 'cpp' | 'java' | 'kotlin' | 'php' | 'ruby', projectRoot: string): Record<string, unknown> {
+export function nativeSliceCheckTarget (language: 'rust' | 'cpp' | 'java' | 'kotlin' | 'android' | 'php' | 'ruby', projectRoot: string): Record<string, unknown> {
   return {
     executor: 'nx:run-commands',
     cache:    true,

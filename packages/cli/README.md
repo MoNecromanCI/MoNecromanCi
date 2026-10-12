@@ -788,7 +788,51 @@ clash (no configuration cache is used).
 
 Not covered yet (#492): the Gradle wrapper (`gradlew`); `mnci sync` / `mnci up` reading the catalog; publishing to a Maven
 repository; the JDK and Gradle in `mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`
-(`gradle --continuous`); Kotlin Multiplatform; a `--build-tool gradle` option for the Java kinds; Android (#493).
+(`gradle --continuous`); Kotlin Multiplatform; a `--build-tool gradle` option for the Java kinds. Android is the next section (#493).
+
+## Android projects (`mnci add android-app | android-lib | android-internal-lib`)
+
+The Kotlin kinds' Gradle foundation plus the Android Gradle Plugin (AGP). Apps live in `apps/`, publishable libraries in
+`packages/`, private ones in `libs/`, and an Android project can sit in the same workspace as a Kotlin one and depend on it.
+
+- **The toolchain is the person's, and mnci never accepts a licence.** `mnci add` checks for an SDK (`ANDROID_HOME`,
+  `ANDROID_SDK_ROOT`, or `sdk.dir` in `local.properties`) and for Gradle at the version AGP needs, and **names** what is
+  missing: read and accept the licences yourself with `sdkmanager --licenses`, then
+  `sdkmanager "platforms;android-37.0" "build-tools;36.0.0"`. It never runs either.
+- **Versions are coupled, so they are pinned in one place** (`android-build.config.ts`): AGP 9.4.1 (needs Gradle 9.6.0 or
+  newer and JDK 17 or newer, and has its own Kotlin support, so there is no Kotlin plugin), build tools 36.0.0, Compose BOM
+  2026.09.00 and `compileSdk` 37 (the BOM requires it; `minSdk` is 26). They are written into the shared version catalog and
+  each project's build file; `mnci add` appends the Android entries to a catalog the Kotlin kinds wrote, never replacing a line.
+- **Settings**: `pluginManagement` and the dependency repositories gain `google()`; `gradle.properties` moves from the Kotlin
+  default `-Xmx1g` to `-Xmx2g` when it still has it, because AGP and the Compose compiler run out of 1 GB.
+- **Targets** (from the root against `:<name>`; each builds into `dist/gradle/<name>`, which AGP honours, so an APK is
+  `dist/gradle/<name>/outputs/apk/debug` and an AAR `.../outputs/aar`): `build` is `assembleDebug` for an app (release
+  signing is the team's, never generated) and `assemble` for a library, `test` is the local JVM unit tests
+  (`testDebugUnitTest`, JUnit 4), `lint` is ktlint and Android Lint after the shared `slice-check`, and an app has `package`
+  (the debug APK into `dist/drop/android-app-<name>.apk`) and no `start`: running needs a device.
+- **The worked example** is Compose: `<namespace>.greeting` holds `GreetingContract`, `GreetUseCase`, a `GreetingComponent.kt`
+  (a `@Composable`) and a test, and `MainActivity` at the root of the namespace only wires. A `.editorconfig` in the project
+  tells ktlint that a composable is named like a type.
+- **`slice-check` `android` mode**: the Kotlin rules plus the front-end roles (`Component`, `Route`, `Section`, `Style`,
+  `Content`), `MainActivity` as the entry point at the root, and the base package taken from the build file's `namespace`.
+- **`mnci install`/`uninstall`/`remove` are the Kotlin ones**: a sibling is `implementation(project(":x"))`; a
+  `group:artifact@version` goes into the catalog. AndroidX is on Google's Maven, not Central, so give it a version
+  (`androidx.core:core-ktx@1.19.1`): the newest-release lookup asks Maven Central only. The resolve step is
+  `compileDebugKotlin` for an Android module (it has no `classes` task).
+- **A `android-lib` releases by tag**, as a `kotlin-lib` does (`tools/gradle-version-actions.cjs`, no-op publish).
+- `local.properties` (the machine's SDK path) and `/build/` are added to `.gitignore`.
+
+Measured with AGP 9.4.1, Gradle 9.8.1, JDK 21, Kotlin 2.4.21, Compose BOM 2026.09.00 and the platform 37 SDK on Windows: a
+cold build (downloading AGP and the Compose libraries) about a minute, then seconds; `assembleDebug`, `testDebugUnitTest`,
+`ktlintCheck` and `lintDebug` all pass with the build directory redirected.
+
+`lint` waits for the project's own `build` and for the `lint` of what it depends on: Android Lint of an app analyses its
+libraries too, and `nx run-many -t lint` would otherwise run `:kit:lintAnalyzeDebug` in two Gradle processes at once, one of which
+fails to read the other's partial results (found by the e2e).
+
+Not covered yet (#493): instrumented tests and emulators, signing and Play publishing, the Android SDK in `mnci ci setup` and
+the devcontainer (hosted images ship it), `install` to a device, a debug launch, Kotlin Multiplatform, `sync`/`up` reading the
+catalog, AndroidX newest-release lookup (Google Maven).
 
 ## PHP projects (`mnci add php-app | php-lib | php-internal-lib`)
 

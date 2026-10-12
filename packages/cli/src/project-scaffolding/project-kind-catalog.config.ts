@@ -7,7 +7,7 @@ import type { ProjectKind } from './add-project.use-case'
  * The language families `add` offers; an editor groups its picker by them.
  * @typeParam None - this type has no generic type parameters.
  */
-export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'rust' | 'cpp' | 'java' | 'kotlin' | 'php' | 'ruby' | 'bicep' | 'container'
+export type ProjectLanguage = 'typescript' | 'python' | 'go' | 'flutter' | 'csharp' | 'rust' | 'cpp' | 'java' | 'kotlin' | 'android' | 'php' | 'ruby' | 'bicep' | 'container'
 
 /**
  * One project kind, described for a picker: what it makes, in which language, and which `add` flags apply.
@@ -81,6 +81,9 @@ export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'kotlin-app', language: 'kotlin', label: 'Kotlin app', description: 'A Kotlin application built with Gradle and zipped as a distribution', flags: ['empty'], requiredFlags: [] },
   { kind: 'kotlin-lib', language: 'kotlin', label: 'Kotlin library', description: 'A Kotlin library released by git tag', flags: ['empty'], requiredFlags: [] },
   { kind: 'kotlin-internal-lib', language: 'kotlin', label: 'Kotlin internal library', description: 'A private Kotlin library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
+  { kind: 'android-app', language: 'android', label: 'Android app', description: 'An Android application in Kotlin and Jetpack Compose, built with Gradle into an APK', flags: ['empty'], requiredFlags: [] },
+  { kind: 'android-lib', language: 'android', label: 'Android library', description: 'An Android library (AAR) released by git tag', flags: ['empty'], requiredFlags: [] },
+  { kind: 'android-internal-lib', language: 'android', label: 'Android internal library', description: 'A private Android library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
   { kind: 'php-app', language: 'php', label: 'PHP app', description: 'A PHP application with a bin/ entry script, packaged as a zip; --template laravel scaffolds a Laravel app', flags: ['empty', 'template'], requiredFlags: [] },
   { kind: 'php-lib', language: 'php', label: 'PHP library', description: 'A Composer package released by git tag, which Packagist reads', flags: ['empty'], requiredFlags: [] },
   { kind: 'php-internal-lib', language: 'php', label: 'PHP internal library', description: 'A private Composer package for apps in this workspace', flags: ['empty'], requiredFlags: [] },
