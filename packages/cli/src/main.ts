@@ -216,8 +216,8 @@ export function buildProgram (cliVersion: string): Command {
     .option('--json', 'print the available updates as one JSON document (with a link to each release); never prompt, never write')
     .option('--ecosystem <name>', 'restrict to one ecosystem: npm | pip | pub | nuget | cargo | go')
     .option('--no-install', 'update the manifests but skip the reinstall step')
-    .action(async (packages: string[], options: UpOptions) => {
-      await runUp(process.cwd(), options, packages)
+    .action(async (packages: string[] | undefined, options: UpOptions) => {
+      await runUp(process.cwd(), options, packages ?? [])
     })
 
   program
