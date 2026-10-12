@@ -4358,6 +4358,64 @@ section('php laravel', [], () => {
   enforce('laravel: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
 })
 
+section('ruby rails', [], () => {
+  /* ---------------------------------------------------------------------------
+   * `mnci add ruby-app --template rails` (#489): the framework's own generator, then the worked example.
+   * Gated on ruby and bundler, reported SKIPPED without them (needs network for `gem install rails` and bundle install).
+   * ------------------------------------------------------------------------- */
+  if (!hasTool('ruby --version') || !hasTool('bundle --version')) {
+    skip('the entire ruby rails section', 'Ruby or Bundler is not on PATH')
+
+    return
+  }
+  const root = path.join(temporary, 'railsws')
+  run(`node ${CLI} new railsws --yes --registry npm --scope @rls`, temporary)
+  const added = tryRunCapture(`node ${CLI} add ruby-app shop --template rails`, root)
+  enforce(
+    'rails: add scaffolds the skeleton with the framework generator',
+    added.ok && existsSync(path.join(root, 'apps/shop/bin/rails')) && existsSync(path.join(root, 'apps/shop/app/features/greeting/greet_use_case.rb')),
+    added.output.slice(-2500),
+  )
+  const project = JSON.parse(readFileSync(path.join(root, 'apps/shop/project.json'), 'utf8'))
+  enforce(
+    'rails: the project is a ruby-app with no slice-check (the framework mandates its names)',
+    project.tags.includes('type:ruby-app') && project.targets['slice-check'] === undefined && project.targets.start !== undefined,
+    JSON.stringify(project, undefined, 2).slice(0, 1500),
+  )
+  const checks = tryRunCapture('npx nx run-many -t lint,test,build --projects=shop', root)
+  enforce('rails: lint (RuboCop), test and build pass', checks.ok, checks.output.slice(-3000))
+  const routeTest = tryRunCapture('npx nx run shop:test --skip-nx-cache', root)
+  enforce(
+    'rails: the use case test and the route test ran',
+    routeTest.ok && /[3-9]\d* runs?, \d+ assertions, 0 failures, 0 errors/.test(routeTest.output),
+    routeTest.output.slice(-1500),
+  )
+  const packaged = tryRunCapture('npx nx run shop:package', root)
+  enforce(
+    'rails: package zips the app without a local database',
+    packaged.ok && existsSync(path.join(root, 'dist/drop/ruby-app-shop.zip')),
+    packaged.output.slice(-1500),
+  )
+  const installed = tryRunCapture(`node ${CLI} i -w shop rainbow`, root)
+  enforce(
+    'rails: installing a gem is bundle add in the app',
+    installed.ok && readFileSync(path.join(root, 'apps/shop/Gemfile'), 'utf8').includes('rainbow') && !readFileSync(path.join(root, 'package.json'), 'utf8').includes('rainbow'),
+    installed.output.slice(-1000),
+  )
+  const eslint = tryRunCapture('npx eslint .', root)
+  enforce('rails: the workspace ESLint run passes with the app in it', eslint.ok, eslint.output.slice(-2500))
+  run('git add -A', root)
+  run('git commit -m "feat: add the rails app"', root)
+  const tracked = tryRunCapture('git ls-files', root)
+  enforce(
+    'rails: no log, tmp, sqlite database or key is tracked',
+    tracked.ok && !/(?:^|\/)log\/.+\.log$/m.test(tracked.output) && !/\.sqlite3(?:-\w+)?$/m.test(tracked.output) && !/\.key$/m.test(tracked.output) && /apps\/shop\/Gemfile\.lock/.test(tracked.output),
+    tracked.output.slice(-800),
+  )
+  const doctor = tryRunCapture(`node ${CLI} doctor`, root)
+  enforce('rails: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+})
+
 section('ruby', [], () => {
   /* ---------------------------------------------------------------------------
    * `mnci add ruby-app|ruby-lib|ruby-internal-lib` (#472): Bundler projects and gems written by mnci (no Nx

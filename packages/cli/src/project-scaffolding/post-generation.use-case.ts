@@ -60,8 +60,8 @@ export interface AddOptions {
   app?:       string
   /** `container` only: the port the app listens on, exposed by the image and published by `start`. */
   port?:      string
-  /** `php-app` only: scaffold with a framework's own installer instead of the plain skeleton (`mnci add --template laravel`). */
-  template?:  'laravel'
+  /** `php-app` (laravel) and `ruby-app` (rails): scaffold with a framework's own installer instead of the plain skeleton (`mnci add --template`). */
+  template?:  'laravel' | 'rails'
 }
 
 /**

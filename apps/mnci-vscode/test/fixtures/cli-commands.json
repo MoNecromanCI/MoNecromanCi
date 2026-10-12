@@ -942,13 +942,14 @@
       {
         "name": "template",
         "flags": "--template <template>",
-        "description": "php-app only: scaffold with the framework's own installer (laravel)",
+        "description": "php-app (laravel) or ruby-app (rails): scaffold with the framework's own installer",
         "takesValue": "required",
         "variadic": false,
         "repeatable": false,
         "negated": false,
         "choices": [
-          "laravel"
+          "laravel",
+          "rails"
         ]
       },
       {

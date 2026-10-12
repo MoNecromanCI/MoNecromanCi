@@ -29,6 +29,7 @@ import { addReactApp } from './react-app.use-case'
 import { addCppProject } from './cpp.use-case'
 import { addJavaProject } from './java.use-case'
 import { addLaravelApp } from './laravel.use-case'
+import { addRailsApp } from './rails.use-case'
 import { addPhpProject } from './php.use-case'
 import { addRubyProject } from './ruby.use-case'
 import { addRustProject } from './rust.use-case'
@@ -312,8 +313,9 @@ export async function runAdd (
     throw new Error('--empty and --web cannot be combined: --web writes the app\'s main.go and the embedded page itself.')
   }
   if (options.template !== undefined) {
-    if (resolvedKind !== 'php-app') {
-      throw new Error(`--template ${options.template} applies to php-app, not ${resolvedKind}.`)
+    const templateKind = options.template === 'rails' ? 'ruby-app' : 'php-app'
+    if (resolvedKind !== templateKind) {
+      throw new Error(`--template ${options.template} applies to ${templateKind}, not ${resolvedKind}.`)
     }
     if (options.empty === true) {
       throw new Error(`--empty and --template ${options.template} cannot be combined: the framework's installer writes the skeleton, so there is no bare variant.`)
@@ -418,6 +420,10 @@ export async function runAdd (
     case 'ruby-app':
     case 'ruby-lib':
     case 'ruby-internal-lib': {
+      if (options.template === 'rails') {
+        addRailsApp(workspaceRoot, resolvedName)
+        break
+      }
       addRubyProject(workspaceRoot, resolvedName, resolvedKind, options.empty === true)
       break
     }
