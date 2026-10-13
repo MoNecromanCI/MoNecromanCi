@@ -73,8 +73,9 @@ function highest (versions: readonly string[]): string | undefined {
  * @remarks
  * Each asks the tool's own source, never a copy of it: `go list` for the linter (so a private proxy and the
  * proxy's own idea of "latest" apply), Node's `index.json` for the newest long-term-support release,
- * `go.dev/dl` for Go, the .NET release index for the newest supported channel, and the Flutter repository's tags
- * for the newest stable. Every answer is optional: a tool that is not installed or a source that cannot be reached
+ * `go.dev/dl` for Go, the .NET release index for the newest supported channel, the Flutter repository's tags
+ * for the newest stable, Adoptium for the newest LTS JDK, Gradle's `versions/current` and Maven Central's metadata
+ * for the final Maven release. Every answer is optional: a tool that is not installed or a source that cannot be reached
  * is simply not reported.
  */
 export const TOOL_QUERIES: readonly ToolQuery[] = [
@@ -139,6 +140,34 @@ export const TOOL_QUERIES: readonly ToolQuery[] = [
       const manifest = await fetchText('https://static.rust-lang.org/dist/channel-rust-stable.toml')
 
       return /\[pkg\.rust\]\s+version = "(\d+\.\d+\.\d+)/u.exec(manifest ?? '')?.[1]
+    },
+  },
+  {
+    name:   'JDK',
+    latest: async ({ fetchText }) => {
+      // Adoptium names the newest long-term-support major, which is what the pin (a major) is compared against.
+      const releases = parseJson(await fetchText('https://api.adoptium.net/v3/info/available_releases')) as { most_recent_lts?: unknown } | undefined
+      const lts = releases?.most_recent_lts
+
+      return typeof lts === 'number' ? String(lts) : undefined
+    },
+  },
+  {
+    name:   'Gradle',
+    latest: async ({ fetchText }) => {
+      const current = parseJson(await fetchText('https://services.gradle.org/versions/current')) as { version?: unknown } | undefined
+
+      return typeof current?.version === 'string' ? current.version : undefined
+    },
+  },
+  {
+    name:   'Maven',
+    latest: async ({ fetchText }) => {
+      // Final releases only: the metadata also lists alphas and release candidates of the next major.
+      const metadata = await fetchText('https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml')
+      const versions = Array.from((metadata ?? '').matchAll(/<version>(\d+\.\d+\.\d+)<\/version>/gu), match => match[1] ?? '')
+
+      return highest(versions)
     },
   },
 ]
