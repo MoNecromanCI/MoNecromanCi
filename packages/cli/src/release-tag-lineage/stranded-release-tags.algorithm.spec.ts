@@ -1,4 +1,4 @@
-import { findStrandedReleaseTags, tagsBehindRegistry } from './stranded-release-tags.algorithm'
+import { untaggedPublished, findStrandedReleaseTags, tagsBehindRegistry } from './stranded-release-tags.algorithm'
 
 describe('findStrandedReleaseTags', () => {
   it('finds a scoped project whose only tags carry its unscoped name, and names the newest', () => {
@@ -43,5 +43,23 @@ describe('tagsBehindRegistry', () => {
 
   it('ignores a project the registry does not know and a version that is not plain', () => {
     expect(tagsBehindRegistry(stranded, new Map([['@auto/jira', '2.0.0-beta.1']]))).toEqual([])
+  })
+})
+
+describe('untaggedPublished', () => {
+  const published = new Map([['@auto/a', '1.4.0'], ['@auto/b', '2.0.0'], ['@auto/c', '0.3.0']])
+
+  it('finds a published project with no tag under its own name or its unscoped one', () => {
+    const tags = ['@auto/a@1.4.0', 'b@2.0.0']
+
+    expect(untaggedPublished(['@auto/a', '@auto/b', '@auto/c'], tags, published)).toEqual([{ project: '@auto/c', published: '0.3.0' }])
+  })
+
+  it('leaves a project the registry does not know, which is a first release', () => {
+    expect(untaggedPublished(['@auto/new'], [], published)).toEqual([])
+  })
+
+  it('does not count a tag that is not a plain version', () => {
+    expect(untaggedPublished(['@auto/a'], ['@auto/a@1.4.0-beta.1'], published)).toEqual([{ project: '@auto/a', published: '1.4.0' }])
   })
 })

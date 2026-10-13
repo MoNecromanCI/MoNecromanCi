@@ -90,6 +90,12 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "mnci.release",
+        "title": "Preview or make a release",
+        "category": "MNCI",
+        "icon": "$(rocket)"
+      },
+      {
         "command": "mnci.pipeline",
         "title": "Add a pipeline from a template",
         "category": "MNCI",

@@ -164,3 +164,50 @@ export function versionsBehindRegistry (tagged: ReadonlyMap<string, string>, pub
 
   return behind
 }
+
+/**
+ * A published package that no release tag names, under its own name or its old unscoped one.
+ *
+ * @remarks
+ * See {@link untaggedPublished}.
+ * @typeParam None - this interface has no generic type parameters.
+ */
+export interface UntaggedPublished {
+  /** The project's current name. */
+  project:   string
+  /** The newest version the registry reports for it. */
+  published: string
+}
+
+/**
+ * The projects the registry holds that have no release tag at all.
+ *
+ * @remarks
+ * Neither `<name>@<version>` nor, for a scoped name, `<unscoped>@<version>`. `nx release` resolves such a project from its
+ * manifest version and proposes a release far below what is published. A project the registry does not know is absent from
+ * `published` and is a first release, not a finding.
+ *
+ * @param projects - Current project names.
+ * @param tags - Every tag of the repository.
+ * @param published - The newest published version per project; an unknown project is absent.
+ * @returns The published projects with no tag.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function untaggedPublished (
+  projects: readonly string[],
+  tags: readonly string[],
+  published: ReadonlyMap<string, string>,
+): UntaggedPublished[] {
+  const found: UntaggedPublished[] = []
+  for (const project of projects) {
+    const version = published.get(project)
+    const unscoped = /^@[^/]+\/(.+)$/.exec(project)?.[1]
+    const tagged = versionsOf(tags, project).length > 0 || (unscoped !== undefined && versionsOf(tags, unscoped).length > 0)
+    if (version !== undefined && !tagged) {
+      found.push({ project, published: version })
+    }
+  }
+
+  return found
+}

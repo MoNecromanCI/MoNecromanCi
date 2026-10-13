@@ -351,6 +351,7 @@ function applyPublishCredentials (
  * @param processes - The process runner.
  * @param log - The logger.
  * @param tee - Runs a command streaming its output and keeping a copy; absent, the output is not kept.
+ * @param dryRun - Pass `--dry-run` to every `nx release` and ask for no publish credentials, since nothing is published.
  * @returns The release command's status (0 on a clean skip, 1 on a bad specifier / missing credential) and its output.
  * @throws Never - a failing command is a status.
  * @typeParam None - this function has no generic type parameters.
@@ -363,6 +364,7 @@ async function runReleaseCommand (
   processes: CiProcesses,
   log: (message: string) => void,
   tee: ((command: string, arguments_: string[]) => Promise<{ status: number, output: string }>) | undefined,
+  dryRun = false,
 ): Promise<{ status: number, output: string }> {
   const total = counts.npm + counts.python + counts.csharp + counts.dart + counts.rust + counts.cpp + counts.java + counts.kotlin + counts.php + counts.ruby + counts.vscode + counts.go
   if (total === 0) {
@@ -387,14 +389,15 @@ async function runReleaseCommand (
     extra.push(specifier)
   }
 
-  const credentials = applyPublishCredentials(workspaceRoot, registry, counts, environment, log)
+  const credentials = dryRun ? 0 : applyPublishCredentials(workspaceRoot, registry, counts, environment, log)
   if (credentials !== 0) {
     return { status: credentials, output: '' }
   }
   const forced = specifier === '' ? knownDirectives(locateVersionDirectives(processes.capture), processes, log) : []
+  const mode = dryRun ? ['--dry-run'] : []
   const commands = [
-    ...forced.map(({ project, version }) => ['nx', 'release', version, `--projects=${project}`, '--yes']),
-    ['nx', 'release', ...extra, ...(forced.length > 0 ? [`--projects=${forced.map(({ project }) => `!${project}`).join(',')}`] : []), '--yes'],
+    ...forced.map(({ project, version }) => ['nx', 'release', version, `--projects=${project}`, ...mode, '--yes']),
+    ['nx', 'release', ...extra, ...(forced.length > 0 ? [`--projects=${forced.map(({ project }) => `!${project}`).join(',')}`] : []), ...mode, '--yes'],
   ]
   let output = ''
   for (const command of commands) {
@@ -486,11 +489,12 @@ function nxPushesTags (workspaceRoot: string): boolean {
  * @param workspaceRoot - Absolute path to the workspace.
  * @param processes - The process runner.
  * @param log - The logger.
+ * @param dryRun - Report the tags that would be made, creating and pushing none.
  * @returns 0 when every library was released or had nothing to release, otherwise 1.
  * @throws Never - a failing git command is logged and returned as a status.
  * @typeParam None - this function has no generic type parameters.
  */
-function tagGoLibraries (workspaceRoot: string, processes: CiProcesses, log: (message: string) => void): number {
+function tagGoLibraries (workspaceRoot: string, processes: CiProcesses, log: (message: string) => void, dryRun = false): number {
   if (listGoLibraryDirectories(workspaceRoot).length === 0) {
     return 0
   }
@@ -503,7 +507,7 @@ function tagGoLibraries (workspaceRoot: string, processes: CiProcesses, log: (me
     return result.stdout
   }
   try {
-    releaseGoLibraries(workspaceRoot, { git, log })
+    releaseGoLibraries(workspaceRoot, { git, log, dryRun })
 
     return 0
   } catch (error) {
@@ -569,7 +573,12 @@ function afterRelease (workspaceRoot: string, processes: CiProcesses, githubRele
  * @throws Never - a command that fails is a status, not an exception.
  * @typeParam None - this function has no generic type parameters.
  */
-export async function runRelease (workspaceRoot: string, dependencies: Partial<CiDependencies> = {}): Promise<number> {
+export async function runRelease (
+  workspaceRoot: string,
+  dependencies: Partial<CiDependencies> = {},
+  options: { readonly dryRun?: boolean } = {},
+): Promise<number> {
+  const dryRun = options.dryRun === true
   const environment = dependencies.environment ?? process.env
   const processes = dependencies.processes ?? {
     run:     (command, arguments_) => runShell(command, arguments_, workspaceRoot),
@@ -599,11 +608,12 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
   if (shallow !== 0) {
     return close(shallow)
   }
-  const npm = npmPreflight(workspaceRoot, registry.kind, environment, processes, log)
+  // A preview publishes nothing, so it needs no registry credential and asks the registry nothing.
+  const npm = dryRun ? 0 : npmPreflight(workspaceRoot, registry.kind, environment, processes, log)
   if (npm !== 0) {
     return close(npm)
   }
-  const pypi = await pypiPreflight(workspaceRoot, registry.kind, environment, log, fetchStatus)
+  const pypi = dryRun ? 0 : await pypiPreflight(workspaceRoot, registry.kind, environment, log, fetchStatus)
   if (pypi !== 0) {
     return close(pypi)
   }
@@ -612,17 +622,19 @@ export async function runRelease (workspaceRoot: string, dependencies: Partial<C
   // A workspace with no registry (--registry none) releases only what is tagged for it: the packages/* globs are not in
   // release.projects, so they are not counted here either (#228).
   const releasable = registry.kind === 'none' ? { ...counts, npm: 0, python: 0, csharp: 0, dart: 0, rust: 0 } : counts
-  const released = await runReleaseCommand(workspaceRoot, registry, releasable, environment, processes, log, processes.tee)
+  const released = await runReleaseCommand(workspaceRoot, registry, releasable, environment, processes, log, processes.tee, dryRun)
   if (released.status !== 0) {
     // Per package, not all or nothing: what published keeps its tag, so a retry does not republish it.
-    pushSurvivingTags(released.output, processes, log)
+    if (!dryRun) {
+      pushSurvivingTags(released.output, processes, log)
+    }
 
     return close(released.status)
   }
-  const libraries = tagGoLibraries(workspaceRoot, processes, log)
+  const libraries = tagGoLibraries(workspaceRoot, processes, log, dryRun)
   if (libraries !== 0) {
     return close(libraries)
   }
 
-  return close(afterRelease(workspaceRoot, processes, nxPushesTags(workspaceRoot)))
+  return close(dryRun ? 0 : afterRelease(workspaceRoot, processes, nxPushesTags(workspaceRoot)))
 }

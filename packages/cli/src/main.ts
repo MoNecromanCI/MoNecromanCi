@@ -16,6 +16,7 @@ import { runRemove, type RemoveOptions } from './project-removal'
 import { runSync, type SyncOptions } from './dependency-management'
 import { runUp, type UpOptions } from './dependency-management'
 import { runUpgrade, type UpgradeOptions } from './workspace-upgrade'
+import { releaseWorkspace, type ReleaseOptions } from './release-command'
 import { logger } from './terminal'
 import { checkForUpdate, readCliVersion } from './cli-version'
 
@@ -165,6 +166,17 @@ export function buildProgram (cliVersion: string): Command {
     )
     .action(async (phase: CiPhase) => {
       process.exitCode = await runCiPhase(phase, process.cwd())
+    })
+
+  program
+    .command('release')
+    .description(
+      'Preview or make a release of every releasable project, in every language: fetches the tags, refuses when a project\'s last release cannot be found (tags under an old name, a published package with no tag, a tag behind the registry), and shows what nx release would version, tag and publish, the Go libraries included. With --dry-run nothing is changed; without it, asks and then runs the release phase CI runs (only from main; --yes with no terminal). Exits non-zero on a blocker',
+    )
+    .option('--dry-run', 'show what would be released and change nothing')
+    .option('--yes', 'release without asking, which a run with no terminal needs')
+    .action(async (options: ReleaseOptions) => {
+      process.exitCode = await releaseWorkspace(process.cwd(), options)
     })
 
   program

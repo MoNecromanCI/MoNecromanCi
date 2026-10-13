@@ -510,6 +510,33 @@
     "options": []
   },
   {
+    "name": "release",
+    "aliases": [],
+    "group": "pipeline",
+    "description": "Preview or make a release of every releasable project, in every language: fetches the tags, refuses when a project's last release cannot be found (tags under an old name, a published package with no tag, a tag behind the registry), and shows what nx release would version, tag and publish, the Go libraries included. With --dry-run nothing is changed; without it, asks and then runs the release phase CI runs (only from main; --yes with no terminal). Exits non-zero on a blocker",
+    "arguments": [],
+    "options": [
+      {
+        "name": "dry-run",
+        "flags": "--dry-run",
+        "description": "show what would be released and change nothing",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "yes",
+        "flags": "--yes",
+        "description": "release without asking, which a run with no terminal needs",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "pipeline",
     "aliases": [],
     "group": "pipeline",
