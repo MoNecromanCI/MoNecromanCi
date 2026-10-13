@@ -138,17 +138,19 @@ function workspaceNode (
     return { ...base, description: workspace.root, icon: 'folder-active', tooltip: `${workspace.root}\n${settings}` }
   }
   const { found, status } = install
+  const version = found.installed ?? found.locked ?? ''
+  const where = found.installed === undefined && found.locked !== undefined ? 'locked in package-lock.json, not in node_modules' : 'installed'
   const declared = found.declared === undefined ? 'not declared in package.json' : `package.json: ${found.declared}`
   if (status === 'current') {
     return {
       ...base,
-      description: `${workspace.root} · @mnci/cli ${found.installed ?? ''}`,
+      description: `${workspace.root} · @mnci/cli ${version}`,
       icon:        'pass-filled',
       iconColor:   'testing.iconPassed',
-      tooltip:     `@mnci/cli ${found.installed ?? ''} is the newest (${declared}).\n${workspace.root}\n${settings}`,
+      tooltip:     `@mnci/cli ${version} is the newest, ${where} (${declared}).\n${workspace.root}\n${settings}`,
     }
   }
-  const state = status === 'missing' ? 'not installed' : `${found.installed ?? ''} installed, ${latest ?? 'a newer one'} is available`
+  const state = status === 'missing' ? 'not installed' : `${version} ${where === 'installed' ? 'installed' : 'locked'}, ${latest ?? 'a newer one'} is available`
 
   return {
     ...base,

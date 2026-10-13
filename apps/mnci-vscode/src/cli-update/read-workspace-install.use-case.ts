@@ -21,6 +21,29 @@ function readObject (path: string): Record<string, unknown> | undefined {
 }
 
 /**
+ * The version a `package-lock.json` pins for `@mnci/cli`.
+ *
+ * @remarks
+ * Lockfile versions 2 and 3 key it as `packages["node_modules/@mnci/cli"]`; version 1 as `dependencies["@mnci/cli"]`.
+ *
+ * @param lock - The parsed lockfile, or `undefined`.
+ * @returns The pinned version, or `undefined`.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function lockedVersion (lock: Record<string, unknown> | undefined): string | undefined {
+  const entryIn = (block: string, key: string): unknown => {
+    const entries = lock?.[block]
+
+    return typeof entries === 'object' && entries !== null ? (entries as Record<string, unknown>)[key] : undefined
+  }
+  const entry = entryIn('packages', 'node_modules/@mnci/cli') ?? entryIn('dependencies', '@mnci/cli')
+  const version = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>)['version'] : undefined
+
+  return typeof version === 'string' ? version : undefined
+}
+
+/**
  * Reads what a workspace declares and has installed of `@mnci/cli`.
  *
  * @remarks
@@ -44,5 +67,6 @@ export function readWorkspaceInstall (workspaceRoot: string): WorkspaceInstall {
   return {
     declared:  declaredIn('devDependencies') ?? declaredIn('dependencies'),
     installed: typeof installed === 'string' ? installed : undefined,
+    locked:    lockedVersion(readObject(join(workspaceRoot, 'package-lock.json'))),
   }
 }

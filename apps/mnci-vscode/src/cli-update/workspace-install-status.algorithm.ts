@@ -19,7 +19,8 @@ function triple (version: string): [number, number, number] | undefined {
  *
  * @remarks
  * Installed, not declared, decides it: a `^4.100.0` range in `package.json` with 4.100.0 in `node_modules` is behind
- * 4.101.0 however the range reads, and a range with nothing installed is `missing`.
+ * 4.101.0 however the range reads. A workspace whose `node_modules` has not been restored is judged by what
+ * `package-lock.json` pins, which is what CI and the rest of the team run; only a workspace with neither is `missing`.
  *
  * @param install - What the workspace holds.
  * @param latest - The newest published version, or `null` when the registry did not answer.
@@ -28,13 +29,14 @@ function triple (version: string): [number, number, number] | undefined {
  * @typeParam None - this function has no generic type parameters.
  */
 export function workspaceInstallStatus (install: WorkspaceInstall, latest: string | null): WorkspaceInstallStatus {
-  if (install.installed === undefined) {
+  const version = install.installed ?? install.locked
+  if (version === undefined) {
     return 'missing'
   }
   if (latest === null) {
     return 'unknown'
   }
-  const [have, want] = [triple(install.installed), triple(latest)]
+  const [have, want] = [triple(version), triple(latest)]
   if (have === undefined || want === undefined) {
     return 'unknown'
   }
