@@ -454,6 +454,28 @@ runs, with its preflights (the npm token, the PyPI token's shape) and its partia
 `--yes`. Exits non-zero on a blocker, so it can sit in a script. Not covered: a project excluded from `release.projects`
 (nothing to preview), and a registry other than npm for the "published but untagged" check (the others are released by tag).
 
+## `mnci lint`: every project, one ESLint process
+
+```
+mnci lint                    # npm projects together; other languages through Nx
+mnci lint --affected         # only what changed since the workspace's default base
+mnci lint --affected --base origin/main
+nx run-many -t lint          # the per-project run, as before
+```
+
+ESLint pays a fixed cost to load its configuration (about 4 s here: ~20 plugins and the whole config array) on **every start**,
+and a per-project lint starts it once per project. Measured on a 24-project workspace: 5 to 8 s per project whatever its size
+(9 or 54 files), 146 s in all one after another; one process over all 448 files took 30 s, 8 s on a warm `--cache`. The rules
+themselves are about a third of that: `import-x/no-cycle`, `no-misused-promises` and `no-floating-promises` lead, and none of
+the rest is over 3%.
+
+`mnci lint` is that single process for the npm projects (their folders are named explicitly, so the Markdown and JSON of a Go
+or Python project stay with their own tools), and Nx for every other `lint` target, the workspace root's included. Both halves
+always run, so one failure does not hide the other's findings. Where Nx's project names cannot be matched with the folders it
+lints through Nx exactly as before, since a name that does not match would silently drop a project. It is what
+`mnci ci verify`, `npm run lint` and `npm run affected` run; the per-project `<name>:lint` scripts and
+`nx run-many -t lint` are unchanged. Not covered: Nx's per-project lint cache (ESLint's own `--cache` replaces it).
+
 ## `mnci doctor`: checking the invariants actually hold
 
 Read-only — it never edits the workspace. Every failing finding names the command

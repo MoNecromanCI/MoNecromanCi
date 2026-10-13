@@ -90,6 +90,12 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "mnci.lint",
+        "title": "Lint every project (one ESLint process)",
+        "category": "MNCI",
+        "icon": "$(checklist)"
+      },
+      {
         "command": "mnci.release",
         "title": "Preview or make a release",
         "category": "MNCI",

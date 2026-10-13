@@ -20,6 +20,7 @@ export const COMMAND_GROUPS: Readonly<Record<string, CommandGroup>> = {
   uninstall: 'dependencies',
   sync:      'dependencies',
   up:        'dependencies',
+  lint:      'projects',
   ci:        'pipeline',
   release:   'pipeline',
   pipeline:  'pipeline',

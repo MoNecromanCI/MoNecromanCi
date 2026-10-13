@@ -243,3 +243,78 @@ describe('runVerify: log groups', () => {
     expect(run.logged.some(message => message.includes('Verify every project'))).toBe(true)
   })
 })
+
+/** A runner that answers `nx show projects` and records every command. */
+function together (all: string[], affected: string[] = [], mergeBase = 'abc123'): { commands: string[], processes: CiProcesses } {
+  const commands: string[] = []
+
+  return {
+    commands,
+    processes: {
+      run: (command, arguments_) => {
+        commands.push([command, ...arguments_].join(' '))
+
+        return 0
+      },
+      capture: (command, arguments_) => {
+        commands.push(`capture: ${[command, ...arguments_].join(' ')}`)
+        if (command === 'git' && arguments_[0] === 'merge-base') {
+          return { status: 0, stdout: `${mergeBase}\n` }
+        }
+        if (arguments_[0] === 'nx' && arguments_[1] === 'show') {
+          return { status: 0, stdout: JSON.stringify(arguments_.includes('--affected') ? affected : all) }
+        }
+
+        return { status: 1, stdout: '' }
+      },
+    },
+  }
+}
+
+describe('runVerify: linting together', () => {
+  beforeEach(() => {
+    mkdirSync(join(workspaceRoot, 'packages/a'), { recursive: true })
+    writeFileSync(join(workspaceRoot, 'packages/a/package.json'), JSON.stringify({ name: '@x/a' }))
+  })
+
+  it('lints the npm projects in one ESLint process and leaves lint out of the Nx run, on a push', () => {
+    const { commands, processes } = together(['@x/a', 'gopkg'])
+
+    const status = runVerify(workspaceRoot, { processes, environment: {}, log: () => {} })
+
+    expect(status).toBe(0)
+    expect(commands).toContain('npx eslint packages/a --cache')
+    expect(commands).toContain('npx nx run-many -t lint --projects=gopkg')
+    expect(commands).toContain('npx nx run-many -t typecheck,test,build')
+    expect(commands.some(line => line.includes(TARGETS))).toBe(false)
+  })
+
+  it('scopes both to the affected projects on a pull request', () => {
+    const { commands, processes } = together(['@x/a', 'gopkg'], ['gopkg'])
+
+    runVerify(workspaceRoot, { processes, environment: { GITHUB_BASE_REF: 'main' }, log: () => {} })
+
+    expect(commands.some(line => line.startsWith('npx eslint'))).toBe(false)
+    expect(commands).toContain('npx nx run-many -t lint --projects=gopkg')
+    expect(commands).toContain('npx nx affected -t typecheck,test,build --base=abc123')
+  })
+
+  it('still runs the other targets when ESLint fails, and fails with ESLint\'s status', () => {
+    const { processes } = together(['@x/a'])
+    const run = jest.fn((command: string, arguments_: string[]) => (arguments_[0] === 'eslint' ? 1 : 0))
+
+    const status = runVerify(workspaceRoot, { processes: { ...processes, run }, environment: {}, log: () => {} })
+
+    expect(status).toBe(1)
+    expect(run).toHaveBeenCalledWith('npx', ['nx', 'run-many', '-t', 'typecheck,test,build'])
+  })
+
+  it('verifies exactly as before when Nx\'s names cannot be matched with the folders', () => {
+    const { commands, processes } = together(['something-else'])
+
+    runVerify(workspaceRoot, { processes, environment: {}, log: () => {} })
+
+    expect(commands).toContain(`npx nx run-many -t ${TARGETS}`)
+    expect(commands.some(line => line.startsWith('npx eslint'))).toBe(false)
+  })
+})

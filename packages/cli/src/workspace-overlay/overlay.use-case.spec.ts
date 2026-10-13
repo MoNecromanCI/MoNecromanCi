@@ -1849,7 +1849,7 @@ describe('rootScripts', () => {
   it('uses nx lint, and `format` is eslint --fix — one tool, one command', () => {
     const scripts = rootScripts()
 
-    expect(scripts.lint).toBe('nx run-many -t lint')
+    expect(scripts.lint).toBe('mnci lint')
     expect(scripts.format).toBe('eslint . --fix --cache')
     // No `format:check`: `lint` already reports formatting as ordinary errors,
     // so a second script would run the same binary twice for no new coverage.
@@ -3566,12 +3566,12 @@ describe('applyOverlay', () => {
     } = manifest.scripts
     expect(rest).toEqual({
       'build':           'nx run-many -t build',
-      'lint':            'nx run-many -t lint',
+      'lint':            'mnci lint',
       'test':            'nx run-many -t test',
       // Its own script because nothing else type-checks: a bundler-built
       // project's `build` strips types without reading them.
       'typecheck':       'nx run-many -t typecheck',
-      'affected':        'nx affected -t lint,typecheck,test,build',
+      'affected':        'mnci lint --affected && nx affected -t typecheck,test,build',
       'graph':           'nx graph',
       'release:preview': 'nx release --dry-run',
       'prepare':         'husky',

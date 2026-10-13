@@ -510,6 +510,33 @@
     "options": []
   },
   {
+    "name": "lint",
+    "aliases": [],
+    "group": "projects",
+    "description": "Lint every project, the npm ones in a single ESLint process (it pays about 4 s to load its configuration on every start, so one run per project spent most of its time starting) and the other languages through Nx, each with its own linter. `nx run-many -t lint` is the per-project run. Exits non-zero when anything is reported",
+    "arguments": [],
+    "options": [
+      {
+        "name": "affected",
+        "flags": "--affected",
+        "description": "lint only the projects affected since the base",
+        "takesValue": "none",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      },
+      {
+        "name": "base",
+        "flags": "--base <ref>",
+        "description": "the ref --affected compares with (default: the workspace's default base)",
+        "takesValue": "required",
+        "variadic": false,
+        "repeatable": false,
+        "negated": false
+      }
+    ]
+  },
+  {
     "name": "release",
     "aliases": [],
     "group": "pipeline",
