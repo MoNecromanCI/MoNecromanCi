@@ -15,11 +15,16 @@ describe('planCliUpdate', () => {
     expect(planCliUpdate(at('path'), '/ws').run?.arguments_).toEqual(['install', '--global', '@mnci/cli@latest'])
   })
 
-  it('has nothing to do for npx, which always fetches the newest', () => {
+  it('installs it as a dev dependency of the workspace when npx is the fallback', () => {
     const plan = planCliUpdate(at('npx'), '/ws')
 
-    expect(plan.run).toBeUndefined()
-    expect(plan.reason).toMatch(/nothing to update/)
+    expect(plan.run).toEqual({ command: 'npm', arguments_: ['install', '--save-dev', '@mnci/cli@latest'], cwd: '/ws' })
+  })
+
+  it('only refreshes what npx runs when there is no workspace to write a manifest in', () => {
+    const plan = planCliUpdate(at('npx'), undefined)
+
+    expect(plan.run?.arguments_).toEqual(['--yes', '@mnci/cli@latest', '--version'])
   })
 
   it('leaves a hand-set path to the user, naming it', () => {

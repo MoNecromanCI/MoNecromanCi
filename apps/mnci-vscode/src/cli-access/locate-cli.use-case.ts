@@ -63,7 +63,9 @@ export function locateCli (options: LocateOptions, probes: LocateProbes): CliLoc
     return { command: 'mnci', prefix: [], source: 'path' }
   }
 
-  return { command: 'npx', prefix: ['--yes', '@mnci/cli'], source: 'npx' }
+  // `@latest` is not decoration: a bare `npx @mnci/cli` runs whatever copy is already in npx's cache, which left one
+  // machine on 4.56.2 with 4.101 published and hid every command added since (adopt among them).
+  return { command: 'npx', prefix: ['--yes', '@mnci/cli@latest'], source: 'npx' }
 }
 
 /**
