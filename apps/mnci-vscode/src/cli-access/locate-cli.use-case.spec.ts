@@ -66,6 +66,6 @@ describe('locateCli', () => {
   })
 
   it('falls back to npx, which fetches the newest, when nothing is installed', () => {
-    expect(locateCli({ platform: 'linux' }, probes([], []))).toEqual({ command: 'npx', prefix: ['--yes', '@mnci/cli'], source: 'npx' })
+    expect(locateCli({ platform: 'linux' }, probes([], []))).toEqual({ command: 'npx', prefix: ['--yes', '@mnci/cli@latest'], source: 'npx' })
   })
 })

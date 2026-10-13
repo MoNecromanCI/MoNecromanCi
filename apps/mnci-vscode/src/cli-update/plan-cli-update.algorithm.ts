@@ -18,8 +18,8 @@ export interface CliUpdatePlan {
  *
  * @remarks
  * Each source updates differently: a workspace install is a dev dependency of that workspace,
- * a global install is updated globally, `npx` always fetches the newest so there is nothing to
- * do, and a path set by hand is the user's own.
+ * a global install is updated globally, the `npx` fallback is replaced by installing it into the
+ * workspace (so its `package.json` names the version), and a path set by hand is the user's own.
  *
  * @param location - Where the CLI was found.
  * @param workspaceRoot - The workspace folder, when one is open.
@@ -36,7 +36,14 @@ export function planCliUpdate (location: CliLocation, workspaceRoot: string | un
       return { run: { command: 'npm', arguments_: ['install', '--global', '@mnci/cli@latest'], cwd: workspaceRoot } }
     }
     case 'npx': {
-      return { reason: 'mnci is fetched with npx, which always runs the newest version: nothing to update.' }
+      // No copy is installed (or the declared one is not in node_modules), so the update is to install it: the workspace
+      // then runs the version its package.json names, as the rest of the team does. Outside a workspace there is no
+      // package.json to write, and refreshing what npx runs is all there is.
+      if (workspaceRoot !== undefined) {
+        return { run: { command: 'npm', arguments_: ['install', '--save-dev', '@mnci/cli@latest'], cwd: workspaceRoot } }
+      }
+
+      return { run: { command: 'npx', arguments_: ['--yes', '@mnci/cli@latest', '--version'], cwd: undefined } }
     }
     case 'setting': {
       return { reason: `mnci is run from ${location.command} (the mnci.cliPath setting). Update it where it was installed.` }

@@ -2,8 +2,8 @@ import type { CliSession } from '../cli-session'
 import { updateCli, type UpdateSurface } from './update-cli.use-case'
 
 /** A session whose CLI was found from a given source. */
-function session (source: 'workspace' | 'npx'): CliSession {
-  return { location: () => ({ command: 'mnci', prefix: [], source }), workspaceRoot: '/ws' } as unknown as CliSession
+function session (source: 'workspace' | 'npx' | 'setting'): CliSession {
+  return { location: () => ({ command: 'C:/tools/mnci.cmd', prefix: [], source }), workspaceRoot: '/ws' } as unknown as CliSession
 }
 
 /** A surface that records what it was asked, and answers the confirmation as told. */
@@ -32,9 +32,9 @@ describe('updateCli', () => {
   it('explains, without asking, when there is nothing to run', async () => {
     const ui = surface(true)
 
-    await updateCli(session('npx'), ui)
+    await updateCli(session('setting'), ui)
 
     expect(ui.confirm).not.toHaveBeenCalled()
-    expect(ui.tell).toHaveBeenCalledWith(expect.stringMatching(/nothing to update/))
+    expect(ui.tell).toHaveBeenCalledWith(expect.stringContaining('C:/tools/mnci.cmd'))
   })
 })
