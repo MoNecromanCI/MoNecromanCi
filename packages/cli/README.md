@@ -703,8 +703,23 @@ it writes a Bicep one: a `CMakeLists.txt`, a worked example and explicit targets
 
 Measured with CMake 4.4, g++ 16 (MinGW) and cppcheck 2.21: generate, link, lint, test, build, package, run, `nx release`.
 
-Not covered yet (#473): a package manager for a project's own third-party dependencies (vcpkg manifest mode or Conan: an
-external package is refused with a message, not silently ignored); `clang-format` and `clang-tidy`; the toolchain in
+**Third-party libraries are vcpkg ports, in manifest mode, per project.** `mnci install -w <project> <port>` (a name that is not
+a C++ project of the workspace) writes the port into that project's own `vcpkg.json` (created if absent: the manifest is the
+project's, never the root's), has CMake configure the project into its build directory so vcpkg's toolchain installs it with
+the triplet the build will use, and takes the `find_package` and `target_link_libraries` lines from the port's own `usage`
+file, so the target is the library's real one (`fmt::fmt`). They go between `# mnci: vcpkg <port>` markers at the end of
+`CMakeLists.txt`, which is how `mnci uninstall -w <project> <port>` removes exactly them and the manifest entry. A name that
+CMake cannot configure with puts `vcpkg.json` back as it was. Requirements: `VCPKG_ROOT` set to a vcpkg checkout (clone it, run
+its bootstrap script; mnci changes nothing and says so when it is not). Every generated `CMakeLists.txt` carries a
+conditional hook before `project()` that uses vcpkg's toolchain when `VCPKG_ROOT` is set and passes `VCPKG_DEFAULT_TRIPLET`
+and `VCPKG_DEFAULT_HOST_TRIPLET` on as the CMake variables the toolchain reads (it cannot tell MinGW from MSVC before
+`project()`, so a MinGW machine names `x64-mingw-static` once in its environment). A machine with no vcpkg configures the
+project exactly as before. A port is named plainly: a version, a feature or a triplet in the name is refused, and a pin goes
+in `vcpkg.json` by hand. Measured with vcpkg 2026-09-26 and fmt 12.2.0 on Windows with MinGW g++ 16 and Ninja: install, build
+with `-Wall -Wextra -Wpedantic -Werror`, run, uninstall.
+
+Not covered yet (#473): Conan; a pinned vcpkg baseline and versions; `mnci sync` / `mnci up` reading `vcpkg.json` (a port's
+version comes from the registry baseline, not from the manifest); `clang-format` and `clang-tidy`; vcpkg and the compiler in
 `mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`.
 
 **`slice-check`** (`tools/slice-check.cjs`, what `lint` depends on) holds the layout: a file under `src/` is

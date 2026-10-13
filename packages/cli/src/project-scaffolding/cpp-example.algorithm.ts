@@ -1,4 +1,4 @@
-import { cppIdentifier } from '../dependency-management'
+import { cppIdentifier, VCPKG_TOOLCHAIN_HOOK } from '../dependency-management'
 
 /**
  * The three C++ project kinds.
@@ -35,6 +35,8 @@ export function cppCmakeLists (kind: CppKind, name: string, empty: boolean): str
   const sources = empty ? [] : [`src/${id}/greeting/greet_use_case.cpp`]
   const lines = [
     'cmake_minimum_required(VERSION 3.20)',
+    // vcpkg's toolchain when VCPKG_ROOT is set, so `mnci install -w <project> <port>` resolves on any machine that has it.
+    ...VCPKG_TOOLCHAIN_HOOK,
     `project(${name} VERSION 0.1.0 LANGUAGES CXX)`,
     '',
     'set(CMAKE_CXX_STANDARD 20)',
