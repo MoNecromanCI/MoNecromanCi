@@ -12,6 +12,8 @@ export interface WorkspaceInstall {
   readonly declared:  string | undefined
   /** The version in `node_modules`, or `undefined` when it is not installed. */
   readonly installed: string | undefined
+  /** The version `package-lock.json` pins, or `undefined` when there is no lockfile or it does not name the package. */
+  readonly locked:    string | undefined
 }
 
 /**

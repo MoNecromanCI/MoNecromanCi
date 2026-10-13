@@ -96,30 +96,40 @@ describe('updateNodes, the workspace row', () => {
   const open = { root: '/ws', config: { ci: 'github' } }
 
   it('is a green check, with the version, when the workspace has the newest', () => {
-    const row = updateNodes(info({}, open), where, { found: { declared: '^1.2.0', installed: '1.2.0' }, status: 'current' })[2]
+    const row = updateNodes(info({}, open), where, { found: { declared: '^1.2.0', installed: '1.2.0', locked: undefined }, status: 'current' })[2]
 
     expect(row).toMatchObject({ icon: 'pass-filled', iconColor: 'testing.iconPassed', description: '/ws · @mnci/cli 1.2.0' })
     expect(row.command).toBeUndefined()
   })
 
   it('is a red cross that offers the update when the workspace is behind', () => {
-    const row = updateNodes(info({ latest: '1.3.0', updateAvailable: true }, open), where, { found: { declared: '^1.2.0', installed: '1.2.0' }, status: 'outdated' })[2]
+    const row = updateNodes(info({ latest: '1.3.0', updateAvailable: true }, open), where, { found: { declared: '^1.2.0', installed: '1.2.0', locked: undefined }, status: 'outdated' })[2]
 
     expect(row).toMatchObject({ icon: 'error', iconColor: 'testing.iconFailed', command: { id: 'mnci.updateWorkspace' } })
     expect(row.description).toMatch(/1\.2\.0 installed, 1\.3\.0 is available/)
   })
 
   it('is a red cross too when the CLI is not installed in the workspace', () => {
-    const row = updateNodes(info({}, open), where, { found: { declared: '^1.2.0', installed: undefined }, status: 'missing' })[2]
+    const row = updateNodes(info({}, open), where, { found: { declared: '^1.2.0', installed: undefined, locked: undefined }, status: 'missing' })[2]
 
     expect(row).toMatchObject({ icon: 'error', command: { id: 'mnci.updateWorkspace' } })
     expect(row.description).toMatch(/not installed/)
   })
 
   it('stays a plain folder when it cannot be told', () => {
-    const row = updateNodes(info({ latest: null }, open), where, { found: { declared: undefined, installed: '1.2.0' }, status: 'unknown' })[2]
+    const row = updateNodes(info({ latest: null }, open), where, { found: { declared: undefined, installed: '1.2.0', locked: undefined }, status: 'unknown' })[2]
 
     expect(row).toMatchObject({ icon: 'folder-active', description: '/ws' })
     expect(row.iconColor).toBeUndefined()
+  })
+})
+
+describe('updateNodes, a workspace whose CLI is only locked', () => {
+  it('says it is locked in package-lock.json rather than not installed', () => {
+    const where = { command: 'npx', prefix: [], source: 'npx' } as const
+    const row = updateNodes(info({ latest: '1.3.0', updateAvailable: true }, { root: '/ws', config: {} }), where, { found: { declared: '^1.2.0', installed: undefined, locked: '1.2.0' }, status: 'outdated' })[2]
+
+    expect(row.description).toMatch(/1\.2\.0 locked, 1\.3\.0 is available/)
+    expect(row).toMatchObject({ icon: 'error', command: { id: 'mnci.updateWorkspace' } })
   })
 })
