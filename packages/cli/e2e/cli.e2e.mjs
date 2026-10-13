@@ -4119,6 +4119,28 @@ section('cpp', [], () => {
   enforce('cpp: start runs the built executable, which used the linked library', started.ok && /Hello, hello!/.test(started.output), started.output.slice(-800))
   run('git add -A', root)
   run('git commit -m "feat: add the c++ projects"', root)
+  // vcpkg manifest mode, per project: gated on VCPKG_ROOT (an installed checkout), reported SKIPPED without it.
+  const vcpkgRoot = process.env.VCPKG_ROOT
+  if (vcpkgRoot !== undefined && existsSync(path.join(vcpkgRoot, 'scripts/buildsystems/vcpkg.cmake'))) {
+    const port = tryRunCapture(`node ${CLI} i -w hello fmt`, root)
+    const manifest = path.join(root, 'apps/hello/vcpkg.json')
+    const linkedCmake = readFileSync(path.join(root, 'apps/hello/CMakeLists.txt'), 'utf8')
+    enforce(
+      'cpp: installing a vcpkg port declares it in that project only and links its target',
+      port.ok && existsSync(manifest) && readFileSync(manifest, 'utf8').includes('"fmt"') && linkedCmake.includes('target_link_libraries(hello PRIVATE fmt::fmt') && !existsSync(path.join(root, 'libs/kit/vcpkg.json')),
+      `${port.output.slice(-800)}\n${linkedCmake}`,
+    )
+    const withPort = tryRunCapture('npx nx run hello:build', root)
+    enforce('cpp: the project builds with the port linked', withPort.ok, withPort.output.slice(-1500))
+    const dropped = tryRunCapture(`node ${CLI} un -w hello fmt`, root)
+    enforce(
+      'cpp: uninstall removes the port and the CMake lines mnci wrote',
+      dropped.ok && !readFileSync(manifest, 'utf8').includes('"fmt"') && !readFileSync(path.join(root, 'apps/hello/CMakeLists.txt'), 'utf8').includes('mnci: vcpkg fmt'),
+      dropped.output.slice(-800),
+    )
+  } else {
+    skip('the cpp vcpkg checks', 'VCPKG_ROOT does not name a vcpkg checkout')
+  }
   const release = tryRunCapture('npx nx release --dry-run', root)
   enforce('cpp: nx release versions the publishable library from its CMakeLists.txt', release.ok && /core/.test(release.output), release.output.slice(-2000))
   const doctor = tryRunCapture(`node ${CLI} doctor`, root)

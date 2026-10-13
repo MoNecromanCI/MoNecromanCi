@@ -16,6 +16,7 @@ import { addBundlerGems } from './bundler-dependencies.use-case'
 import { addComposerPackages } from './composer-dependencies.use-case'
 import { addGradleDependencies } from './gradle-dependencies.use-case'
 import { addMavenDependencies } from './maven-dependencies.use-case'
+import { addVcpkgPorts } from './vcpkg-dependencies.use-case'
 import { resolveTarget } from './resolve-target-project.use-case'
 
 /**
@@ -153,11 +154,11 @@ function linkCmakeSiblings (
       .filter(candidate => candidate.ecosystem === 'cmake' && candidate.dir !== location.dir)
       .map(candidate => [candidate.name, candidate] as const),
   )
+  const external: string[] = []
   for (const name of packages) {
     const sibling = siblings.get(name)
     if (sibling === undefined) {
-      logger.warn(`${name} is not a C++ project of this workspace, and installing an external dependency into ${location.dir} needs a package manager (vcpkg or Conan), which is not wired yet (#473).`)
-      process.exitCode = 1
+      external.push(name)
       continue
     }
     const relativePath = relative(join(workspaceRoot, location.dir), join(workspaceRoot, sibling.dir)).split(sep).join('/')
@@ -169,6 +170,10 @@ function linkCmakeSiblings (
       writeFileEnsured(location.manifestPath, next)
       logger.step(`${location.dir}: linked ${name} (add_subdirectory ${relativePath})`)
     }
+  }
+  if (external.length > 0) {
+    // Not a project of this workspace, so it is a vcpkg port: the project's own manifest, never the root's.
+    addVcpkgPorts(workspaceRoot, location, external)
   }
 }
 

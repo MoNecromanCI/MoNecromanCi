@@ -12,6 +12,7 @@ import { removeGradleDependencies } from './gradle-dependencies.use-case'
 import { removeMavenDependencies } from './maven-dependencies.use-case'
 import { removePipDependency } from './remove-pip-dependency.algorithm'
 import { resolveTarget } from './resolve-target-project.use-case'
+import { removeVcpkgPorts } from './vcpkg-dependencies.use-case'
 
 /**
  * Options for `mnci uninstall` (alias `mnci un`).
@@ -132,8 +133,7 @@ function uninstallFrom (
       return
     }
     case 'cmake': {
-      logger.warn(`${location.dir} is a C++ project with no package manager wired yet (#473), so it has no dependency to remove here.`)
-      process.exitCode = 1
+      removeVcpkgPorts(workspaceRoot, location, packages)
 
       return
     }
