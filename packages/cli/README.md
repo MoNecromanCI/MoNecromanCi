@@ -550,6 +550,23 @@ Every project that has a `start` script (`mnci add` of an app kind) also gets it
 `mnci: <project> start`, which runs `npm run <project>:start`. These sit in a separate `mnci projects` group
 in the dropdown.
 
+An app of **C++, Rust, Java, Kotlin, PHP or Ruby** also gets `mnci: <project> debug`, a launch for that language's own
+debug adapter (the script entries run in a Node terminal, which binds breakpoints in Node only). The adapter is an editor
+extension you install, and `mnci add` names it:
+
+| language | adapter | extension | also needs |
+| --- | --- | --- | --- |
+| C++ | `cppdbg` | `ms-vscode.cpptools` | `gdb` (LLDB on macOS); a Debug build, which the launch makes first with `<project>:build:dev` |
+| Rust | `lldb` | `vadimcn.vscode-lldb` | a Rust toolchain; the launch builds the crate itself |
+| Java, Kotlin | `java` | `vscjava.vscode-java-pack` | a JDK; the project imported by the Java language server |
+| PHP | `php` | `xdebug.php-debug` | the Xdebug PHP extension |
+| Ruby | `rdbg` | `KoichiSasada.vscode-rdbg` | the `debug` gem, a default gem from Ruby 3.1 |
+
+These launches are written to each adapter's documented attributes and the paths the kind's own targets produce; the
+e2e checks the entries, and for C++ that `build-dev` leaves an executable with symbols where the launch points. They were
+not driven in an editor session. Android has none (it needs a device or an emulator), and with a Visual Studio CMake
+generator on Windows the C++ executable sits under `Debug/`, which the launch does not follow.
+
 Three details are load-bearing rather than incidental:
 
 - **`type: node-terminal`, not `node`.** `nx run-many` executes every target in a
@@ -767,7 +784,7 @@ with `-Wall -Wextra -Wpedantic -Werror`, run, uninstall.
 
 Not covered yet (#473): Conan; a pinned vcpkg baseline and versions; `mnci sync` / `mnci up` reading `vcpkg.json` (a port's
 version comes from the registry baseline, not from the manifest); `clang-format` and `clang-tidy`; vcpkg and the compiler in
-`mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`.
+`mnci ci setup` and the devcontainer; `dev`.
 
 **`slice-check`** (`tools/slice-check.cjs`, what `lint` depends on) holds the layout: a file under `src/` is
 `<snake>_<role>.cpp` (a test `<snake>_<role>_test.cpp`, a header `.hpp`), the root of `src/` holds only `main.cpp`, a slice's
@@ -820,7 +837,7 @@ the pin (an Android project needs 9.6 or newer), or an Android project with no `
 `sdkmanager` commands for the last, which mnci never runs because the licences are the person's to accept.
 
 Not covered yet (#470): Gradle (see Kotlin below, #492); publishing to a Maven
-repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); a debugger launch configuration; `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
+repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
 lookup.
 
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust and C++, and what `lint` depends on) holds the layout: the root of the
@@ -872,7 +889,7 @@ latest release (`kotlin` is shared by the compiler plugin and the standard libra
 Latest versions come from the same repositories as for Maven, so an AndroidX library is offered an update.
 
 Not covered yet (#492): the Gradle wrapper (`gradlew`); publishing to a Maven
-repository; installing Gradle in `mnci ci setup` (the runner's own is used); a debugger launch configuration; `dev`
+repository; installing Gradle in `mnci ci setup` (the runner's own is used); `dev`
 (`gradle --continuous`); Kotlin Multiplatform; a `--build-tool gradle` option for the Java kinds. Android is the next section (#493).
 
 ## Android projects (`mnci add android-app | android-lib | android-internal-lib`)
@@ -969,7 +986,7 @@ and `sqlite3` must be enabled in `php.ini`). Larastan is added beside the app's 
   (Breeze, Jetstream), queues and a worker, Sail.
 
 Not covered yet (#471): `mnci sync` / `mnci up` reading a project's requirements; the PHP version in `mnci ci setup` and the
-devcontainer; a debugger launch configuration (Xdebug); `dev`; propagating a library's new version to a consumer's `^` range.
+devcontainer; `dev`; propagating a library's new version to a consumer's `^` range.
 
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++ and Java, and what `lint` depends on) holds the layout: nothing
 sits at the root of `src/`, a slice folder is StudlyCase, a class is `<Name><Role>.php` (a test `<Name><Role>Test.php`), no
@@ -1003,8 +1020,7 @@ Measured with Ruby 3.4.11 (RubyInstaller, x64-mingw-ucrt), Bundler 2.6.9, RSpec 
 lint, test, build, package, run, install and uninstall, `nx release`, `mnci doctor`.
 
 Not covered yet (#472): publishing to RubyGems (`gem push` needs `GEM_HOST_API_KEY` passed to the release step by both
-providers); `mnci sync` / `mnci up` reading a project's gems; the Ruby version in `mnci ci setup` and the devcontainer; a debugger
-launch configuration; `dev`.
+providers); `mnci sync` / `mnci up` reading a project's gems; the Ruby version in `mnci ci setup` and the devcontainer; `dev`.
 
 ### Rails (`mnci add ruby-app <name> --template rails`, #489)
 
@@ -1076,7 +1092,7 @@ file under `src/` is `<snake>_<role>.rs`, the root of `src/` holds only `main.rs
 and no folder is `util`, `helper`, `common`, `shared`, `manager`, `processor`, `data` or `misc`. `tests/`, `benches/`,
 `examples/` and `build.rs` are cargo's own and are left alone.
 
-Not covered yet (#469): a debugger launch configuration; `dev` (watch and restart); `mnci upgrade` does not add the check to
+Not covered yet (#469): `dev` (watch and restart); `mnci upgrade` does not add the check to
 crates made before it.
 
 ## HTML apps (`mnci add html-app`)

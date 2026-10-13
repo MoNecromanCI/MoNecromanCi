@@ -5,7 +5,7 @@ import { goModulePrefix } from '../go-workspace'
 import { nativeSliceCheckTarget, SLICE_CHECK_PATH, SLICE_CHECK_SCRIPT } from '../native-slice-check'
 import { runCapture } from '../nx-workspace'
 import { logger } from '../terminal'
-import { javaGroupId } from './java-example.algorithm'
+import { javaGroupId, javaPackageSegment } from './java-example.algorithm'
 import {
   GRADLE_CATALOG_PATH,
   GRADLE_PROPERTIES,
@@ -206,7 +206,9 @@ export function addKotlinProject (workspaceRoot: string, name: string, kind: Kot
   if (kind === 'kotlin-lib') {
     wireKotlinLibRelease(workspaceRoot, directory, name)
   }
-  registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start` } : { build: kind === 'kotlin-lib' })
+  registerProjectCommands(workspaceRoot, name, app
+    ? { build: true, start: `nx run ${name}:start`, debug: { language: 'jvm', mainClass: `${group}.${javaPackageSegment(name)}.MainKt` } }
+    : { build: kind === 'kotlin-lib' })
 
   if (runCapture('gradle', ['--version'], workspaceRoot).status !== 0) {
     logger.warn('gradle is not on PATH, and every Kotlin target runs it. Install Gradle 8.5 or newer and a JDK 21 (winget, apt, brew, sdkman).')

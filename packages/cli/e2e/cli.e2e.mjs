@@ -258,6 +258,45 @@ function skip (label, reason) {
 const failedSections = new Set()
 
 /**
+ * Reads the `mnci: <project> debug` launch configuration a kind wrote into the workspace file (#365 for Go, the new kinds'
+ * debug launches after it) and checks the adapter type and that every expected attribute is there. Returns the entry, or
+ * `undefined` when it is missing, so a caller can go on to check what it points at.
+ *
+ * @param {string} label - What is being checked, for the report.
+ * @param {string} root - The workspace root.
+ * @param {string} workspace - The workspace name, which is the `.code-workspace` file's name.
+ * @param {string} project - The project's Nx name.
+ * @param {Record<string, unknown>} expected - Attributes the entry must hold (compared with `JSON.stringify`).
+ * @returns {Record<string, any> | undefined} The launch configuration.
+ */
+function enforceDebugLaunch (label, root, workspace, project, expected) {
+  let configuration
+  let tasks = []
+  try {
+    const file = JSON.parse(readFileSync(path.join(root, `${workspace}.code-workspace`), 'utf8'))
+    configuration = (file.launch?.configurations ?? []).find(entry => entry.name === `mnci: ${project} debug`)
+    tasks = file.tasks?.tasks ?? []
+  } catch {
+    configuration = undefined
+  }
+  const wrong = Object.entries(expected).filter(([key, value]) => JSON.stringify(configuration?.[key]) !== JSON.stringify(value))
+  enforce(
+    `${label}: the workspace has a debug launch for the app`,
+    configuration !== undefined && wrong.length === 0,
+    configuration === undefined ? 'no "mnci: ' + project + ' debug" launch configuration' : `differs: ${wrong.map(([key]) => key).join(', ')}\n${JSON.stringify(configuration, null, 2)}`,
+  )
+  if (typeof configuration?.preLaunchTask === 'string') {
+    enforce(
+      `${label}: the debug launch's pre-launch task exists`,
+      tasks.some(task => task.label === configuration.preLaunchTask),
+      `no task labelled ${configuration.preLaunchTask}`,
+    )
+  }
+
+  return configuration
+}
+
+/**
  * Runs one section of the suite in isolation.
  *
  * A section that throws is RECORDED as a failed expectation and the run
@@ -3964,6 +4003,10 @@ section('rust', [], () => {
   const root = path.join(temporary, 'rustws')
   run(`node ${CLI} new rustws --yes --registry npm --scope @rsw`, temporary)
   run(`node ${CLI} add rust-app hello`, root)
+  enforceDebugLaunch('rust', root, 'rustws', 'hello', {
+    type:  'lldb',
+    cargo: { args: ['build', '-p', 'hello', '--target-dir', 'dist/target/hello'], filter: { name: 'hello', kind: 'bin' } },
+  })
   run(`node ${CLI} add rust-internal-lib kit`, root)
   run(`node ${CLI} add rust-lib core`, root)
   // An internal crate is consumed by path (with its version beside it), and the app really uses it.
@@ -4093,6 +4136,11 @@ section('cpp', [], () => {
   const root = path.join(temporary, 'cppws')
   run(`node ${CLI} new cppws --yes --registry npm --scope @cpw`, temporary)
   run(`node ${CLI} add cpp-app hello`, root)
+  const cppDebug = enforceDebugLaunch('cpp', root, 'cppws', 'hello', {
+    type:          'cppdbg',
+    program:       '${workspaceFolder:cppws}/dist/cmake/hello-debug/hello',
+    preLaunchTask: 'mnci: hello build:dev',
+  })
   run(`node ${CLI} add cpp-internal-lib kit`, root)
   run(`node ${CLI} add cpp-lib core`, root)
   // An internal library is consumed by add_subdirectory and a link, which mnci i writes; the app then really uses it.
@@ -4118,6 +4166,16 @@ section('cpp', [], () => {
   )
   const started = tryRunCapture('npx nx run hello:start', root)
   enforce('cpp: start runs the built executable, which used the linked library', started.ok && /Hello, hello!/.test(started.output), started.output.slice(-800))
+  // The launch names `dist/cmake/hello-debug/hello`: the Debug build must put the executable there, with symbols.
+  const debugBuilt = tryRunCapture('npx nx run hello:build-dev', root)
+  const debugExecutable = path.join(root, 'dist/cmake/hello-debug', process.platform === 'win32' ? 'hello.exe' : 'hello')
+  enforce('cpp: build-dev puts the executable where the debug launch points', cppDebug !== undefined && debugBuilt.ok && existsSync(debugExecutable), debugBuilt.output.slice(-1200))
+  if (hasTool('gdb --version') && existsSync(debugExecutable)) {
+    const symbols = tryRunCapture(`gdb -batch -ex "info line main" "${debugExecutable}"`, root)
+    enforce('cpp: the debug executable carries symbols for main', symbols.ok && /starts at address/.test(symbols.output), symbols.output.slice(-600))
+  } else {
+    skip('cpp: the debug executable symbol check', 'gdb is not on PATH')
+  }
   run('git add -A', root)
   run('git commit -m "feat: add the c++ projects"', root)
   // vcpkg manifest mode, per project: gated on VCPKG_ROOT (an installed checkout), reported SKIPPED without it.
@@ -4161,6 +4219,8 @@ section('java', [], () => {
   const root = path.join(temporary, 'javaws')
   run(`node ${CLI} new javaws --yes --registry npm --scope @jvw`, temporary)
   run(`node ${CLI} add java-app hello`, root)
+  const javaDebugGroup = /<groupId>([^<]+)<\/groupId>/.exec(readFileSync(path.join(root, 'pom.xml'), 'utf8'))[1]
+  enforceDebugLaunch('java', root, 'javaws', 'hello', { type: 'java', mainClass: `${javaDebugGroup}.hello.Main` })
   run(`node ${CLI} add java-internal-lib kit`, root)
   run(`node ${CLI} add java-lib core`, root)
   const rootPom = readFileSync(path.join(root, 'pom.xml'), 'utf8')
@@ -4278,6 +4338,8 @@ section('kotlin', [], () => {
   const root = path.join(temporary, 'kotlinws')
   run(`node ${CLI} new kotlinws --yes --registry npm --scope @ktw`, temporary)
   run(`node ${CLI} add kotlin-app hello`, root)
+  const kotlinDebugGroup = /^group = "([^"]+)"/m.exec(readFileSync(path.join(root, 'apps/hello/build.gradle.kts'), 'utf8'))[1]
+  enforceDebugLaunch('kotlin', root, 'kotlinws', 'hello', { type: 'java', mainClass: `${kotlinDebugGroup}.hello.MainKt` })
   run(`node ${CLI} add kotlin-internal-lib kit`, root)
   run(`node ${CLI} add kotlin-lib core`, root)
   const settings = readFileSync(path.join(root, 'settings.gradle.kts'), 'utf8')
@@ -4507,6 +4569,11 @@ section('php', [], () => {
   const root = path.join(temporary, 'phpws')
   run(`node ${CLI} new phpws --yes --registry npm --scope @phw`, temporary)
   run(`node ${CLI} add php-app hello`, root)
+  enforceDebugLaunch('php', root, 'phpws', 'hello', {
+    type:    'php',
+    program: '${workspaceFolder:phpws}/apps/hello/bin/hello.php',
+    port:    9003,
+  })
   run(`node ${CLI} add php-internal-lib kit`, root)
   run(`node ${CLI} add php-lib core`, root)
   const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
@@ -4696,6 +4763,11 @@ section('ruby', [], () => {
   const root = path.join(temporary, 'rbws')
   run(`node ${CLI} new rbws --yes --registry npm --scope @rbw`, temporary)
   run(`node ${CLI} add ruby-app hello`, root)
+  enforceDebugLaunch('ruby', root, 'rbws', 'hello', {
+    type:       'rdbg',
+    script:     '${workspaceFolder:rbws}/apps/hello/bin/hello',
+    useBundler: true,
+  })
   run(`node ${CLI} add ruby-internal-lib kit`, root)
   run(`node ${CLI} add ruby-lib core`, root)
   const rootGemfile = readFileSync(path.join(root, 'Gemfile'), 'utf8')
