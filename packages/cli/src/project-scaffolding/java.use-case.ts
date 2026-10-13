@@ -182,7 +182,9 @@ export function addJavaProject (workspaceRoot: string, name: string, kind: JavaK
   if (kind === 'java-lib') {
     wireJavaLibRelease(workspaceRoot, directory, name)
   }
-  registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start` } : { build: kind === 'java-lib' })
+  registerProjectCommands(workspaceRoot, name, app
+    ? { build: true, start: `nx run ${name}:start`, debug: { language: 'jvm', mainClass: `${groupId}.${javaPackageSegment(name)}.Main` } }
+    : { build: kind === 'java-lib' })
 
   if (runCapture('mvn', ['-v'], workspaceRoot).status !== 0) {
     logger.warn('mvn is not on PATH, and every Java target runs it. Install Maven 3.9 or newer and a JDK 21 or newer (winget, apt, brew, sdkman).')

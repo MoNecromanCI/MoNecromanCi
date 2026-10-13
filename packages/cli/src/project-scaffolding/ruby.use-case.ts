@@ -183,7 +183,9 @@ export function addRubyProject (workspaceRoot: string, name: string, kind: RubyK
     wireRubyLibRelease(workspaceRoot, directory, name)
   }
   ensureRubyToolsProject(workspaceRoot)
-  registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start` } : { build: kind === 'ruby-lib' })
+  registerProjectCommands(workspaceRoot, name, app
+    ? { build: true, start: `nx run ${name}:start`, debug: { language: 'ruby', script: `${directory}/bin/${name}`, directory } }
+    : { build: kind === 'ruby-lib' })
 
   for (const tool of ['ruby', 'bundle']) {
     if (runCapture(tool, ['--version'], workspaceRoot).status !== 0) {

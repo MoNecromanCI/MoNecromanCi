@@ -225,7 +225,9 @@ export function addPhpProject (workspaceRoot: string, name: string, kind: PhpKin
   }
   ensurePhpToolsProject(workspaceRoot)
   ensureVendorIgnored(workspaceRoot)
-  registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start` } : { build: kind === 'php-lib' })
+  registerProjectCommands(workspaceRoot, name, app
+    ? { build: true, start: `nx run ${name}:start`, debug: { language: 'php', program: `${directory}/bin/${name}.php` } }
+    : { build: kind === 'php-lib' })
 
   for (const tool of ['php', 'composer']) {
     if (runCapture(tool, ['--version'], workspaceRoot).status !== 0) {

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
+import { debugBuildTask, debugBuildTaskLabel, debugExtension, debugLaunchConfiguration, type DebugTarget } from '../debug-launch'
 import { LAUNCH_CONFIG_PREFIX, NX_PEER_OVERRIDES, dependabotConfig, ensurePythonArtefactsIgnored, goDebugLaunchConfiguration, projectLaunchConfiguration } from '../workspace-overlay'
 import { fileExists, readCodeWorkspace, readJson, toJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
@@ -571,6 +572,11 @@ export interface ProjectCommands {
    * script ones: breakpoints in Go need the Go extension's debugger and `dlv`, which a `node-terminal` cannot give (#365).
    */
   goDebug?:  string
+  /**
+   * What a debugger is pointed at, for a kind that is not Node and not Go (C++, Rust, Java, Kotlin, PHP, Ruby): one
+   * `mnci: <name> debug` launch configuration for its language's adapter, and for C++ the task that builds it first.
+   */
+  debug?:    DebugTarget
 }
 
 /**
@@ -1099,8 +1105,9 @@ export function registerProjectCommands (
       launch?:  { version?: string; configurations?: Record<string, unknown>[] }
     }>(codeWorkspacePath) ?? {}
   const label = (task: Record<string, unknown>): string => (task.label as string | undefined) ?? ''
+  const naming = { prefix: LAUNCH_CONFIG_PREFIX, projectName: name }
   const existingTasks = (workspaceFile.tasks?.tasks ?? []).filter(
-    task => !label(task).startsWith(`${name}: `),
+    task => !label(task).startsWith(`${name}: `) && label(task) !== debugBuildTaskLabel(naming),
   )
   // One launch configuration per script the project has, not a task (#365): the Run and Debug panel is where they
   // are run, and a task per script duplicated every one of them in a second list. Replaced by exact name, so a second
@@ -1113,14 +1120,16 @@ export function registerProjectCommands (
     ...(workspaceFile.launch?.configurations ?? []).filter(configuration => !owned(configuration)),
     ...actions.map(action => projectLaunchConfiguration(folderName, name, action)),
     ...(commands.goDebug === undefined ? [] : [goDebugLaunchConfiguration(folderName, name, commands.goDebug)]),
+    ...(commands.debug === undefined ? [] : [debugLaunchConfiguration(naming, folderName, commands.debug)]),
   ]
+  const debugTask = commands.debug === undefined ? undefined : debugBuildTask(naming, folderName, commands.debug)
   writeFileEnsured(
     codeWorkspacePath,
     toJson({
       ...workspaceFile,
       tasks: {
         version: workspaceFile.tasks?.version ?? '2.0.0',
-        tasks:   existingTasks,
+        tasks:   [...existingTasks, ...(debugTask === undefined ? [] : [debugTask])],
       },
       launch: {
         version:        workspaceFile.launch?.version ?? '0.2.0',
@@ -1128,6 +1137,10 @@ export function registerProjectCommands (
       },
     }),
   )
+  if (commands.debug !== undefined) {
+    const extension = debugExtension(commands.debug)
+    logger.info(`Debugging ${name} in VS Code needs the ${extension.name} extension (${extension.id}) and ${extension.tool}.`)
+  }
 }
 
 /** Where a generated project's own manifest can live, in resolution order. */

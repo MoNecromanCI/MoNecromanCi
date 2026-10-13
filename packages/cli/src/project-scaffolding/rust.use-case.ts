@@ -170,5 +170,7 @@ export function addRustProject (workspaceRoot: string, name: string, kind: RustK
   if (kind === 'rust-lib') {
     wireRustLibRelease(workspaceRoot, `${directory}/${name}`, name)
   }
-  registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:run` } : { build: true })
+  registerProjectCommands(workspaceRoot, name, app
+    ? { build: true, start: `nx run ${name}:run`, debug: { language: 'rust', crate: name, targetDirectory: `dist/target/${name}` } }
+    : { build: true })
 }

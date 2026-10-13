@@ -158,7 +158,9 @@ export function addCppProject (workspaceRoot: string, name: string, kind: CppKin
   if (kind === 'cpp-lib') {
     wireCppLibRelease(workspaceRoot, directory, name)
   }
-  registerProjectCommands(workspaceRoot, name, app ? { build: true, start: `nx run ${name}:start`, buildDev: `nx run ${name}:build-dev` } : { build: kind === 'cpp-lib' })
+  registerProjectCommands(workspaceRoot, name, app
+    ? { build: true, start: `nx run ${name}:start`, buildDev: `nx run ${name}:build-dev`, debug: { language: 'cpp', program: `dist/cmake/${name}-debug/${name}` } }
+    : { build: kind === 'cpp-lib' })
 
   if (runCapture('cppcheck', ['--version'], workspaceRoot).status !== 0) {
     logger.warn('cppcheck is not on PATH, and it is what `lint` runs. Install it (apt install cppcheck, brew install cppcheck, choco install cppcheck).')
