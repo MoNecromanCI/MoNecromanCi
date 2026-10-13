@@ -1,5 +1,6 @@
 import type { CliLocation } from '../cli-access'
 import type { WorkspaceInstall, WorkspaceInstallStatus } from '../cli-update'
+import type { McpStatus } from '../mcp-server'
 import type { CommandDescription, CommandGroup, ProjectSummary, WorkspaceInfo } from '../cli-contracts'
 
 /**
@@ -163,6 +164,39 @@ function workspaceNode (
 }
 
 /**
+ * The row that says whether the mnci MCP server is set up for assistants.
+ *
+ * @remarks
+ * Registered means a server named `mnci` is in `.mcp.json` or `.vscode/mcp.json`. When it is not, the row is a yellow
+ * warning that runs `mnci.addMcpServer`.
+ *
+ * @param status - Whether the workspace registers it.
+ * @returns The row.
+ * @throws Never - pure mapping.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function mcpNode (status: McpStatus): SidebarNode {
+  return status === 'registered'
+    ? {
+        id:          'mcp',
+        label:       'MCP server',
+        description: 'registered for assistants',
+        icon:        'pass-filled',
+        iconColor:   'testing.iconPassed',
+        tooltip:     'A server named mnci is in .mcp.json or .vscode/mcp.json, so an assistant in this workspace can drive mnci.',
+      }
+    : {
+        id:          'mcp',
+        label:       'MCP server',
+        description: 'not registered · click to add',
+        icon:        'warning',
+        iconColor:   'list.warningForeground',
+        tooltip:     'Registers npx mnci mcp in .mcp.json so an assistant (Claude Code) can list projects, add them and run the doctor.',
+        command:     { id: 'mnci.addMcpServer' },
+      }
+}
+
+/**
  * Builds the update view: the installed CLI, whether a newer one exists, and the workspace.
  *
  * @remarks
@@ -174,6 +208,7 @@ function workspaceNode (
  * @param info - What `mnci info --json` returned.
  * @param location - Where the CLI was found.
  * @param install - What the workspace declares and has installed, and how that compares with the newest.
+ * @param mcp - Whether the mnci MCP server is registered for assistants in this workspace.
  * @returns The rows.
  * @throws Never - pure mapping.
  * @typeParam None - this function has no generic type parameters.
@@ -182,6 +217,7 @@ export function updateNodes (
   info: WorkspaceInfo,
   location: CliLocation,
   install?: { readonly found: WorkspaceInstall, readonly status: WorkspaceInstallStatus },
+  mcp?: McpStatus,
 ): SidebarNode[] {
   const sources: Record<CliLocation['source'], string> = {
     setting:   'from the mnci.cliPath setting',
@@ -202,5 +238,6 @@ export function updateNodes (
     { id: 'installed', label: `mnci ${info.cli.version}`, description: sources[location.source], icon: 'tag' },
     latest,
     workspace,
+    ...(mcp === undefined ? [] : [mcpNode(mcp)]),
   ]
 }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import type { CliSession } from '../cli-session'
 import { readWorkspaceInstall, workspaceInstallStatus } from '../cli-update'
+import { readMcpStatus } from '../mcp-server'
 import { commandNodes, projectNodes, updateNodes, type SidebarNode } from './sidebar-nodes.mapper'
 
 /**
@@ -97,6 +98,7 @@ export function registerSidebarViews (session: CliSession): vscode.Disposable[] 
         info,
         session.location(),
         found === undefined ? undefined : { found, status: workspaceInstallStatus(found, info.cli.latest) },
+        root === undefined ? undefined : readMcpStatus(root),
       )
     }),
   }
