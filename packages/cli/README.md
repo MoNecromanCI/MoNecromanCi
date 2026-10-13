@@ -1732,20 +1732,18 @@ self-hosted `pool.name`; on GitHub the same value is passed straight through
 as `runs-on:` (GitHub's own hosted runner labels already match the common
 Azure vmImage names, and a self-hosted label is just as valid there).
 
-Every run (PR and main) installs dependencies, then runs `npm audit`
-(non-blocking) and, once the Python toolchain is installed, `pip-audit`
-(also non-blocking) — visibility, not enforcement: verified empirically that
-a real `npm audit` on this monorepo's own tree flagged nothing but
-already-latest upstream packages (`nx`, `verdaccio`) bundling their own not-
-yet-patched transitive dependencies, nothing an edit to _this_ workspace's
-manifest could fix. A hard-failing audit step would turn CI red for a
-problem with no user-actionable fix, for as long as upstream took to patch
-it — so both steps always exit 0 regardless of findings, surfacing results
-as a clearly labelled section in every CI log instead. The actionable
-response to a real finding (a targeted `overrides` entry on just the
-vulnerable transitive package) is exactly what this monorepo's own
-`fix(deps)` commit did — a manual, reviewed response, not something CI
-attempts automatically.
+Every run (PR and main) installs dependencies and then runs `mnci ci verify`, whose **first** step is the audit
+gate (there is no separate audit step in the pipeline; `mnci ci audit` is the same gate on its own). It fails the run only
+for what a person can act on: a **production-tree** advisory (`npm audit --omit=dev`) that has a published fix, at
+moderate severity or above. A dev-only advisory, and one with no fix upstream, are printed as notes and pass: verified
+empirically that a real `npm audit` on this monorepo's own tree flagged nothing but already-latest upstream packages
+(`nx`, `verdaccio`) bundling their own not-yet-patched transitive dependencies, which no edit to _this_ workspace's
+manifest could fix, and failing on those would turn CI red for as long as upstream took to patch. `pip-audit` runs once
+the Python toolchain is installed and only reports, since its output has no "a fix exists" field to draw that line
+with. The actionable response to a real finding is a targeted `overrides` entry on just the vulnerable transitive
+package, as this monorepo's own `fix(deps)` commit did: a manual, reviewed response, not something CI attempts
+automatically. A local `mnci ci verify` runs the same gate, so a green verify on a laptop no longer turns red at
+`npm audit` in CI.
 
 Then `nx sync:check` (fails fast and clearly if the workspace wasn't
 synced+committed locally — see above), then **one verify step** running
