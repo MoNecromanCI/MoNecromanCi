@@ -1112,6 +1112,16 @@ export function devcontainerJson (workspaceName: string): string {
       'ghcr.io/devcontainers/features/go:1':     { version: GO_VERSION, golangciLintVersion: GOLANGCI_LINT_VERSION },
       'ghcr.io/devcontainers/features/dotnet:2': { version: DOTNET_SDK_VERSION.replace(/\.x$/, '') },
       'ghcr.io/devcontainers/features/rust:1':   { version: RUST_VERSION, profile: 'default' },
+      // Temurin, with the Gradle and Maven the Java, Kotlin and Android kinds were measured with. The Android SDK is not a
+      // feature: its licences are the person's to accept, so `mnci add` and `mnci ci setup` name the sdkmanager commands.
+      'ghcr.io/devcontainers/features/java:1':   {
+        version:       JAVA_VERSION,
+        jdkDistro:     'tem',
+        installGradle: true,
+        gradleVersion: GRADLE_VERSION,
+        installMaven:  true,
+        mavenVersion:  MAVEN_VERSION,
+      },
     },
     // `npm ci` first: every guard after it runs through the workspace's own
     // scripts and Nx, which do not exist until the install completes.
@@ -2584,6 +2594,32 @@ export const GO_VERSION = '1.27'
  * `rustup` with a stable toolchain and the `default` profile, so mnci installs none there.
  */
 export const RUST_VERSION = '1.99'
+
+/**
+ * The JDK major mnci provisions in the devcontainer and selects on a hosted runner.
+ *
+ * @remarks
+ * 21, the LTS the Java, Kotlin and Android kinds were measured with (Temurin 21.0.12). The devcontainer's Java feature
+ * installs the `tem` (Temurin) distribution at this major; hosted runners already carry several JDKs and `mnci ci setup`
+ * selects this one through `JAVA_HOME_<major>_<arch>`. AGP needs 17 or newer, so this is also above that floor.
+ */
+export const JAVA_VERSION = '21'
+
+/**
+ * The Gradle version the devcontainer installs, and the one the Kotlin and Android kinds were measured with.
+ *
+ * @remarks
+ * 9.8.1. AGP 9.4 needs Gradle 9.6.0 or newer, so a runner with an older system Gradle is named by `mnci ci setup`.
+ */
+export const GRADLE_VERSION = '9.8.1'
+
+/**
+ * The Maven version the devcontainer installs, and the one the Java kinds were measured with.
+ *
+ * @remarks
+ * 3.10.0, the version `java-app`, `java-lib` and `java-internal-lib` were measured with on Windows.
+ */
+export const MAVEN_VERSION = '3.10.0'
 
 /**
  * The Flutter SDK version the generated pipeline installs.

@@ -4,6 +4,7 @@ import { runCapture, runShell } from '../nx-workspace'
 import { detectCiHost, groupEnd, groupStart } from './ci-environment.client'
 import { installFlutterSdk, publishFlutterSdk, resolveDartDependencies } from './flutter-sdk.use-case'
 import { currentMachine, downloadGoModules, installGolangciLint, publishGoTools, type Machine } from './go-tools.use-case'
+import { prepareJvmToolchain } from './jvm-toolchain.use-case'
 import type { CiDependencies, CiProcesses } from './phase.contract'
 
 /** The interpreter's name: the python.org Windows installer registers only `python`, every POSIX system `python3`. */
@@ -138,6 +139,7 @@ export async function runSetup (
       return 0
     }],
     ['Resolve Dart dependencies (one pub get for the whole workspace)', () => resolveDartDependencies(workspaceRoot, processes, log)],
+    ['Select the JDK and check Gradle, Maven and the Android SDK', () => prepareJvmToolchain(workspaceRoot, host, environment, processes, log)],
   ]
   for (const [title, work] of steps) {
     const status = await step(title, work)

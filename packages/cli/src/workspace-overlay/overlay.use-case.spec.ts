@@ -24,6 +24,9 @@ import {
   DOTNET_SDK_VERSION,
   GO_VERSION,
   RUST_VERSION,
+  JAVA_VERSION,
+  GRADLE_VERSION,
+  MAVEN_VERSION,
   GOLANGCI_LINT_VERSION,
   CLI_VERSION,
   ESLINT_CONFIG_VERSION,
@@ -1524,12 +1527,13 @@ describe('devcontainerJson', () => {
     )
   })
 
-  it('brings Python, Go, .NET and Rust as features rather than a hand-maintained Dockerfile', () => {
+  it('brings Python, Go, .NET, Rust and Java as features rather than a hand-maintained Dockerfile', () => {
     expect(Object.keys(parsed().features)).toEqual([
       'ghcr.io/devcontainers/features/python:1',
       'ghcr.io/devcontainers/features/go:1',
       'ghcr.io/devcontainers/features/dotnet:2',
       'ghcr.io/devcontainers/features/rust:1',
+      'ghcr.io/devcontainers/features/java:1',
     ])
   })
 
@@ -1552,6 +1556,17 @@ describe('devcontainerJson', () => {
     expect(parsed().features['ghcr.io/devcontainers/features/go:1']).toEqual({
       version:             GO_VERSION,
       golangciLintVersion: GOLANGCI_LINT_VERSION,
+    })
+  })
+
+  it('pins the Java feature to Temurin at JAVA_VERSION with the Gradle and Maven mnci measured, never latest (#470)', () => {
+    expect(parsed().features['ghcr.io/devcontainers/features/java:1']).toEqual({
+      version:       JAVA_VERSION,
+      jdkDistro:     'tem',
+      installGradle: true,
+      gradleVersion: GRADLE_VERSION,
+      installMaven:  true,
+      mavenVersion:  MAVEN_VERSION,
     })
   })
 

@@ -114,6 +114,37 @@ export function addToPath (host: CiHost, environment: NodeJS.ProcessEnv, directo
 }
 
 /**
+ * Sets an environment variable for the steps that run after this one.
+ *
+ * @remarks
+ * Same two channels as {@link addToPath}: GitHub Actions reads `NAME=value` lines appended to the file `GITHUB_ENV`
+ * names, and Azure Pipelines reads the `task.setvariable` logging command. Run anywhere else there is no later step to
+ * tell, so `log` says so.
+ *
+ * @param host - Where the phase is running.
+ * @param environment - The process environment.
+ * @param name - The variable name.
+ * @param value - Its value, which must not contain a newline.
+ * @param log - The logger, which receives the Azure command or the reason nothing was done.
+ * @returns Nothing.
+ * @throws Error when `GITHUB_ENV` names a file that cannot be appended to.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function exportVariable (host: CiHost, environment: NodeJS.ProcessEnv, name: string, value: string, log: (message: string) => void): void {
+  if (host === 'azure') {
+    log(`##vso[task.setvariable variable=${name}]${value}`)
+
+    return
+  }
+  if (host === 'github' && environment.GITHUB_ENV) {
+    appendFileSync(environment.GITHUB_ENV, `${name}=${value}\n`)
+
+    return
+  }
+  log('Not running in a CI that reads an environment file - skipping.')
+}
+
+/**
  * The line that opens a collapsible group in the provider's log.
  *
  * @remarks

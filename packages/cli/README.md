@@ -750,9 +750,15 @@ alpha, beta or milestone; a private repository is not asked, so a package that l
 `mnci up` edits that module's `<version>` by position, so the rest of the file is untouched, and runs nothing afterwards (the
 next build resolves it).
 
+**JDK, Gradle and Maven in CI and the devcontainer.** The devcontainer carries the Java feature (Temurin 21, Gradle 9.8.1, Maven
+3.10.0, from the constants in `workspace-overlay`), and `mnci ci setup` selects that JDK for the steps after it from the
+runner's `JAVA_HOME_21_<arch>` (`JAVA_HOME` and `PATH`, through `GITHUB_ENV`/`GITHUB_PATH` or Azure's logging commands). It
+downloads nothing: the hosted images bring their own Gradle and Maven, and a missing JDK, Gradle or Maven, a Gradle older than
+the pin (an Android project needs 9.6 or newer), or an Android project with no `ANDROID_HOME` is named in a warning, with the
+`sdkmanager` commands for the last, which mnci never runs because the licences are the person's to accept.
+
 Not covered yet (#470): Gradle (see Kotlin below, #492); publishing to a Maven
-repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); the JDK in `mnci ci setup`
-and the devcontainer; a debugger launch configuration; `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
+repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); a debugger launch configuration; `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
 lookup.
 
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust and C++, and what `lint` depends on) holds the layout: the root of the
@@ -804,7 +810,7 @@ latest release (`kotlin` is shared by the compiler plugin and the standard libra
 Latest versions come from the same repositories as for Maven, so an AndroidX library is offered an update.
 
 Not covered yet (#492): the Gradle wrapper (`gradlew`); publishing to a Maven
-repository; the JDK and Gradle in `mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`
+repository; installing Gradle in `mnci ci setup` (the runner's own is used); a debugger launch configuration; `dev`
 (`gradle --continuous`); Kotlin Multiplatform; a `--build-tool gradle` option for the Java kinds. Android is the next section (#493).
 
 ## Android projects (`mnci add android-app | android-lib | android-internal-lib`)
@@ -847,8 +853,8 @@ cold build (downloading AGP and the Compose libraries) about a minute, then seco
 libraries too, and `nx run-many -t lint` would otherwise run `:kit:lintAnalyzeDebug` in two Gradle processes at once, one of which
 fails to read the other's partial results (found by the e2e).
 
-Not covered yet (#493): instrumented tests and emulators, signing and Play publishing, the Android SDK in `mnci ci setup` and
-the devcontainer (hosted images ship it), `install` to a device, a debug launch, Kotlin Multiplatform, and an AndroidX
+Not covered yet (#493): instrumented tests and emulators, signing and Play publishing, installing the Android SDK in
+`mnci ci setup` or the devcontainer (hosted images ship it; the licences are yours), `install` to a device, a debug launch, Kotlin Multiplatform, and an AndroidX
 library in a private repository (`mnci i` asks Maven Central only, so it takes an explicit `@version`; `mnci up` also asks Google).
 
 ## PHP projects (`mnci add php-app | php-lib | php-internal-lib`)
