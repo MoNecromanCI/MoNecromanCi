@@ -3346,12 +3346,6 @@ ${slotMarkers('after-install', '  ')}
   - script: npx mnci ci setup
     displayName: Set up the language toolchains (Python, Go, Flutter)
 
-  # Fails ONLY on an advisory that has a published fix, at moderate or above;
-  # anything upstream has not fixed is printed and passes. pip-audit only
-  # reports: its output has no "a fix exists" field to draw that line with.
-  - script: npx mnci ci audit
-    displayName: Audit dependencies (fails on an actionable npm advisory)
-
   # .NET, if the workspace has any. Azure's 'condition:' expression language
   # has no glob function, so this script step detects C# projects first and
   # hands the answer to the install task below through a pipeline variable —
@@ -3371,7 +3365,9 @@ ${slotMarkers('after-install', '  ')}
   # EVERY project on anything else (a push to main included, so a release is
   # always verified in full). Every fallback takes the full path, because a run
   # that verifies too little still reports green. Apps that need a C toolchain
-  # are left to the native job.
+  # are left to the native job. The audit gate runs first inside it, so it is
+  # not a step of its own: it fails ONLY on an advisory that has a published
+  # fix, at moderate or above, and pip-audit only reports.
   - script: npx mnci ci verify
     displayName: Verify (sync check, then affected on a PR, every project on main)
 
@@ -3645,12 +3641,6 @@ ${slotMarkers('after-install', ' '.repeat(6))}
       - run: npx mnci ci setup
         name: Set up the language toolchains (Python, Go, Flutter)
 
-      # Fails ONLY on an advisory that has a published fix, at moderate or above;
-      # anything upstream has not fixed is printed and passes. pip-audit only
-      # reports: its output has no "a fix exists" field to draw that line with.
-      - run: npx mnci ci audit
-        name: Audit dependencies (fails on an actionable npm advisory)
-
       # .NET, if the workspace has any. actions/setup-dotnet is the
       # maintained, cached installer GitHub itself ships, so this uses it
       # directly rather than a hand-rolled 'node -e' guard — see
@@ -3666,7 +3656,9 @@ ${slotMarkers('after-install', ' '.repeat(6))}
       # EVERY project on anything else (a push to main included, so a release is
       # always verified in full). Every fallback takes the full path, because a run
       # that verifies too little still reports green. Apps that need a C toolchain
-      # are left to the native job.
+      # are left to the native job. The audit gate runs first inside it, so it is
+      # not a step of its own: it fails ONLY on an advisory that has a published
+      # fix, at moderate or above, and pip-audit only reports.
       - run: npx mnci ci verify
         name: Verify (sync check, then affected on a PR, every project on main)
 

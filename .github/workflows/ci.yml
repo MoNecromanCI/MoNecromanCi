@@ -100,13 +100,9 @@ jobs:
       - run: node packages/cli/dist/cli.js ci setup
         name: Set up the language toolchains (Python, Go, Flutter)
 
-      # Fails ONLY on an advisory that has a published fix, at moderate or
-      # above; anything upstream has not fixed is printed and passes. pip-audit
-      # is reported without failing.
-      - run: node packages/cli/dist/cli.js ci audit
-        name: Audit dependencies (fails on an actionable npm advisory)
-
-      # The workspace sync check, then affected projects on a pull request and
+      # The audit gate (fails ONLY on an advisory that has a published fix, at
+      # moderate or above; pip-audit is reported without failing), the workspace
+      # sync check, then affected projects on a pull request and
       # EVERY project on anything else (a push to main included, so a release is
       # always verified in full). Every fallback takes the full path, because a run
       # that verifies too little still reports green. 'typecheck' is load-bearing

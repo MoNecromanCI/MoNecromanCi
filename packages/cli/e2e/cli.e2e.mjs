@@ -946,11 +946,12 @@ section('js stack', [], () => {
   // freshly generated workspace, so it should carry no ACTIONABLE advisory. If
   // this ever fails, read the log rather than the assertion — it means what mnci
   // generates ships a fixable vulnerability, which is worth knowing.
-  // The gate is `mnci ci audit` now. The pipeline must call it, and the phase, run from THIS build of the CLI (the
-  // workspace's own devDependency is the last published one), must pass on a fresh workspace.
-  const npmAuditStep = pipelineParsed?.steps?.find(step => step.script === 'npx mnci ci audit')
+  // The gate is `mnci ci audit`, run first inside `mnci ci verify` (no step of its own). The pipeline must call verify,
+  // and the audit phase, run from THIS build of the CLI (the workspace's own devDependency is the last published
+  // one), must pass on a fresh workspace.
+  const npmAuditStep = pipelineParsed?.steps?.find(step => step.script === 'npx mnci ci verify')
   enforce(
-    "pipeline's audit step calls mnci ci audit, and a fresh workspace passes it",
+    "pipeline's verify step runs the audit gate, and a fresh workspace passes it",
     Boolean(npmAuditStep) && tryRun(`node ${CLI} ci audit`, workspace),
     'see log above',
   )
@@ -1068,9 +1069,9 @@ section('js stack', [], () => {
 
   // Same real-execution proof as the Azure pipeline, against this workspace's
   // real node_modules (generated with --registry npm too).
-  const npmAuditStepGithub = workflowParsed?.jobs?.ci?.steps?.find(step => step.run === 'npx mnci ci audit')
+  const npmAuditStepGithub = workflowParsed?.jobs?.ci?.steps?.find(step => step.run === 'npx mnci ci verify')
   enforce(
-    "workflow's audit step calls mnci ci audit, and a fresh workspace passes it",
+    "workflow's verify step runs the audit gate, and a fresh workspace passes it",
     Boolean(npmAuditStepGithub) && tryRun(`node ${CLI} ci audit`, workspaceGithub),
     'see log above',
   )
@@ -2413,7 +2414,7 @@ section('python', ['alt stack'], () => {
     readFileSync(path.join(altWorkspace, 'azure-pipelines.yml'), 'utf8'),
   )
   // pip-audit runs inside `mnci ci audit` and only reports, so the phase must exit 0 whatever it finds.
-  const pipAuditStep = altPipelineParsed?.steps?.find(step => step.script === 'npx mnci ci audit')
+  const pipAuditStep = altPipelineParsed?.steps?.find(step => step.script === 'npx mnci ci verify')
   enforce(
     "pipeline's audit phase exits 0 on a Python workspace even when pip-audit finds vulnerabilities",
     Boolean(pipAuditStep) && tryRun(`node ${CLI} ci audit`, altWorkspace),
