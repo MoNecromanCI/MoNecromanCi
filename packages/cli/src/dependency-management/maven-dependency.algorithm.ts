@@ -23,6 +23,10 @@ export interface MavenCoordinate {
 export interface MavenDependencyBlock {
   groupId:    string
   artifactId: string
+  /** The `<version>` text as written (a literal, or a `${property}`), or `undefined` when the dependency names none. */
+  version:    string | undefined
+  /** The `<scope>` text, or `undefined` for the default (compile). */
+  scope:      string | undefined
   /** Offset of the start of the line the `<dependency>` opens on. */
   start:      number
   /** Offset just past the line the `</dependency>` closes on, newline included. */
@@ -86,6 +90,8 @@ function ownDependencies (text: string): { close: number, blocks: MavenDependenc
         blocks.push({
           groupId:    /<groupId>\s*([^<\s]+)\s*<\/groupId>/.exec(body)?.[1] ?? '',
           artifactId: /<artifactId>\s*([^<\s]+)\s*<\/artifactId>/.exec(body)?.[1] ?? '',
+          version:    /<version>\s*([^<\s]+)\s*<\/version>/.exec(body)?.[1],
+          scope:      /<scope>\s*([^<\s]+)\s*<\/scope>/.exec(body)?.[1],
           start:      lineStart,
           end:        lineEnd === -1 ? text.length : lineEnd + 1,
         })
@@ -119,6 +125,49 @@ function ownDependencies (text: string): { close: number, blocks: MavenDependenc
  */
 export function mavenDependencies (text: string): Array<{ groupId: string, artifactId: string }> {
   return (ownDependencies(text)?.blocks ?? []).map(({ groupId, artifactId }) => ({ groupId, artifactId }))
+}
+
+/**
+ * The dependencies a module's own `pom.xml` declares, with the version and scope each names.
+ *
+ * @remarks
+ * The same selection as {@link mavenDependencies}. A dependency whose version is managed elsewhere (the parent or a BOM) has
+ * no `version`; one written as `${property}` carries that text, which a caller must not treat as a version.
+ *
+ * @param text - The text of a module's `pom.xml`.
+ * @returns Each dependency, in file order.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function mavenDependencyDeclarations (
+  text: string,
+): Array<{ groupId: string, artifactId: string, version: string | undefined, scope: string | undefined }> {
+  return (ownDependencies(text)?.blocks ?? []).map(({ groupId, artifactId, version, scope }) => ({ groupId, artifactId, version, scope }))
+}
+
+/**
+ * Changes the `<version>` of one dependency in a module's own `<dependencies>`, leaving the rest of the text as it was.
+ *
+ * @remarks
+ * Edited by position inside that dependency's block, so a plugin's or `dependencyManagement`'s entry for the same artifact is
+ * never touched. A dependency with no literal `<version>` is left alone.
+ *
+ * @param text - The text of a module's `pom.xml`.
+ * @param name - `group:artifact`.
+ * @param version - The new version.
+ * @returns The new text; the same text when the dependency is not declared with a version.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function replaceMavenVersion (text: string, name: string, version: string): string {
+  const block = (ownDependencies(text)?.blocks ?? []).find(entry => `${entry.groupId}:${entry.artifactId}` === name)
+  if (block === undefined) {
+    return text
+  }
+  const body = text.slice(block.start, block.end)
+  const next = body.replace(/(<version>\s*)[^<\s]+(\s*<\/version>)/, (_whole, open: string, close: string) => `${open}${version}${close}`)
+
+  return text.slice(0, block.start) + next + text.slice(block.end)
 }
 
 /**

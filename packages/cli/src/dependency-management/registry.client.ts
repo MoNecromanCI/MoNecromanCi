@@ -1,5 +1,6 @@
 import { pool, runCaptureAsync } from '../nx-workspace'
 import type { Ecosystem } from './manifest.repository'
+import { mavenMetadataUrl, newestMavenRelease } from './maven-metadata.algorithm'
 
 /**
  * How many registry lookups run at once.
@@ -277,6 +278,46 @@ export async function latestCargoVersions (
   return new Map(results.filter(entry => entry !== undefined))
 }
 
+/** The repositories asked for a Maven artifact's metadata, in order: the one most libraries are in, then Google's (AndroidX). */
+const MAVEN_REPOSITORIES = ['https://repo.maven.apache.org/maven2', 'https://dl.google.com/dl/android/maven2']
+
+/**
+ * Asks Maven Central, then Google's Maven repository, for the newest release of each artifact.
+ *
+ * @remarks
+ * Read from each artifact's `maven-metadata.xml`, which is what Maven and Gradle themselves consult. A private repository
+ * named in `settings.xml` or a build file is not read: an artifact that lives only there is absent, and `up` offers nothing
+ * for it rather than guessing. The metadata prefers a stable release over a pre-release (see {@link newestMavenRelease}).
+ *
+ * @param names - The artifacts as `group:artifact`.
+ * @returns A promise of the newest release per artifact that answered.
+ * @throws Never - an unknown artifact or an unreachable repository is simply absent.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function latestMavenVersions (names: readonly string[]): Promise<LatestVersions> {
+  const results = await pool(names, LOOKUP_CONCURRENCY, async name => {
+    for (const repository of MAVEN_REPOSITORIES) {
+      const url = mavenMetadataUrl(repository, name)
+      if (url === undefined) {
+        return
+      }
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+        const version = response.ok ? newestMavenRelease(await response.text()) : undefined
+        if (version !== undefined) {
+          return [name, version] as const
+        }
+      } catch {
+        // An unreachable repository is asked no further for this artifact.
+      }
+    }
+
+    return
+  })
+
+  return new Map(results.filter(entry => entry !== undefined))
+}
+
 /**
  * Resolves latest versions for one ecosystem.
  *
@@ -314,13 +355,10 @@ export async function latestVersions (
     case 'cmake': {
       return new Map()
     }
-    // A Maven module's dependencies are not read yet (#470), so there is nothing to ask a repository.
-    case 'maven': {
-      return new Map()
-    }
-    // A Gradle project's dependencies are not read yet (#492), so there is nothing to ask a repository.
+    // Both ask Maven Central and Google's repository: a Gradle catalog names Maven coordinates too.
+    case 'maven':
     case 'gradle': {
-      return new Map()
+      return await latestMavenVersions(names)
     }
     // A PHP project's dependencies are not read yet (#471), so there is nothing to ask Packagist.
     case 'composer': {

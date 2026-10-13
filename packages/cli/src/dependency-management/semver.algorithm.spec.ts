@@ -76,6 +76,13 @@ describe('compareVersions', () => {
     expect(compareVersions('1.2.3-beta.1', '1.2.3')).toBeLessThan(0)
   })
 
+  it('compares a two-part version as if its patch were zero (Maven and Cargo declare 4.12 and 1.0)', () => {
+    expect(compareVersions('4.13.2', '4.12')).toBeGreaterThan(0)
+    expect(compareVersions('1.0', '1.0.0')).toBe(0)
+    expect(compareVersions('33.0-jre', '33.0.1-jre')).toBeLessThan(0)
+    expect(compareVersions('5', '1.0.0')).toBe(0)
+  })
+
   it('treats unparseable input as equal rather than throwing', () => {
     expect(compareVersions('main', '1.0.0')).toBe(0)
   })
