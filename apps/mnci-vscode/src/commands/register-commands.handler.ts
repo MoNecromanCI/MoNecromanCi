@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import { runMnciJson } from '../cli-access'
 import { updateCli, updateWorkspaceCli } from '../cli-update'
+import { addMcpConfig } from '../mcp-server'
 import type { CliSession } from '../cli-session'
 import { runDoctorCheck } from '../doctor-check'
 import { openUpdatesPanel, showUpdatesPanel } from '../updates-panel'
@@ -56,6 +57,21 @@ export function registerCommands (session: CliSession): vscode.Disposable[] {
     },
     updateCli:       async () => { await updateCli(session, updateSurface) },
     updateWorkspace: async () => { await updateWorkspaceCli(session, updateSurface) },
+    addMcpServer:    () => {
+      if (session.workspaceRoot === undefined) {
+        void vscode.window.showWarningMessage('Open a workspace folder first: the MCP server is registered in its .mcp.json.')
+
+        return
+      }
+      const result = addMcpConfig(session.workspaceRoot)
+      const messages = {
+        'written':       'mnci is registered in .mcp.json. Restart your assistant (Claude Code: /mcp) to start it.',
+        'already-there': 'mnci is already registered in .mcp.json.',
+        'unreadable':    '.mcp.json is not a JSON object, so it was left alone. Add the mnci server by hand: {"mcpServers":{"mnci":{"command":"npx","args":["mnci","mcp"]}}}',
+      }
+      void vscode.window.showInformationMessage(messages[result])
+      session.refresh()
+    },
   }
 
   return [

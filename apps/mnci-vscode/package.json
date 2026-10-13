@@ -117,6 +117,17 @@
         "command": "mnci.updateWorkspace",
         "title": "Update mnci in this workspace",
         "category": "MNCI"
+      },
+      {
+        "command": "mnci.addMcpServer",
+        "title": "Add the mnci MCP server to this workspace",
+        "category": "MNCI"
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "mnci.mcp",
+        "label": "MNCI"
       }
     ],
     "viewsContainers": {

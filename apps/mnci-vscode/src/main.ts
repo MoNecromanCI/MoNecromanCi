@@ -3,6 +3,7 @@ import * as vscode from 'vscode'
 import { locateCli, MACHINE_PROBES, runMnciJson } from './cli-access'
 import { CliSession } from './cli-session'
 import { registerCommands } from './commands'
+import { registerMcpServer } from './mcp-server'
 import { registerSidebarViews } from './sidebar'
 import { watchWorkspace } from './watching'
 
@@ -36,6 +37,7 @@ export function activate (context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     ...registerCommands(session),
     ...registerSidebarViews(session),
+    ...registerMcpServer(session),
     ...watchWorkspace(session),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('mnci.cliPath')) {

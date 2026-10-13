@@ -133,3 +133,24 @@ describe('updateNodes, a workspace whose CLI is only locked', () => {
     expect(row).toMatchObject({ icon: 'error', command: { id: 'mnci.updateWorkspace' } })
   })
 })
+
+describe('updateNodes, the MCP row', () => {
+  const where = { command: 'mnci', prefix: [], source: 'path' } as const
+
+  it('is a green check when a server named mnci is registered', () => {
+    const row = updateNodes(info({}), where, undefined, 'registered')[3]
+
+    expect(row).toMatchObject({ label: 'MCP server', icon: 'pass-filled', iconColor: 'testing.iconPassed' })
+    expect(row.command).toBeUndefined()
+  })
+
+  it('is a warning that offers to add it when it is not registered', () => {
+    const row = updateNodes(info({}), where, undefined, 'not-registered')[3]
+
+    expect(row).toMatchObject({ icon: 'warning', description: expect.stringContaining('click to add'), command: { id: 'mnci.addMcpServer' } })
+  })
+
+  it('has no row when there is no workspace to read', () => {
+    expect(updateNodes(info({}), where)).toHaveLength(3)
+  })
+})
