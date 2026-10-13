@@ -1,5 +1,5 @@
 import type { CliSession } from '../cli-session'
-import { planCliUpdate } from './plan-cli-update.algorithm'
+import { planCliUpdate, planWorkspaceUpdate, type CliUpdatePlan } from './plan-cli-update.algorithm'
 
 /**
  * What updating the CLI needs from the editor.
@@ -30,7 +30,36 @@ export interface UpdateSurface {
  * @typeParam None - this function has no generic type parameters.
  */
 export async function updateCli (session: CliSession, surface: UpdateSurface): Promise<void> {
-  const plan = planCliUpdate(session.location(), session.workspaceRoot)
+  await offerPlan(planCliUpdate(session.location(), session.workspaceRoot), surface)
+}
+
+/**
+ * Updates `@mnci/cli` in the workspace's own `package.json`, whatever the extension is running.
+ *
+ * @remarks
+ * What the workspace row's click does: the team shares the workspace's install, not the copy the extension happens to
+ * run, so this installs `@mnci/cli@latest` as a dev dependency after the user has seen the command.
+ *
+ * @param session - The session, for the workspace root.
+ * @param surface - How to confirm, run and tell.
+ * @returns Nothing.
+ * @throws Never - declining, or no open workspace, is a result.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function updateWorkspaceCli (session: CliSession, surface: UpdateSurface): Promise<void> {
+  await offerPlan(planWorkspaceUpdate(session.workspaceRoot), surface)
+}
+
+/**
+ * Shows a plan: tells why there is nothing to run, or confirms and runs the command.
+ *
+ * @param plan - What to do.
+ * @param surface - How to confirm, run and tell.
+ * @returns Nothing.
+ * @throws Never - declining is a result.
+ * @typeParam None - this function has no generic type parameters.
+ */
+async function offerPlan (plan: CliUpdatePlan, surface: UpdateSurface): Promise<void> {
   if (plan.run === undefined) {
     surface.tell(plan.reason ?? 'There is nothing to update.')
 

@@ -14,6 +14,25 @@ export interface CliUpdatePlan {
 }
 
 /**
+ * Decides how to bring the workspace's own `@mnci/cli` to the newest version.
+ *
+ * @remarks
+ * Always an install into the workspace, so `package.json` and the lockfile carry the version the team runs.
+ *
+ * @param workspaceRoot - The open workspace folder, if any.
+ * @returns The command to run, or the reason there is none.
+ * @throws Never - pure decision.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function planWorkspaceUpdate (workspaceRoot: string | undefined): CliUpdatePlan {
+  if (workspaceRoot === undefined) {
+    return { reason: 'Open a workspace folder first: there is no package.json to update.' }
+  }
+
+  return { run: { command: 'npm', arguments_: ['install', '--save-dev', '@mnci/cli@latest'], cwd: workspaceRoot } }
+}
+
+/**
  * Decides how to update the mnci CLI the extension is using.
  *
  * @remarks

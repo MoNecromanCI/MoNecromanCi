@@ -1,5 +1,5 @@
 import type { CliLocation } from '../cli-access'
-import { planCliUpdate } from './plan-cli-update.algorithm'
+import { planCliUpdate, planWorkspaceUpdate } from './plan-cli-update.algorithm'
 
 /** A location of a given source. */
 function at (source: CliLocation['source'], command = 'mnci'): CliLocation {
@@ -32,5 +32,18 @@ describe('planCliUpdate', () => {
 
     expect(plan.run).toBeUndefined()
     expect(plan.reason).toContain('C:/tools/mnci.cmd')
+  })
+})
+
+describe('planWorkspaceUpdate', () => {
+  it('installs the newest as a dev dependency of the workspace', () => {
+    expect(planWorkspaceUpdate('/ws').run).toEqual({ command: 'npm', arguments_: ['install', '--save-dev', '@mnci/cli@latest'], cwd: '/ws' })
+  })
+
+  it('asks for an open workspace when there is none', () => {
+    const plan = planWorkspaceUpdate(undefined)
+
+    expect(plan.run).toBeUndefined()
+    expect(plan.reason).toMatch(/workspace folder/)
   })
 })

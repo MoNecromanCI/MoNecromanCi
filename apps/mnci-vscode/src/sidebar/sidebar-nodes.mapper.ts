@@ -1,4 +1,5 @@
 import type { CliLocation } from '../cli-access'
+import type { WorkspaceInstall, WorkspaceInstallStatus } from '../cli-update'
 import type { CommandDescription, CommandGroup, ProjectSummary, WorkspaceInfo } from '../cli-contracts'
 
 /**
@@ -17,6 +18,8 @@ export interface SidebarNode {
   readonly contextValue?: string
   /** Codicon name (`rocket`), shown before the label. */
   readonly icon?:         string
+  /** A VS Code theme colour id for the icon (`testing.iconPassed`, `testing.iconFailed`). */
+  readonly iconColor?:    string
   readonly command?:      { readonly id: string, readonly arguments_?: readonly unknown[] }
   readonly children?:     readonly SidebarNode[]
 }
@@ -112,19 +115,72 @@ export function projectNodes (projects: readonly ProjectSummary[]): SidebarNode[
 }
 
 /**
+ * The workspace row of the update view.
+ *
+ * @remarks
+ * The mark is the workspace's own `@mnci/cli` against the newest published one, not the CLI the extension runs.
+ *
+ * @param workspace - The workspace `mnci info` reported.
+ * @param latest - The newest published version, or `null`.
+ * @param install - What the workspace holds and how it compares, when it could be read.
+ * @returns The row.
+ * @throws Never - pure mapping.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function workspaceNode (
+  workspace: { readonly root: string, readonly config: Record<string, unknown> },
+  latest: string | null,
+  install: { readonly found: WorkspaceInstall, readonly status: WorkspaceInstallStatus } | undefined,
+): SidebarNode {
+  const settings = JSON.stringify(workspace.config, null, 2)
+  const base = { id: 'workspace', label: 'Workspace' }
+  if (install === undefined || install.status === 'unknown') {
+    return { ...base, description: workspace.root, icon: 'folder-active', tooltip: `${workspace.root}\n${settings}` }
+  }
+  const { found, status } = install
+  const declared = found.declared === undefined ? 'not declared in package.json' : `package.json: ${found.declared}`
+  if (status === 'current') {
+    return {
+      ...base,
+      description: `${workspace.root} · @mnci/cli ${found.installed ?? ''}`,
+      icon:        'pass-filled',
+      iconColor:   'testing.iconPassed',
+      tooltip:     `@mnci/cli ${found.installed ?? ''} is the newest (${declared}).\n${workspace.root}\n${settings}`,
+    }
+  }
+  const state = status === 'missing' ? 'not installed' : `${found.installed ?? ''} installed, ${latest ?? 'a newer one'} is available`
+
+  return {
+    ...base,
+    description: `@mnci/cli ${state} · click to update`,
+    icon:        'error',
+    iconColor:   'testing.iconFailed',
+    tooltip:     `@mnci/cli: ${state} (${declared}).\nClick to run npm install --save-dev @mnci/cli@latest in ${workspace.root}\n${settings}`,
+    command:     { id: 'mnci.updateWorkspace' },
+  }
+}
+
+/**
  * Builds the update view: the installed CLI, whether a newer one exists, and the workspace.
  *
  * @remarks
  * When an update is available the row runs `mnci.updateCli`. `source` says where the
- * installed CLI came from, which decides how it is updated.
+ * installed CLI came from, which decides how it is updated. The workspace row is the workspace's
+ * own `@mnci/cli`: a green check when it is the newest, a red cross when it is behind or not
+ * installed (clicking runs `mnci.updateWorkspace`), and a plain folder when that is not known.
  *
  * @param info - What `mnci info --json` returned.
  * @param location - Where the CLI was found.
+ * @param install - What the workspace declares and has installed, and how that compares with the newest.
  * @returns The rows.
  * @throws Never - pure mapping.
  * @typeParam None - this function has no generic type parameters.
  */
-export function updateNodes (info: WorkspaceInfo, location: CliLocation): SidebarNode[] {
+export function updateNodes (
+  info: WorkspaceInfo,
+  location: CliLocation,
+  install?: { readonly found: WorkspaceInstall, readonly status: WorkspaceInstallStatus },
+): SidebarNode[] {
   const sources: Record<CliLocation['source'], string> = {
     setting:   'from the mnci.cliPath setting',
     workspace: "this workspace's own install",
@@ -138,7 +194,7 @@ export function updateNodes (info: WorkspaceInfo, location: CliLocation): Sideba
         : { id: 'latest', label: 'Up to date', description: info.cli.latest, icon: 'check' })
   const workspace: SidebarNode = info.workspace === null
     ? { id: 'workspace', label: 'Workspace', description: 'none open', icon: 'folder' }
-    : { id: 'workspace', label: 'Workspace', description: info.workspace.root, icon: 'folder-active', tooltip: JSON.stringify(info.workspace.config, null, 2) }
+    : workspaceNode(info.workspace, info.cli.latest, install)
 
   return [
     { id: 'installed', label: `mnci ${info.cli.version}`, description: sources[location.source], icon: 'tag' },

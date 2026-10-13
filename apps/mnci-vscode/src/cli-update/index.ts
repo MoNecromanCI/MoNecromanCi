@@ -6,4 +6,7 @@
  * through this barrel, never by a path into the files below.
  */
 
-export { updateCli, type UpdateSurface } from './update-cli.use-case'
+export { updateCli, updateWorkspaceCli, type UpdateSurface } from './update-cli.use-case'
+export { readWorkspaceInstall } from './read-workspace-install.use-case'
+export { workspaceInstallStatus } from './workspace-install-status.algorithm'
+export type { WorkspaceInstall, WorkspaceInstallStatus } from './workspace-install.contract'

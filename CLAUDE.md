@@ -607,7 +607,7 @@ tooling) and runs the CLI in the `MNCI` terminal. Slices: `cli-access` (locate t
 install, global, npx; run it for JSON), `cli-session` (one cache of the answers, shared by the views),
 `invocation` (the prompts: generic from a command's own description, plus `add` and `install` flows),
 `sidebar` (Commands / Projects / Update views), `doctor-check` (findings become Problems-panel entries with their
-remedy), `cli-update`, `commands` (the `mnci.*` registrations), `updates-panel` (#498: `mnci.up` opens a webview built from
+remedy), `cli-update` (the Update view's workspace row reads the workspace's own `@mnci/cli` from `package.json` and `node_modules`, not the CLI the extension runs: a green check when it is the newest, a red cross that runs `npm install --save-dev @mnci/cli@latest` when it is behind or missing; the npx fallback is `@mnci/cli@latest`, because a bare npx kept a stale cached copy), `commands` (the `mnci.*` registrations), `updates-panel` (#498: `mnci.up` opens a webview built from
 `mnci up --json`, grouped patch/minor/major with the projects and a link to each release page; Update selected runs
 `mnci up <names...>` in the MNCI terminal; names the page posts are checked against a package-name pattern and the
 report, links render only as `https:`, scripts only by nonce; needs CLI 4.99.0) and `watching` (manifest changes

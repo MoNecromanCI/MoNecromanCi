@@ -112,6 +112,11 @@
         "title": "Update mnci",
         "category": "MNCI",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mnci.updateWorkspace",
+        "title": "Update mnci in this workspace",
+        "category": "MNCI"
       }
     ],
     "viewsContainers": {
