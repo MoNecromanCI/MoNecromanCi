@@ -15,7 +15,7 @@ import { runPack } from './pack.use-case'
 import { reportPhase } from './report-phase.use-case'
 import { runRelease } from './release.use-case'
 import { runSetup } from './setup.use-case'
-import { runVerify } from './verify.use-case'
+import { runVerifyWithAudit } from './verify-with-audit.use-case'
 import type { CiDependencies } from './phase.contract'
 
 /**
@@ -74,7 +74,7 @@ export function runCiPhase (phase: CiPhase, workspaceRoot: string, dependencies:
 function runPhase (phase: CiPhase, workspaceRoot: string, dependencies: Partial<CiDependencies>): number | Promise<number> {
   switch (phase) {
     case 'verify': {
-      return runVerify(workspaceRoot, dependencies)
+      return runVerifyWithAudit(workspaceRoot, dependencies)
     }
     case 'pack': {
       return runPack(workspaceRoot, dependencies)

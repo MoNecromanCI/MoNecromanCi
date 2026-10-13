@@ -53,11 +53,47 @@ export function summarise (description: string): string {
 }
 
 /**
+ * The one-click runs of a command: a row for each value of a closed argument, and the preview of a `--dry-run` switch.
+ *
+ * @remarks
+ * Derived from the description the CLI gives, so a phase or switch added to the CLI appears with no change here. Each row
+ * runs `mnci.runPreset` with the command name and the arguments to give it.
+ *
+ * @param command - The command.
+ * @returns The rows; empty when the command has neither.
+ * @throws Never - pure mapping.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function presetNodes (command: CommandDescription): SidebarNode[] {
+  const choices = command.arguments.find(argument => argument.required && argument.choices !== undefined)?.choices ?? []
+  const phases = choices.map((choice): SidebarNode => ({
+    id:      `command:${command.name}:${choice}`,
+    label:   `${command.name} ${choice}`,
+    icon:    'debug-start',
+    command: { id: 'mnci.runPreset', arguments_: [command.name, choice] },
+  }))
+  const preview = command.options.some(option => option.name === 'dry-run' && option.takesValue === 'none')
+    ? [{
+      id:          `command:${command.name}:dry-run`,
+      label:       `${command.name} --dry-run`,
+      description: 'preview, changes nothing',
+      icon:        'eye',
+      command:     { id: 'mnci.runPreset', arguments_: [command.name, '--dry-run'] },
+    } satisfies SidebarNode]
+    : []
+
+  return [...phases, ...preview]
+}
+
+/**
  * Builds the commands view: one heading per group, each holding its commands.
  *
  * @remarks
  * The commands the CLI marks `inspect` (the machine-readable ones) are not listed. A group
- * with no command is left out. A row runs the extension command `mnci.<name>`.
+ * with no command is left out. A row runs the extension command `mnci.<name>`. A command that
+ * takes one of a closed set of values (`ci <phase>`) lists a row for each, and one with a
+ * `--dry-run` switch (`release`) lists the preview as its own row, so the common runs are one
+ * click and no prompt; both are read from the CLI's own description, not listed here.
  *
  * @param commands - What `mnci commands --json` returned.
  * @returns The roots of the tree.
@@ -75,14 +111,19 @@ export function commandNodes (commands: readonly CommandDescription[]): SidebarN
       id:       `group:${group}`,
       label,
       icon,
-      children: inGroup.map((command): SidebarNode => ({
-        id:          `command:${command.name}`,
-        label:       command.name,
-        description: summarise(command.description),
-        tooltip:     command.description,
-        icon:        'play',
-        command:     { id: `mnci.${command.name}` },
-      })),
+      children: inGroup.map((command): SidebarNode => {
+        const presets = presetNodes(command)
+
+        return {
+          id:          `command:${command.name}`,
+          label:       command.name,
+          description: summarise(command.description),
+          tooltip:     command.description,
+          icon:        'play',
+          command:     { id: `mnci.${command.name}` },
+          ...(presets.length > 0 && { children: presets }),
+        }
+      }),
     }]
   })
 }

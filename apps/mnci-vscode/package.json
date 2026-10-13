@@ -120,6 +120,11 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "mnci.runPreset",
+        "title": "Run an mnci command with set arguments",
+        "category": "MNCI"
+      },
+      {
         "command": "mnci.updateWorkspace",
         "title": "Update mnci in this workspace",
         "category": "MNCI"
