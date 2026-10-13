@@ -402,7 +402,7 @@ the reinstall).
 
 ## `mnci ci`: the pipeline's phases, as a command
 
-`mnci ci verify` runs the pipeline's verify phase on your machine: `nx sync:check`, then
+`mnci ci verify` runs the pipeline's verify phase on your machine: the `audit` gate first (a production advisory with a published fix fails it, as it fails CI, so a green verify here no longer turns red at `npm audit` there), then `nx sync:check`, then
 every project (or, when a pull request's target branch is set, only the projects affected
 since the merge-base with it) through `lint`, `typecheck`, `test` and `build`. It exits with
 the failing command's own status, so it can stand in for the pipeline's step.

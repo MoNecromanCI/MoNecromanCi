@@ -154,3 +154,31 @@ describe('updateNodes, the MCP row', () => {
     expect(updateNodes(info({}), where)).toHaveLength(3)
   })
 })
+
+describe('commandNodes, one-click runs', () => {
+  const ci: CommandDescription = {
+    ...command('ci', 'pipeline'),
+    arguments: [{ name: 'phase', description: 'which phase', required: true, variadic: false, choices: ['setup', 'verify', 'release'] }],
+  }
+  const release: CommandDescription = {
+    ...command('release', 'pipeline'),
+    options: [
+      { name: 'dry-run', flags: '--dry-run', description: 'preview', takesValue: 'none', variadic: false, negated: false },
+      { name: 'yes', flags: '--yes', description: 'no prompt', takesValue: 'none', variadic: false, negated: false },
+    ],
+  }
+  const row = (name: string): ReturnType<typeof commandNodes>[number]['children'] => commandNodes([ci, release])[0]?.children?.find(node => node.label === name)?.children
+
+  it('lists a row for each value of a closed argument, running the command with it', () => {
+    expect(row('ci')?.map(node => node.label)).toEqual(['ci setup', 'ci verify', 'ci release'])
+    expect(row('ci')?.[1]?.command).toEqual({ id: 'mnci.runPreset', arguments_: ['ci', 'verify'] })
+  })
+
+  it('lists the --dry-run preview of a command as its own row', () => {
+    expect(row('release')).toEqual([expect.objectContaining({ label: 'release --dry-run', command: { id: 'mnci.runPreset', arguments_: ['release', '--dry-run'] } })])
+  })
+
+  it('adds nothing to a command with neither', () => {
+    expect(commandNodes([command('doctor', 'workspace')])[0]?.children?.[0]?.children).toBeUndefined()
+  })
+})

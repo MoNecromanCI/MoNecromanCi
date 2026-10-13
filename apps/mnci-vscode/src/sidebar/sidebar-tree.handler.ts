@@ -34,7 +34,9 @@ class SidebarTreeProvider implements vscode.TreeDataProvider<SidebarNode> {
    */
   getTreeItem (node: SidebarNode): vscode.TreeItem {
     const hasChildren = (node.children?.length ?? 0) > 0
-    const item = new vscode.TreeItem(node.label, hasChildren ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None)
+    // A group opens on its commands; a command with one-click runs (`ci`, `release`) stays closed until asked.
+    const state = hasChildren && node.id.startsWith('command:') ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded
+    const item = new vscode.TreeItem(node.label, hasChildren ? state : vscode.TreeItemCollapsibleState.None)
     item.id = node.id
     item.description = node.description
     item.tooltip = node.tooltip

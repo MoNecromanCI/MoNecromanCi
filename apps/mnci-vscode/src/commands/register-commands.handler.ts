@@ -48,6 +48,13 @@ export function registerCommands (session: CliSession): vscode.Disposable[] {
       })
     },
     refresh:   () => { session.refresh() },
+    // A one-click run from the Commands view: the command name and the arguments to give it, with no prompt.
+    runPreset: (...given) => {
+      const words = given.map(entry => nameFrom(entry)).filter((word): word is string => word !== undefined)
+      if (words.length > 0) {
+        runInTerminal(session.location(), { arguments: words }, session.workspaceRoot)
+      }
+    },
     runTarget: async (project, target) => {
       await runTarget(
         { session, prompter: VSCODE_PROMPTER, run: runCommandInTerminal },
