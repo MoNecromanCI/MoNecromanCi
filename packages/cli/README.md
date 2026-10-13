@@ -741,7 +741,16 @@ piece of work (#470). Apps live in `apps/`, publishable libraries in `packages/`
 Measured with JDK 21.0.12 (Temurin), Maven 3.10.0 and Checkstyle 14.3 on Windows: generate, link, lint, test, build, package,
 run, install and uninstall, `nx release`, `mnci doctor`.
 
-Not covered yet (#470): Gradle (see Kotlin below, #492); `mnci sync` / `mnci up` reading a module's dependency versions; publishing to a Maven
+`mnci sync` and `mnci up` read a module's own `<dependencies>` (never a plugin's or `dependencyManagement`'s), by
+`group:artifact`, when the `<version>` is a literal `major.minor[.patch]`: a version managed by the parent or a BOM, or written
+as `${property}`, has no declared version to compare and is not read. A `test` scope is a dev dependency, and a sibling module
+of this workspace is reported and never rewritten (its version is `nx release`'s). The newest release comes from the
+artifact's `maven-metadata.xml` on Maven Central, then Google's Maven repository (AndroidX), preferring a stable release over an
+alpha, beta or milestone; a private repository is not asked, so a package that lives only there is not offered an update.
+`mnci up` edits that module's `<version>` by position, so the rest of the file is untouched, and runs nothing afterwards (the
+next build resolves it).
+
+Not covered yet (#470): Gradle (see Kotlin below, #492); publishing to a Maven
 repository (GitHub Packages, Azure Artifacts or Maven Central need a `settings.xml` and credentials); the JDK in `mnci ci setup`
 and the devcontainer; a debugger launch configuration; `dev`; an Azure Functions kind; a private feed for `mnci i`'s version
 lookup.
@@ -786,7 +795,15 @@ Measured with Gradle 9.8.1, Kotlin 2.4.21 (the portal's 2.5 releases are betas),
 cold build downloads for about a minute, a warm one takes seconds, and two Gradle invocations at once in one root did not
 clash (no configuration cache is used).
 
-Not covered yet (#492): the Gradle wrapper (`gradlew`); `mnci sync` / `mnci up` reading the catalog; publishing to a Maven
+`mnci sync` and `mnci up` read the version catalog's `[libraries]` (every form Gradle accepts: `module` or `group`/`name`,
+`version`, `version.ref`, `version = { ref }` and the `"g:a:v"` string), and report each library against the projects whose build
+file names its accessor (`libs.ktor.server.core`), or against `(root)` when none does. A library with no version (a BOM manages
+it), a range, or a plugin is not read. A literal version is edited on its own line; a `version.ref` is edited in `[versions]`
+only when no other library or plugin uses that key, because moving a shared one would move libraries that each have their own
+latest release (`kotlin` is shared by the compiler plugin and the standard library, so a Kotlin upgrade stays the team's).
+Latest versions come from the same repositories as for Maven, so an AndroidX library is offered an update.
+
+Not covered yet (#492): the Gradle wrapper (`gradlew`); publishing to a Maven
 repository; the JDK and Gradle in `mnci ci setup` and the devcontainer; a debugger launch configuration; `dev`
 (`gradle --continuous`); Kotlin Multiplatform; a `--build-tool gradle` option for the Java kinds. Android is the next section (#493).
 
@@ -831,8 +848,8 @@ libraries too, and `nx run-many -t lint` would otherwise run `:kit:lintAnalyzeDe
 fails to read the other's partial results (found by the e2e).
 
 Not covered yet (#493): instrumented tests and emulators, signing and Play publishing, the Android SDK in `mnci ci setup` and
-the devcontainer (hosted images ship it), `install` to a device, a debug launch, Kotlin Multiplatform, `sync`/`up` reading the
-catalog, AndroidX newest-release lookup (Google Maven).
+the devcontainer (hosted images ship it), `install` to a device, a debug launch, Kotlin Multiplatform, and an AndroidX
+library in a private repository (`mnci i` asks Maven Central only, so it takes an explicit `@version`; `mnci up` also asks Google).
 
 ## PHP projects (`mnci add php-app | php-lib | php-internal-lib`)
 

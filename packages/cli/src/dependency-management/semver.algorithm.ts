@@ -142,6 +142,23 @@ export function specVersion (spec: string): string | undefined {
 }
 
 /**
+ * Completes a two-part version to three, so it can be compared.
+ *
+ * @remarks
+ * Maven, Gradle and Cargo declare `4.12` and `1.0` as releases. {@link parseVersion} stays strict (a calendar version or a git
+ * ref must read as unparseable), so the comparison completes a plain `major.minor` itself: `1.0` is `1.0.0`, and `1.0-jre` is
+ * `1.0.0-jre`. A single number is not completed, because `5` is as likely a build number as a version.
+ *
+ * @param version - A version as its ecosystem spells it.
+ * @returns The version with a patch of `0` when it had only major and minor.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function completed (version: string): string {
+  return version.trim().replace(/^(\d+\.\d+)(?=$|-)/, (_whole: string, head: string) => `${head}.0`)
+}
+
+/**
  * Compares two version strings.
  *
  * @remarks
@@ -159,8 +176,8 @@ export function specVersion (spec: string): string | undefined {
  * @typeParam None - this function has no generic type parameters.
  */
 export function compareVersions (left: string, right: string): number {
-  const a = parseVersion(left)
-  const b = parseVersion(right)
+  const a = parseVersion(completed(left))
+  const b = parseVersion(completed(right))
   if (!a || !b) {
     return 0
   }
@@ -219,8 +236,8 @@ export function isNewer (candidate: string, current: string): boolean {
  * @typeParam None - this function has no generic type parameters.
  */
 export function classify (current: string, latest: string): UpdateKind {
-  const from = parseVersion(current)
-  const to = parseVersion(latest)
+  const from = parseVersion(completed(current))
+  const to = parseVersion(completed(latest))
   if (!from || !to || from.major === 0) {
     return 'non-semver'
   }

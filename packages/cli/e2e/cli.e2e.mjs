@@ -4216,6 +4216,21 @@ ${kitPom}`,
     removed.ok && !readFileSync(path.join(root, 'libs/kit/pom.xml'), 'utf8').includes('gson'),
     removed.output.slice(-800),
   )
+  // `up` reads the module's own dependencies: one pinned old is reported against its module and moved in its pom.
+  const pinnedOld = tryRunCapture(`node ${CLI} i -w kit com.google.code.gson:gson@2.8.0`, root)
+  const outdatedCheck = tryRunCapture(`node ${CLI} up --check --ecosystem maven`, root)
+  enforce(
+    'java: up --check names a dependency pinned old and the module that declares it',
+    pinnedOld.ok && outdatedCheck.ok && /com\.google\.code\.gson:gson\s.*2\.8\.0/.test(outdatedCheck.output) && /libs\/kit/.test(outdatedCheck.output),
+    outdatedCheck.output.slice(-1500),
+  )
+  const moved = tryRunCapture(`node ${CLI} up com.google.code.gson:gson --yes --ecosystem maven`, root)
+  enforce(
+    'java: up --yes moves the version in that module\'s pom and no other',
+    moved.ok && !readFileSync(path.join(root, 'libs/kit/pom.xml'), 'utf8').includes('<version>2.8.0</version>'),
+    moved.output.slice(-800),
+  )
+  tryRunCapture(`node ${CLI} un -w kit com.google.code.gson:gson`, root)
   // The scripts mnci writes into tools/ are linted like any file: a generated workspace must lint clean from the first add.
   const toolsLint = tryRunCapture('npx eslint tools', root)
   enforce('java: the generated tools/ scripts pass the shipped ESLint config', toolsLint.ok, toolsLint.output.slice(-1500))
@@ -4306,6 +4321,22 @@ ${kitBuild}`,
     removed.ok && !readFileSync(path.join(root, 'libs/kit/build.gradle.kts'), 'utf8').includes('gson') && !readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8').includes('gson'),
     removed.output.slice(-800),
   )
+  // `up` reads the catalog: a library pinned old is reported against the project that uses it, and moved in the catalog.
+  const pinnedOld = tryRunCapture(`node ${CLI} i -w kit com.google.code.gson:gson@2.8.0`, root)
+  const outdatedCheck = tryRunCapture(`node ${CLI} up --check --ecosystem gradle`, root)
+  enforce(
+    'kotlin: up --check names a catalog library pinned old and the project that uses it',
+    pinnedOld.ok && outdatedCheck.ok && /com\.google\.code\.gson:gson\s.*2\.8\.0/.test(outdatedCheck.output) && /libs\/kit/.test(outdatedCheck.output),
+    outdatedCheck.output.slice(-1500),
+  )
+  const moved = tryRunCapture(`node ${CLI} up com.google.code.gson:gson --yes --ecosystem gradle`, root)
+  enforce(
+    'kotlin: up --yes moves the version in the catalog',
+    moved.ok && !readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8').includes('"2.8.0"'),
+    `${moved.output.slice(-800)}
+${readFileSync(path.join(root, 'gradle/libs.versions.toml'), 'utf8')}`,
+  )
+  tryRunCapture(`node ${CLI} un -w kit com.google.code.gson:gson`, root)
   // A build file the team reshaped (no markers) is refused with a message, never guessed at.
   const kitPath = path.join(root, 'libs/kit/build.gradle.kts')
   const original = readFileSync(kitPath, 'utf8')

@@ -4,6 +4,9 @@ import { runCapture } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { listGoModuleDirectories } from '../go-workspace'
 import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-dependencies.algorithm'
+import { catalogLibraries, replaceCatalogVersion } from './gradle-catalog.algorithm'
+import { catalogAccessor } from './gradle-dependency.algorithm'
+import { mavenDependencyDeclarations, mavenModuleIdentity, replaceMavenVersion } from './maven-dependency.algorithm'
 
 /**
  * The five dependency ecosystems a generated workspace can contain.
@@ -96,9 +99,9 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   cargo:    ['apps/*/Cargo.toml', 'packages/*/Cargo.toml', 'libs/*/Cargo.toml'],
   // A CMake project is located by its CMakeLists.txt; it declares no dependency a registry could be asked about yet (#473).
   cmake:    ['apps/*/CMakeLists.txt', 'packages/*/CMakeLists.txt', 'libs/*/CMakeLists.txt'],
-  // A Maven module is located by its pom.xml; its dependencies are read in a later slice (#470).
+  // A Maven module is located by its pom.xml; its own `<dependencies>` are read (`collectMaven`).
   maven:    ['apps/*/pom.xml', 'packages/*/pom.xml', 'libs/*/pom.xml'],
-  // A Gradle project is located by its build.gradle.kts; its dependencies live in the version catalog and its own block.
+  // A Gradle project is located by its build.gradle.kts; its libraries are read from the version catalog (`collectGradle`).
   gradle:   ['apps/*/build.gradle.kts', 'packages/*/build.gradle.kts', 'libs/*/build.gradle.kts'],
   // A PHP project is located by its composer.json; its dependencies are read in a later slice (#471).
   composer: ['apps/*/composer.json', 'packages/*/composer.json', 'libs/*/composer.json'],
@@ -242,6 +245,113 @@ function collectCargo (workspaceRoot: string): DependencySite[] {
         section:      dependency.section,
         spec:         dependency.spec,
         rewritable:   dependency.rewritable,
+      })
+    }
+  }
+
+  return sites
+}
+
+/** The version shape `mnci up` compares; a `${property}`, a range or a qualifier word is reported by nothing. */
+const COMPARABLE_VERSION = /^\d+\.\d+(?:\.\d+)?(?:-[\w.-]+)?$/
+
+/**
+ * Reads every dependency a Maven module's own `pom.xml` declares with a literal version.
+ *
+ * @remarks
+ * Named `group:artifact`. A dependency whose version is managed by the parent or a BOM, or written as a `${property}`, is
+ * not read: there is no declared version to compare. A module of this workspace is reported and never rewritten: its
+ * version is `nx release`'s.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One site per dependency with a comparable literal version.
+ * @throws Never - an unreadable pom is skipped.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function collectMaven (workspaceRoot: string): DependencySite[] {
+  const manifests = globSync(MANIFEST_GLOBS.maven, { cwd: workspaceRoot })
+  const texts = new Map<string, string>()
+  for (const relativePath of manifests) {
+    try {
+      texts.set(relativePath, readFileSync(join(workspaceRoot, relativePath), 'utf8'))
+    } catch {
+      // Skipped: a pom that cannot be read declares nothing here.
+    }
+  }
+  const modules = new Set<string>()
+  for (const text of texts.values()) {
+    const identity = mavenModuleIdentity(text)
+    if (identity !== undefined) {
+      modules.add(`${identity.groupId}:${identity.artifactId}`)
+    }
+  }
+
+  const sites: DependencySite[] = []
+  for (const [relativePath, text] of texts) {
+    const comparable = mavenDependencyDeclarations(text).filter(entry => COMPARABLE_VERSION.test(entry.version ?? ''))
+    for (const dependency of comparable) {
+      const name = `${dependency.groupId}:${dependency.artifactId}`
+      sites.push({
+        name,
+        ecosystem:    'maven',
+        project:      projectOf(relativePath),
+        manifestPath: join(workspaceRoot, relativePath),
+        section:      dependency.scope === 'test' ? 'devDep' : 'dep',
+        spec:         dependency.version ?? '',
+        rewritable:   !modules.has(name),
+      })
+    }
+  }
+
+  return sites
+}
+
+/**
+ * Reads every library of the workspace's Gradle version catalog.
+ *
+ * @remarks
+ * The catalog is shared, so one entry has one version for the whole workspace and the projects that use it are the ones
+ * whose build file names its accessor (`libs.ktor.server.core`). A library no project names is reported against the root,
+ * as a catalog entry waiting for a use. Plugins and BOM-managed libraries are not read.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One site per library per project that uses it.
+ * @throws Never - an unreadable file is skipped.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function collectGradle (workspaceRoot: string): DependencySite[] {
+  const catalogPath = join(workspaceRoot, 'gradle', 'libs.versions.toml')
+  let catalog: string
+  try {
+    catalog = readFileSync(catalogPath, 'utf8')
+  } catch {
+    return []
+  }
+  const builds: Array<{ project: string, text: string }> = []
+  const buildFiles = globSync(MANIFEST_GLOBS.gradle, { cwd: workspaceRoot })
+  for (const relativePath of buildFiles) {
+    try {
+      builds.push({ project: projectOf(relativePath), text: readFileSync(join(workspaceRoot, relativePath), 'utf8') })
+    } catch {
+      // Skipped: a build file that cannot be read names no library here.
+    }
+  }
+
+  const sites: DependencySite[] = []
+  const libraries = catalogLibraries(catalog)
+  for (const library of libraries) {
+    const accessor = new RegExp(String.raw`\b${catalogAccessor(library.alias).replaceAll('.', String.raw`\.`)}(?![\w.])`)
+    const users = builds.filter(build => accessor.test(build.text)).map(build => build.project)
+    const projects = users.length > 0 ? users : [ROOT_LABEL]
+    for (const project of projects) {
+      sites.push({
+        name:         library.module,
+        ecosystem:    'gradle',
+        project,
+        manifestPath: catalogPath,
+        section:      'dep',
+        spec:         library.version,
+        rewritable:   library.rewritable,
       })
     }
   }
@@ -778,8 +888,8 @@ export function collectInventory (
     nuget:    collectNuget,
     cargo:    collectCargo,
     cmake:    () => [],
-    maven:    () => [],
-    gradle:   () => [],
+    maven:    collectMaven,
+    gradle:   collectGradle,
     composer: () => [],
     bundler:  () => [],
     go:       collectGo,
@@ -932,6 +1042,12 @@ export function rewriteSpec (site: DependencySite, spec: string): boolean {
       }
       case 'cargo': {
         return replaceCargoSpec(before, name, spec)
+      }
+      case 'maven': {
+        return replaceMavenVersion(before, name, spec)
+      }
+      case 'gradle': {
+        return replaceCatalogVersion(before, name, spec)
       }
       // 'go' entries are never rewritable (see collectGo), so this is
       // unreachable in practice — returning the text unchanged is the safe
