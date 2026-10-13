@@ -429,6 +429,31 @@ guards are ported.
   across a push, a pull request, Azure's `refs/heads/` form, a missing `origin/<target>` and
   an unresolvable one, and requires the same Nx commands in each.
 
+## `mnci release`: preview or make a release, in every language
+
+```
+mnci release --dry-run     # what would be versioned, tagged and published; nothing changes
+mnci release               # the same plan, then asks, then releases (--yes with no terminal)
+```
+
+One command for every kind of project `nx release` covers (npm, Python, C#, Flutter, Rust, Java, Kotlin, Android, PHP, Ruby, C++,
+VS Code extensions) and the Go libraries released by tag, which it previews too. It does what a laptop run of `nx release
+--dry-run` never did for you:
+
+- **Fetches the release tags first** (`git fetch --tags`). A clone without them makes `nx release` resolve every project from
+  its `package.json` and propose `0.1.0` for a package published at `1.4.0`.
+- **Refuses when a project's last release cannot be found**, and says how to fix each case: tags that sit under an old unscoped
+  name (`snyk@1.12.4` for `@auto/snyk`: `mnci adopt --tags`), a package the registry holds that has no tag under any name (`git
+  fetch --tags`, or tag the commit that published it), and a tag that is behind the registry. With one of these standing, no
+  plan is shown, because the versions in it would be wrong.
+- **Shows the plan** by running the release phase with `--dry-run`: no credential is needed, the registry is not asked, nothing is
+  pushed.
+
+A real `mnci release` refuses off `main` (the branch CI releases from), shows that plan, asks, and then runs the release phase CI
+runs, with its preflights (the npm token, the PyPI token's shape) and its partial-release handling. With no terminal it needs
+`--yes`. Exits non-zero on a blocker, so it can sit in a script. Not covered: a project excluded from `release.projects`
+(nothing to preview), and a registry other than npm for the "published but untagged" check (the others are released by tag).
+
 ## `mnci doctor`: checking the invariants actually hold
 
 Read-only — it never edits the workspace. Every failing finding names the command
