@@ -60,13 +60,14 @@ async function release (
   setup: Harness,
   environment: NodeJS.ProcessEnv = {},
   fetchStatus: (url: string) => Promise<number> = async () => 200,
+  options: { dryRun?: boolean } = {},
 ): Promise<number> {
   return runRelease(workspaceRoot, {
     processes: setup.processes,
     environment,
     log:       (message) => { setup.logged.push(message) },
     fetchStatus,
-  })
+  }, options)
 }
 
 /** Writes a file under the workspace, making its directory first. */
@@ -451,5 +452,34 @@ describe('mnci ci release: excluded python packages (#432)', () => {
 
     expect(await release(setup, {})).toBe(1)
     expect(setup.logged.some(line => line.includes('PYPI_TOKEN is empty or unset'))).toBe(true)
+  })
+})
+
+describe('mnci release --dry-run (the release phase as a preview)', () => {
+  it('passes --dry-run to nx release and needs no registry credential', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness()
+
+    const status = await release(setup, {}, async () => 200, { dryRun: true })
+
+    expect(status).toBe(0)
+    expect(setup.commands).toContain('npx nx release --dry-run --yes')
+    expect(setup.commands.some(line => line.startsWith('npm whoami'))).toBe(false)
+  })
+
+  it('pushes no tag and uploads no asset afterwards', async () => {
+    seed('packages/sdk/package.json', JSON.stringify({ name: '@x/sdk' }))
+    const setup = harness()
+
+    await release(setup, {}, async () => 200, { dryRun: true })
+
+    expect(setup.commands.some(line => line.startsWith('git push'))).toBe(false)
+    expect(setup.commands.some(line => line.includes('go-app-release'))).toBe(false)
+  })
+
+  it('still refuses a shallow clone, whose answer would be wrong', async () => {
+    const setup = harness({}, { 'git rev-parse --is-shallow-repository': { status: 0, stdout: 'true' } })
+
+    expect(await release(setup, {}, async () => 200, { dryRun: true })).toBe(1)
   })
 })

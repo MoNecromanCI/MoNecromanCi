@@ -21,6 +21,7 @@ export const COMMAND_GROUPS: Readonly<Record<string, CommandGroup>> = {
   sync:      'dependencies',
   up:        'dependencies',
   ci:        'pipeline',
+  release:   'pipeline',
   pipeline:  'pipeline',
   mcp:       'inspect',
   commands:  'inspect',
