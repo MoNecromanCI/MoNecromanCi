@@ -930,7 +930,7 @@ feature names the pinned linter, and that no generated file asks for a tool at `
 and finding it used to skip the pin. The hosted agents bring their own Go, so `GO_VERSION` pins the devcontainer only. `mnci up`
 ends its tooling section (the `tool-versions/` slice) with each pinned tool whose own release source reports a newer one, compared at
 the pin's precision (a Node major, a Go minor, a full golangci-lint version), informationally: the remedy is an mnci release. The
-sources are `go list` (the linter), `nodejs.org` (newest LTS), `go.dev/dl`, the .NET release index, the Flutter tags and `npm view`;
+sources are `go list` (the linter), `nodejs.org` (newest LTS), `go.dev/dl`, the .NET release index, the Flutter tags, `npm view`, Adoptium (the newest LTS JDK major: the pin of 21 reports 25), Gradle's `versions/current` and Maven Central's metadata (final releases only);
 an unreachable one is skipped, and `--ecosystem` leaves the section out.
 
 ### A lockfile is completed by the npm CI installs (#295)
