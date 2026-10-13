@@ -5,6 +5,9 @@ import {
   FLUTTER_SDK_VERSION,
   GOLANGCI_LINT_VERSION,
   GO_VERSION,
+  GRADLE_VERSION,
+  JAVA_VERSION,
+  MAVEN_VERSION,
   NODE_VERSION,
   NPM_VERSION,
   RUST_VERSION,
@@ -24,6 +27,9 @@ const PINS: Readonly<Record<string, string>> = {
   '.NET SDK':      DOTNET_SDK_VERSION,
   'Flutter SDK':   FLUTTER_SDK_VERSION,
   'Rust':          RUST_VERSION,
+  'JDK':           JAVA_VERSION,
+  'Gradle':        GRADLE_VERSION,
+  'Maven':         MAVEN_VERSION,
 }
 
 /**
@@ -96,7 +102,7 @@ export async function checkToolVersions (dependencies: ToolQueryDependencies = d
  * Prints which pinned tools have a newer release, informationally.
  *
  * @remarks
- * `mnci up` reports packages, but the tools mnci installs itself (a linter, Node, the Go, Flutter and .NET SDKs)
+ * `mnci up` reports packages, but the tools mnci installs itself (a linter, Node, the Go, Flutter, .NET, Rust and Java toolchains)
  * are not requirements of any manifest. Each is one pinned constant in mnci's source, so a newer release is not
  * something the workspace can act on: the remedy is an mnci release. Never fails the command, and says so when
  * none of the sources could be reached.
