@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
 import type { CliSession } from '../cli-session'
+import { readWorkspaceInstall, workspaceInstallStatus } from '../cli-update'
 import { commandNodes, projectNodes, updateNodes, type SidebarNode } from './sidebar-nodes.mapper'
 
 /**
@@ -38,7 +39,9 @@ class SidebarTreeProvider implements vscode.TreeDataProvider<SidebarNode> {
     item.tooltip = node.tooltip
     item.contextValue = node.contextValue
     if (node.icon) {
-      item.iconPath = new vscode.ThemeIcon(node.icon)
+      item.iconPath = node.iconColor === undefined
+        ? new vscode.ThemeIcon(node.icon)
+        : new vscode.ThemeIcon(node.icon, new vscode.ThemeColor(node.iconColor))
     }
     if (node.command) {
       item.command = { command: node.command.id, title: node.label, arguments: [...(node.command.arguments_ ?? [])] }
@@ -85,7 +88,17 @@ export function registerSidebarViews (session: CliSession): vscode.Disposable[] 
 
       return nodes.length > 0 ? nodes : [{ id: 'none', label: 'No projects yet', description: 'add one', icon: 'add', command: { id: 'mnci.add' } }]
     }),
-    'mnci.update': new SidebarTreeProvider(async () => updateNodes(await session.info(), session.location())),
+    'mnci.update': new SidebarTreeProvider(async () => {
+      const info = await session.info()
+      const root = session.workspaceRoot
+      const found = root === undefined ? undefined : readWorkspaceInstall(root)
+
+      return updateNodes(
+        info,
+        session.location(),
+        found === undefined ? undefined : { found, status: workspaceInstallStatus(found, info.cli.latest) },
+      )
+    }),
   }
   const views = Object.entries(providers).map(([id, provider]) => vscode.window.createTreeView(id, { treeDataProvider: provider }))
   const unsubscribe = session.onDidChange(() => {

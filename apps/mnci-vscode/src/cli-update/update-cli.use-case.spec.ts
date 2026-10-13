@@ -1,5 +1,5 @@
 import type { CliSession } from '../cli-session'
-import { updateCli, type UpdateSurface } from './update-cli.use-case'
+import { updateCli, updateWorkspaceCli, type UpdateSurface } from './update-cli.use-case'
 
 /** A session whose CLI was found from a given source. */
 function session (source: 'workspace' | 'npx' | 'setting'): CliSession {
@@ -36,5 +36,16 @@ describe('updateCli', () => {
 
     expect(ui.confirm).not.toHaveBeenCalled()
     expect(ui.tell).toHaveBeenCalledWith(expect.stringContaining('C:/tools/mnci.cmd'))
+  })
+})
+
+describe('updateWorkspaceCli', () => {
+  it('confirms and installs into the workspace even when the extension runs from a global install', async () => {
+    const ui = surface(true)
+
+    await updateWorkspaceCli(session('setting'), ui)
+
+    expect(ui.confirm).toHaveBeenCalledWith('Run "npm install --save-dev @mnci/cli@latest" in /ws?')
+    expect(ui.run).toHaveBeenCalledWith('npm', ['install', '--save-dev', '@mnci/cli@latest'], '/ws')
   })
 })

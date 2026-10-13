@@ -14,7 +14,7 @@ export const CLI_COMMAND_NAMES: readonly string[] = ['new', 'upgrade', 'doctor',
  * @remarks
  * Declared in `package.json` beside the CLI ones; a test keeps the two lists in step.
  */
-export const EXTENSION_ONLY_COMMAND_NAMES: readonly string[] = ['refresh', 'runTarget', 'updateCli']
+export const EXTENSION_ONLY_COMMAND_NAMES: readonly string[] = ['refresh', 'runTarget', 'updateCli', 'updateWorkspace']
 
 /**
  * The VS Code command id for a command name.

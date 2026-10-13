@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { runMnciJson } from '../cli-access'
-import { updateCli } from '../cli-update'
+import { updateCli, updateWorkspaceCli } from '../cli-update'
 import type { CliSession } from '../cli-session'
 import { runDoctorCheck } from '../doctor-check'
 import { openUpdatesPanel, showUpdatesPanel } from '../updates-panel'
@@ -54,7 +54,8 @@ export function registerCommands (session: CliSession): vscode.Disposable[] {
         nameFrom(target),
       )
     },
-    updateCli: async () => { await updateCli(session, updateSurface) },
+    updateCli:       async () => { await updateCli(session, updateSurface) },
+    updateWorkspace: async () => { await updateWorkspaceCli(session, updateSurface) },
   }
 
   return [
