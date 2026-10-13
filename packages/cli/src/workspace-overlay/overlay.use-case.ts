@@ -2174,10 +2174,12 @@ export function vscodeWorkspace (
  */
 export const ROOT_SCRIPTS = {
   'build':           'nx run-many -t build',
-  'lint':            'nx run-many -t lint',
+  // `mnci lint`: the npm projects in one ESLint process (it loads its configuration on every start, about 4 s), the
+  // other languages through Nx. `nx run-many -t lint` is the per-project run.
+  'lint':            'mnci lint',
   'test':            'nx run-many -t test',
   'typecheck':       'nx run-many -t typecheck',
-  'affected':        'nx affected -t lint,typecheck,test,build',
+  'affected':        'mnci lint --affected && nx affected -t typecheck,test,build',
   'graph':           'nx graph',
   'release:preview': 'nx release --dry-run',
   'prepare':         'husky',

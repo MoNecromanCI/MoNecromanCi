@@ -17,6 +17,7 @@ import { runSync, type SyncOptions } from './dependency-management'
 import { runUp, type UpOptions } from './dependency-management'
 import { runUpgrade, type UpgradeOptions } from './workspace-upgrade'
 import { releaseWorkspace, type ReleaseOptions } from './release-command'
+import { lintWorkspace, type LintOptions } from './lint-workspace'
 import { logger } from './terminal'
 import { checkForUpdate, readCliVersion } from './cli-version'
 
@@ -166,6 +167,17 @@ export function buildProgram (cliVersion: string): Command {
     )
     .action(async (phase: CiPhase) => {
       process.exitCode = await runCiPhase(phase, process.cwd())
+    })
+
+  program
+    .command('lint')
+    .description(
+      'Lint every project, the npm ones in a single ESLint process (it pays about 4 s to load its configuration on every start, so one run per project spent most of its time starting) and the other languages through Nx, each with its own linter. `nx run-many -t lint` is the per-project run. Exits non-zero when anything is reported',
+    )
+    .option('--affected', 'lint only the projects affected since the base')
+    .option('--base <ref>', 'the ref --affected compares with (default: the workspace\'s default base)')
+    .action((options: LintOptions) => {
+      process.exitCode = lintWorkspace(process.cwd(), options)
     })
 
   program

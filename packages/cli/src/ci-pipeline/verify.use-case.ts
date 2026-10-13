@@ -1,4 +1,5 @@
 import { runCapture, runShell } from '../nx-workspace'
+import { planLint, runLintPlan } from '../lint-workspace'
 import { GO_CGO_TAG, hasNativeGoApp, VERIFY_TARGETS } from '../workspace-overlay'
 import { detectCiHost, groupEnd, groupStart, pullRequestTarget } from './ci-environment.client'
 import type { CiDependencies } from './phase.contract'
@@ -54,6 +55,18 @@ export function runVerify (workspaceRoot: string, dependencies: Partial<CiDepend
     return status
   }
 
+  /** Runs one step inside a log group, so its output collapses in the provider's UI. */
+  const inGroupFn = (title: string, work: () => number): number => {
+    log(groupStart(host, title))
+    const status = work()
+    const closing = groupEnd(host)
+    if (closing !== undefined) {
+      log(closing)
+    }
+
+    return status
+  }
+
   const synced = inGroup('Verify the workspace is synced', 'npx', ['nx', 'sync:check'])
   if (synced !== 0) {
     log("The workspace is not synced: run 'npx nx sync' locally and commit the result.")
@@ -62,7 +75,28 @@ export function runVerify (workspaceRoot: string, dependencies: Partial<CiDepend
   }
 
   const exclude = hasNativeGoApp(workspaceRoot) ? [`--exclude=tag:${GO_CGO_TAG}`] : []
-  const everything = (): number => inGroup('Verify every project', 'npx', ['nx', 'run-many', '-t', VERIFY_TARGETS, ...exclude])
+  const nativePatterns = exclude.map(flag => flag.replace('--exclude=', ''))
+
+  /**
+   * Lints the npm projects in one ESLint process and the rest through Nx, then runs the other targets through Nx.
+   *
+   * Both halves always run, so a lint failure does not hide a failing test, and the first failing status wins. Returns
+   * `undefined` when Nx's project names cannot be matched with what is on disk, which makes the caller verify exactly as
+   * before: a name that does not match would drop a project from the lint, and a run that verifies too little reports green.
+   */
+  const together = (base: string | undefined): number | undefined => {
+    const plan = planLint(workspaceRoot, processes, { ...(base !== undefined && { base }), exclude: nativePatterns })
+    if (plan === undefined) {
+      return undefined
+    }
+    const linted = inGroupFn('Lint the projects', () => runLintPlan(plan, processes, log))
+    const others = base === undefined
+      ? inGroup('Typecheck, test and build every project', 'npx', ['nx', 'run-many', '-t', 'typecheck,test,build', ...exclude])
+      : inGroup('Typecheck, test and build the affected projects', 'npx', ['nx', 'affected', '-t', 'typecheck,test,build', `--base=${base}`, ...exclude])
+
+    return linted === 0 ? others : linted
+  }
+  const everything = (): number => together(undefined) ?? inGroup('Verify every project', 'npx', ['nx', 'run-many', '-t', VERIFY_TARGETS, ...exclude])
   const target = pullRequestTarget(environment)
   if (target === undefined) {
     log('Not a pull request - verifying EVERY project.')
@@ -88,5 +122,5 @@ export function runVerify (workspaceRoot: string, dependencies: Partial<CiDepend
   }
   log(`Pull request against ${target} - verifying projects affected since ${base}`)
 
-  return inGroup('Verify the affected projects', 'npx', ['nx', 'affected', '-t', VERIFY_TARGETS, `--base=${base}`, ...exclude])
+  return together(base) ?? inGroup('Verify the affected projects', 'npx', ['nx', 'affected', '-t', VERIFY_TARGETS, `--base=${base}`, ...exclude])
 }
