@@ -95,7 +95,7 @@ const MNCI_STEP_NAME_PATTERNS = [
 
 /** Actions and tasks that only a generated pipeline's own steps use. */
 const MNCI_USES = ['actions/checkout@', 'actions/setup-node@', 'actions/setup-dotnet@', 'actions/upload-artifact@', 'azure/login@']
-const MNCI_TASKS = ['UseNode@', 'Cache@', 'PublishBuildArtifacts@', 'UseDotNet@', 'npmAuthenticate@']
+const MNCI_TASKS = ['UseNode@', 'Cache@', 'PublishBuildArtifacts@', 'UseDotNet@', 'npmAuthenticate@', 'AzureCLI@']
 
 /** Commands a generated pipeline runs as steps of its own. */
 const MNCI_COMMANDS = ['npm ci', 'npm install -g npm@', 'git fetch --all', 'git config user.name "github-actions', 'git checkout -B', 'npx mnci ci', 'npx nx sync']

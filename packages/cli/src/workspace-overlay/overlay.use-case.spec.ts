@@ -828,11 +828,19 @@ describe('Microsoft Entra ID for the Marketplace (#253)', () => {
     })
   }
 
-  it('leaves Azure Pipelines on VSCE_PAT', () => {
+  it('signs Azure Pipelines in to Entra ID before the release step, gated on a service connection', () => {
     const pipeline = azurePipelinesYaml('ubuntu-latest', 'Build')
+    const login = pipeline.indexOf('task: AzureCLI@2')
+    const release = pipeline.indexOf('npx mnci ci release')
 
-    expect(pipeline).not.toContain('azure/login')
-    expect(pipeline).not.toContain('VSCE_AUTH')
+    expect(login).toBeGreaterThan(-1)
+    expect(login).toBeLessThan(release)
+    expect(pipeline).toContain('azureSubscription: $(VSCE_SERVICE_CONNECTION)')
+    expect(pipeline).toContain("ne(variables['VSCE_SERVICE_CONNECTION'], '')")
+    expect(pipeline).toContain('keepAzSessionActive: true')
+    expect(pipeline).toContain('task.setvariable variable=VSCE_AUTH]entra')
+    expect(pipeline).toContain('VSCE_AUTH: $(VSCE_AUTH)')
+    expect(pipeline).toContain('VSCE_PAT: $(VSCE_PAT)')
   })
 })
 

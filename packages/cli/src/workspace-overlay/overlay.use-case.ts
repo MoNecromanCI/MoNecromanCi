@@ -3494,6 +3494,23 @@ ${phaseEnd('pack', '  ')}
 ${slotMarkers('before-release', '  ')}
 
 ${phaseStart('release', '  ')}
+  # Signs in to Microsoft Entra ID as the Marketplace publishing identity, so the
+  # release step publishes VS Code extensions with 'vsce publish --azure-credential'
+  # and no token. 'keepAzSessionActive' leaves the Azure CLI session in place for
+  # the release step below, where @azure/identity finds it. Runs only when the
+  # VSCE_SERVICE_CONNECTION pipeline variable names a workload-identity service
+  # connection; without it the release publishes with VSCE_PAT. Setup: README,
+  # 'VS Code extensions'.
+  - task: AzureCLI@2
+    displayName: Sign in to Microsoft Entra ID (VS Code Marketplace)
+    condition: and(${onMain}, ne(variables['VSCE_SERVICE_CONNECTION'], ''))
+    inputs:
+      azureSubscription: $(VSCE_SERVICE_CONNECTION)
+      scriptType: bash
+      scriptLocation: inlineScript
+      keepAzSessionActive: true
+      inlineScript: echo "##vso[task.setvariable variable=VSCE_AUTH]entra"
+
   # The release, in the order that keeps a failure safe: refuse a shallow
   # clone, prove the npm token and name the PyPI projects it would create (all
   # BEFORE anything is tagged), then version + tag + publish in one 'nx release'
@@ -3516,8 +3533,11 @@ ${phaseStart('release', '  ')}
     env:
       ${npmAuthName}: ${npmAuthValue}${pypiTokenEnvLine(registryKind, name => `$(${name})`, ' '.repeat(6))}${cargoTokenEnvLine(registryKind, name => `$(${name})`, ' '.repeat(6))}
       RELEASE_SPECIFIER: $(RELEASE_SPECIFIER)
-      # A VS Code extension publishes with it; tools/vscode-extension.cjs skips the
-      # Marketplace when it is unset, including when Azure leaves it as '$(VSCE_PAT)'.
+      # A VS Code extension publishes with Microsoft Entra ID when the sign-in step
+      # above ran (it sets VSCE_AUTH=entra), else with the VSCE_PAT token;
+      # tools/vscode-extension.cjs skips the Marketplace with neither, including
+      # when Azure leaves either macro as its literal text.
+      VSCE_AUTH: $(VSCE_AUTH)
       VSCE_PAT: $(VSCE_PAT)
 ${phaseEnd('release', '  ')}
 
