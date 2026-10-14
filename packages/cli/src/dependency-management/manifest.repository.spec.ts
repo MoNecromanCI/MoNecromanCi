@@ -312,6 +312,31 @@ describe('nuget', () => {
   })
 })
 
+describe('composer and bundler', () => {
+  it('reads a PHP project requirement and rewrites it inside its own manifest', () => {
+    const manifest = write('apps/site/composer.json', JSON.stringify({ name: 'mnci/site', require: { 'monolog/monolog': '^3.5' } }, undefined, 2))
+    write('packages/kit/composer.json', '{ "name": "mnci/kit", "require": { "mnci/site": "^0.1" } }')
+
+    const inventory = collectInventory(workspaceRoot, ['composer'])
+    const site = siteIn(inventory.get('monolog/monolog'), 'apps/site')
+
+    expect(site.spec).toBe('^3.5')
+    expect(siteIn(inventory.get('mnci/site'), 'packages/kit').rewritable).toBe(false)
+    expect(rewriteSpec(site, '^4.0.0')).toBe(true)
+    expect(readFileSync(manifest, 'utf8')).toContain('"monolog/monolog": "^4.0.0"')
+  })
+
+  it('reads a Ruby project gem and rewrites it the Ruby way', () => {
+    const gemfile = write('apps/web/Gemfile', ["source 'https://rubygems.org'", "gem 'rack', '~> 3.1'", ''].join('\n'))
+
+    const site = siteIn(collectInventory(workspaceRoot, ['bundler']).get('rack'), 'apps/web')
+
+    expect(site.spec).toBe('~>3.1')
+    expect(rewriteSpec(site, '~>3.2.0')).toBe(true)
+    expect(readFileSync(gemfile, 'utf8')).toContain("gem 'rack', '~> 3.2.0'")
+  })
+})
+
 describe('go', () => {
   it('reads the root go.mod and labels indirect requirements', () => {
     write(

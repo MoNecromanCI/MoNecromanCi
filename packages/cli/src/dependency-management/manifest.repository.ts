@@ -3,6 +3,9 @@ import { dirname, join, relative } from 'node:path'
 import { runCapture } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { listGoModuleDirectories } from '../go-workspace'
+import { composerIdentity } from './composer-manifest.algorithm'
+import { composerRequirements, replaceComposerSpec } from './composer-requirements.algorithm'
+import { gemfileGems, replaceGemSpec } from './gemfile-gems.algorithm'
 import { cargoDependencies, cargoLockVersion, replaceCargoSpec } from './cargo-dependencies.algorithm'
 import { catalogLibraries, replaceCatalogVersion } from './gradle-catalog.algorithm'
 import { catalogAccessor } from './gradle-dependency.algorithm'
@@ -103,9 +106,9 @@ const MANIFEST_GLOBS: Record<Ecosystem, string[]> = {
   maven:    ['apps/*/pom.xml', 'packages/*/pom.xml', 'libs/*/pom.xml'],
   // A Gradle project is located by its build.gradle.kts; its libraries are read from the version catalog (`collectGradle`).
   gradle:   ['apps/*/build.gradle.kts', 'packages/*/build.gradle.kts', 'libs/*/build.gradle.kts'],
-  // A PHP project is located by its composer.json; its dependencies are read in a later slice (#471).
+  // A PHP project is located by its composer.json; its `require` and `require-dev` are read (`collectComposer`).
   composer: ['apps/*/composer.json', 'packages/*/composer.json', 'libs/*/composer.json'],
-  // A Ruby project is located by its Gemfile; its gems are read in a later slice (#472).
+  // A Ruby project is located by its Gemfile; its `gem` lines with a constraint are read (`collectBundler`).
   bundler:  ['apps/*/Gemfile', 'packages/*/Gemfile', 'libs/*/Gemfile'],
   // Single root module by design — there are no per-project Go manifests.
   go:       [],
@@ -245,6 +248,93 @@ function collectCargo (workspaceRoot: string): DependencySite[] {
         section:      dependency.section,
         spec:         dependency.spec,
         rewritable:   dependency.rewritable,
+      })
+    }
+  }
+
+  return sites
+}
+
+/**
+ * Reads every package a PHP project's own `composer.json` requires.
+ *
+ * @remarks
+ * Each project has its own `composer.json` and lock, so a package is declared per project. A sibling project (wired by a
+ * `path` repository) is reported and never rewritten. The root `composer.json` holds mnci's shared dev tools and is not
+ * read.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One site per requirement.
+ * @throws Never - an unreadable manifest is skipped.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function collectComposer (workspaceRoot: string): DependencySite[] {
+  const texts = new Map<string, string>()
+  const manifests = globSync(MANIFEST_GLOBS.composer, { cwd: workspaceRoot })
+  for (const relativePath of manifests) {
+    try {
+      texts.set(relativePath, readFileSync(join(workspaceRoot, relativePath), 'utf8'))
+    } catch {
+      // Skipped: a manifest that cannot be read declares nothing here.
+    }
+  }
+  const siblings = new Set<string>()
+  for (const text of texts.values()) {
+    const name = composerIdentity(text)?.name
+    if (name !== undefined) {
+      siblings.add(name)
+    }
+  }
+
+  const sites: DependencySite[] = []
+  for (const [relativePath, text] of texts) {
+    for (const requirement of composerRequirements(text, siblings)) {
+      sites.push({
+        name:         requirement.name,
+        ecosystem:    'composer',
+        project:      projectOf(relativePath),
+        manifestPath: join(workspaceRoot, relativePath),
+        section:      requirement.section,
+        spec:         requirement.spec,
+        rewritable:   requirement.rewritable,
+      })
+    }
+  }
+
+  return sites
+}
+
+/**
+ * Reads every gem a Ruby project's own `Gemfile` declares with a version constraint.
+ *
+ * @remarks
+ * A gem with a `path:` or `git:` source is reported and never rewritten. A library's gemspec dependencies and the root
+ * `Gemfile` (mnci's shared RuboCop) are not read.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns One site per constrained gem.
+ * @throws Never - an unreadable manifest is skipped.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function collectBundler (workspaceRoot: string): DependencySite[] {
+  const sites: DependencySite[] = []
+  const manifests = globSync(MANIFEST_GLOBS.bundler, { cwd: workspaceRoot })
+  for (const relativePath of manifests) {
+    let content: string
+    try {
+      content = readFileSync(join(workspaceRoot, relativePath), 'utf8')
+    } catch {
+      continue
+    }
+    for (const gem of gemfileGems(content)) {
+      sites.push({
+        name:         gem.name,
+        ecosystem:    'bundler',
+        project:      projectOf(relativePath),
+        manifestPath: join(workspaceRoot, relativePath),
+        section:      gem.section,
+        spec:         gem.spec,
+        rewritable:   gem.rewritable,
       })
     }
   }
@@ -890,8 +980,8 @@ export function collectInventory (
     cmake:    () => [],
     maven:    collectMaven,
     gradle:   collectGradle,
-    composer: () => [],
-    bundler:  () => [],
+    composer: collectComposer,
+    bundler:  collectBundler,
     go:       collectGo,
   }
 
@@ -1048,6 +1138,12 @@ export function rewriteSpec (site: DependencySite, spec: string): boolean {
       }
       case 'gradle': {
         return replaceCatalogVersion(before, name, spec)
+      }
+      case 'composer': {
+        return replaceComposerSpec(before, name, spec, site.section === 'devDep' ? 'devDep' : 'dep')
+      }
+      case 'bundler': {
+        return replaceGemSpec(before, name, spec)
       }
       // 'go' entries are never rewritable (see collectGo), so this is
       // unreachable in practice — returning the text unchanged is the safe

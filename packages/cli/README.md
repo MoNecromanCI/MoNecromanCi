@@ -993,8 +993,11 @@ and `sqlite3` must be enabled in `php.ini`). Larastan is added beside the app's 
 The devcontainer has PHP (with Composer) at the pinned minor, and `mnci ci setup` names a runner whose PHP is another minor
 or that lacks Composer, as a warning: it installs nothing, since the hosted images carry their own.
 
-Not covered yet (#471): `mnci sync` / `mnci up` reading a project's requirements; `dev`; propagating a library's new version
-to a consumer's `^` range.
+`mnci sync` / `mnci up` read a project's own `require` and `require-dev` (not the root `composer.json`): a workspace sibling, a
+compound constraint and a wildcard are reported and never rewritten, the newest stable release comes from `composer show`, and
+`composer update` runs in each project that changed.
+
+Not covered yet (#471): `dev`; propagating a library's new version to a consumer's `^` range.
 
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++ and Java, and what `lint` depends on) holds the layout: nothing
 sits at the root of `src/`, a slice folder is StudlyCase, a class is `<Name><Role>.php` (a test `<Name><Role>Test.php`), no
@@ -1031,7 +1034,11 @@ The devcontainer has Ruby (with Bundler) at the pinned minor, and `mnci ci setup
 Bundler, as it does for PHP.
 
 Not covered yet (#472): publishing to RubyGems (`gem push` needs `GEM_HOST_API_KEY` passed to the release step by both
-providers); `mnci sync` / `mnci up` reading a project's gems; `dev`.
+providers); `dev`.
+
+`mnci sync` / `mnci up` read the `gem` lines of a project's own `Gemfile` that carry one constraint (a `path:` or `git:` gem,
+two constraints and a gemspec's dependencies are reported or skipped, never rewritten; the root `Gemfile` is not read). The
+newest release comes from `gem list --remote`, and `bundle install` runs in each project that changed.
 
 ### Rails (`mnci add ruby-app <name> --template rails`, #489)
 

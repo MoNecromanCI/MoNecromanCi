@@ -66,7 +66,7 @@ export interface ParsedVersion {
  * read as `>` with a version of `=1.2.3`. The empty string is not listed — it
  * is the fallback when nothing else matches, i.e. an exact pin.
  */
-const RANGE_OPERATORS = ['>=', '<=', '^', '~', '>', '<', '='] as const
+const RANGE_OPERATORS = ['>=', '<=', '~>', '^', '~', '>', '<', '='] as const
 
 /**
  * Parses a bare version string into its numeric triple.
