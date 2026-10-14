@@ -1147,7 +1147,7 @@ not on what p5 drew).
 
 ## Vue apps (`mnci add vue-app`)
 
-`mnci add vue-app <name>` runs `@nx/vue:app` (Vite, `--unitTestRunner=vitest`, no linter or e2e of its own). Vue's generator
+`mnci add vue-app <name>` runs `@nx/vue:app` (Vite, `--unitTestRunner=vitest`, no linter of its own). Vue's generator
 takes this workspace's TypeScript setup as it is, so there is less to repair than for Angular:
 
 - **`vue-tsc` 3 is installed** as a root dev tool. `@nx/vue` installs 2, whose patch of TypeScript's `lib/tsc.js` cannot read
@@ -1161,7 +1161,11 @@ takes this workspace's TypeScript setup as it is, so there is less to repair tha
 - `:start`/`:dev` are `serve`; `:build:dev` is `build --mode development --sourcemap`; `package` zips `apps/<name>/dist` into
   `dist/drop/vue-app-<name>.zip`.
 
-Not covered: `--e2e`, routing, a per-environment build as React has, Pinia, and a Vue library kind.
+`--e2e` pairs a Playwright project, `<name>-e2e`, like the React and Angular kinds: the generator's own (`--e2eTestRunner=playwright`),
+its sample replaced by a test of the greeting (of `#app` for `--empty`), the Node types its config reads, and `:qa` as lint and
+typecheck, since the `e2e` target needs a browser CI's verify does not have.
+
+Not covered: routing, a per-environment build as React has, Pinia, and a Vue library kind.
 
 ## Svelte apps (`mnci add svelte-app`)
 

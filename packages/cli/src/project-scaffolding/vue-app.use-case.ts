@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { runNx, runShell } from '../nx-workspace'
 import { writeFileEnsured } from '../file-system'
 import { separateReactAppOutput } from '../react-app-output'
-import { vueAppEmptyFiles, vueAppExampleFiles } from './vue-app-example.algorithm'
+import { vueAppE2eSpec, vueAppEmptyFiles, vueAppExampleFiles } from './vue-app-example.algorithm'
+import { finishPlaywrightProject } from './finish-playwright-project.use-case'
 import {
   addNxTargets,
   ensureAdmZip,
@@ -58,11 +59,12 @@ export function vueAppTargets (name: string): Record<string, unknown> {
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
  * @param empty - Scaffold a bare app: a root component and nothing else (`--empty`).
+ * @param e2e - Also scaffold the paired Playwright project, `<name>-e2e` (`--e2e`).
  * @returns Nothing.
  * @throws Error when the generator or a required install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addVueApp (workspaceRoot: string, name: string, empty = false): void {
+export function addVueApp (workspaceRoot: string, name: string, empty = false, e2e = false): void {
   ensurePlugin(workspaceRoot, '@nx/vue')
   runNx(
     [
@@ -74,7 +76,7 @@ export function addVueApp (workspaceRoot: string, name: string, empty = false): 
       '--bundler=vite',
       '--unitTestRunner=vitest',
       '--linter=none',
-      '--e2eTestRunner=none',
+      `--e2eTestRunner=${e2e ? 'playwright' : 'none'}`,
       '--formatter=none',
       '--style=css',
       '--routing=false',
@@ -109,4 +111,7 @@ export function addVueApp (workspaceRoot: string, name: string, empty = false): 
     buildDev: `nx run ${name}:build --mode development --sourcemap`,
     dev:      `nx run ${name}:serve`,
   })
+  if (e2e) {
+    finishPlaywrightProject(workspaceRoot, name, vueAppE2eSpec(name, empty))
+  }
 }
