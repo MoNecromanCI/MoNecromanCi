@@ -3,9 +3,12 @@ import { join } from 'node:path'
 import { runNpx, runShell } from '../nx-workspace'
 import { readJson, toJson, writeFileEnsured } from '../file-system'
 import { svelteAppEmptyFiles, svelteAppExampleFiles, svelteViteConfig } from './svelte-app-example.algorithm'
+import { SVELTE_PREVIEW_PORT, svelteAppE2eSpec, svelteE2eProjectFiles } from './svelte-e2e-project.algorithm'
+import { finishPlaywrightProject } from './finish-playwright-project.use-case'
 import {
   addNxTargets,
   ensureAdmZip,
+  ensurePlugin,
   registerAppsWorkspace,
   registerProjectCommands,
   removeGeneratedEslintConfig,
@@ -73,11 +76,12 @@ export function svelteAppTargets (name: string): Record<string, unknown> {
  * @param workspaceRoot - Absolute path to the workspace.
  * @param name - The project name (already validated).
  * @param empty - Scaffold a bare app: a root component and nothing else (`--empty`).
+ * @param e2e - Also write the paired Playwright project, `<name>-e2e` (`--e2e`), which no Nx generator writes for Svelte.
  * @returns Nothing.
  * @throws Error when `create-vite` or an install fails.
  * @typeParam None - this function has no generic type parameters.
  */
-export function addSvelteApp (workspaceRoot: string, name: string, empty = false): void {
+export function addSvelteApp (workspaceRoot: string, name: string, empty = false, e2e = false): void {
   runNpx([`create-vite@${CREATE_VITE_VERSION}`, `apps/${name}`, '--template', 'svelte-ts', '--no-interactive'], workspaceRoot)
   const appRoot = join(workspaceRoot, 'apps', name)
   // The template's sample, assets and editor folder are a demo; the README is the template's, not this project's.
@@ -114,4 +118,41 @@ export function addSvelteApp (workspaceRoot: string, name: string, empty = false
     buildDev: `nx run ${name}:build -- --mode development --sourcemap`,
     dev:      `nx run ${name}:serve`,
   })
+  if (e2e) {
+    addPairedPlaywrightProject(workspaceRoot, name, empty)
+  }
+}
+
+/**
+ * Writes the Playwright project paired with a Svelte app, and what it needs to run.
+ *
+ * @remarks
+ * Nx's own generators write this project for React, Angular and Vue; Svelte has none, so the files come from
+ * {@link svelteE2eProjectFiles}. `@nx/playwright` is installed (it brings `@playwright/test` and registers the plugin that
+ * infers the `e2e` target), and the app gains a `preview` target that builds and then serves the bundle on
+ * {@link SVELTE_PREVIEW_PORT}, which is what the project's web server starts. The rest is the step the other kinds share.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @param name - The Svelte app's project name.
+ * @param empty - Whether the app is the bare variant.
+ * @returns Nothing.
+ * @throws Error when installing the Playwright plugin fails.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function addPairedPlaywrightProject (workspaceRoot: string, name: string, empty: boolean): void {
+  ensurePlugin(workspaceRoot, '@nx/playwright')
+  addNxTargets(join(workspaceRoot, 'apps', name, 'package.json'), {
+    preview: {
+      executor:   'nx:run-commands',
+      continuous: true,
+      dependsOn:  ['build'],
+      options:    { command: `vite preview --port ${SVELTE_PREVIEW_PORT} --strictPort`, cwd: `apps/${name}` },
+    },
+  })
+  const e2eRoot = join(workspaceRoot, 'apps', `${name}-e2e`)
+  const files = Object.entries(svelteE2eProjectFiles(name))
+  for (const [relative, contents] of files) {
+    writeFileEnsured(join(e2eRoot, relative), contents)
+  }
+  finishPlaywrightProject(workspaceRoot, name, svelteAppE2eSpec(name, empty))
 }

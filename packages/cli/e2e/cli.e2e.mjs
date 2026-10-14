@@ -4854,6 +4854,13 @@ section('svelte app', [], () => {
   )
   const doctor = tryRunCapture(`node ${CLI} doctor`, root)
   enforce('svelte app: doctor passes on the workspace', doctor.ok, doctor.output.slice(-1500))
+  // --e2e writes the Playwright project itself (Nx has no Svelte generator); its `e2e` target needs a browser, so lint
+  // and typecheck are what CI can run, and the project must show up with an inferred `e2e` target all the same.
+  run(`node ${CLI} add svelte-app svelteshop --e2e`, root)
+  const paired = tryRunCapture('npx nx run-many -t lint,typecheck --projects=svelteshop,svelteshop-e2e', root)
+  enforce('svelte app: --e2e adds a Playwright project that lints and type-checks', paired.ok, paired.output.slice(-2500))
+  const inferred = tryRunCapture('npx nx show project svelteshop-e2e --json', root)
+  enforce('svelte app: the Playwright project has an inferred e2e target', inferred.ok && inferred.output.includes('"e2e"'), inferred.output.slice(-1500))
 })
 
 section('bicep infrastructure', [], () => {

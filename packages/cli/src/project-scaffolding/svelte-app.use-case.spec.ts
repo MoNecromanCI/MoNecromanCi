@@ -13,10 +13,11 @@ jest.mock('@inquirer/prompts', () => ({ select: jest.fn(), input: jest.fn() }))
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runNpx, runShell } from '../nx-workspace'
+import { runNpx, runNx, runShell } from '../nx-workspace'
 import { runAdd } from './add-project.use-case'
 
 const mockRunNpx = jest.mocked(runNpx)
+const mockRunNx = jest.mocked(runNx)
 const mockRunShell = jest.mocked(runShell)
 
 let workspaceRoot: string
@@ -114,5 +115,44 @@ describe('runAdd svelte-app', () => {
     expect(scripts['web:qa']).toBe('nx run web:lint && nx run web:test')
     expect(scripts['web:start']).toBe('nx run web:serve')
     expect(scripts['web:dev']).toBe('nx run web:serve')
+  })
+
+  it('--e2e installs the Playwright plugin and writes the paired project, since Nx has no Svelte generator', async () => {
+    await runAdd('svelte-app', 'web', { e2e: true })
+
+    expect(mockRunNx).toHaveBeenCalledWith(['add', '@nx/playwright'], workspaceRoot)
+    const e2eRoot = join(workspaceRoot, 'apps/web-e2e')
+    const manifest = JSON.parse(readFileSync(join(e2eRoot, 'package.json'), 'utf8')) as { name: string, nx: { implicitDependencies: string[] } }
+    expect(manifest.name).toBe('web-e2e')
+    expect(manifest.nx.implicitDependencies).toEqual(['web'])
+    const config = readFileSync(join(e2eRoot, 'playwright.config.mts'), 'utf8')
+    expect(config).toContain("command:             'npx nx run web:preview'")
+    expect(config).toContain('http://localhost:4300')
+    const tsconfig = JSON.parse(readFileSync(join(e2eRoot, 'tsconfig.json'), 'utf8')) as { compilerOptions: { types: string[] } }
+    expect(tsconfig.compilerOptions.types).toContain('node')
+    expect(readFileSync(join(e2eRoot, 'src/greeting.e2e.spec.ts'), 'utf8')).toContain("getByText('Hello, web!')")
+  })
+
+  it('--e2e gives the app a preview target that builds first and serves on the port the project expects', async () => {
+    await runAdd('svelte-app', 'web', { e2e: true })
+
+    const { nx } = JSON.parse(readFileSync(join(workspaceRoot, 'apps/web/package.json'), 'utf8')) as { nx: { targets: Record<string, { dependsOn: string[], options: { command: string } }> } }
+    expect(nx.targets.preview.dependsOn).toEqual(['build'])
+    expect(nx.targets.preview.options.command).toBe('vite preview --port 4300 --strictPort')
+  })
+
+  it('--e2e registers the e2e project lint and typecheck as its :qa, and no start', async () => {
+    await runAdd('svelte-app', 'web', { e2e: true })
+
+    const { scripts } = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
+    expect(scripts['web-e2e:qa']).toBe('nx run web-e2e:lint && nx run web-e2e:typecheck')
+    expect(scripts['web-e2e:start']).toBeUndefined()
+  })
+
+  it('writes no Playwright project without --e2e', async () => {
+    await runAdd('svelte-app', 'web', {})
+
+    expect(existsSync(join(workspaceRoot, 'apps/web-e2e'))).toBe(false)
+    expect(mockRunNx).not.toHaveBeenCalled()
   })
 })
