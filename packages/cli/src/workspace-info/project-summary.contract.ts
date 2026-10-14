@@ -12,7 +12,8 @@ export interface ProjectSummary {
   readonly name:      string
   /** Workspace-relative directory, forward-slashed. */
   readonly dir:       string
-  readonly ecosystem: Ecosystem
+  /** The manifest's ecosystem, or `none` for a project made of files with no package manifest (`bicep-iac`). */
+  readonly ecosystem: Ecosystem | 'none'
   /** The `type:*` tag mnci put on the project (`go-app`, `vscode-extension`), when it has one. */
   readonly kind?:     string
   /** The project's Nx targets that mnci writes explicitly, from its `project.json`. */
