@@ -1,4 +1,4 @@
-import { dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { Separator, checkbox } from '@inquirer/prompts'
 import {
   PEER_SECTION,
@@ -467,6 +467,36 @@ function reinstall (workspaceRoot: string, ecosystems: ReadonlySet<Ecosystem>): 
 }
 
 /**
+ * Re-resolves the lock of each PHP and Ruby project whose manifest changed.
+ *
+ * @remarks
+ * Each Composer and Bundler project has its own lock, so there is no one root command: `composer update` and `bundle install`
+ * run in the project's folder. Without it the lock still holds versions the new constraint may exclude, and `composer install`
+ * would install from it. A failure is a warning naming the folder.
+ *
+ * @param manifests - The absolute paths of the manifests that were rewritten.
+ * @returns Nothing.
+ * @throws Never - a failed command is reported as a warning.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function refreshProjectLocks (manifests: ReadonlySet<string>): void {
+  for (const manifest of manifests) {
+    const file = basename(manifest)
+    const command = file === 'composer.json'
+      ? ['composer', ['update', '--no-interaction', '--no-progress']] as const
+      : (file === 'Gemfile' ? ['bundle', ['install']] as const : undefined)
+    if (command === undefined) {
+      continue
+    }
+    const folder = dirname(manifest)
+    logger.step(`Re-resolving ${relative(process.cwd(), folder) || folder} (${command[0]} ${command[1].join(' ')})`)
+    if (runShell(command[0], [...command[1]], folder) !== 0) {
+      logger.warn(`${command[0]} ${command[1].join(' ')} failed in ${folder} - the manifest was updated, so re-run it once the cause is fixed.`)
+    }
+  }
+}
+
+/**
  * Whether the workspace's root manifest carries the `python:install` script.
  *
  * @param workspaceRoot - Absolute path to the workspace.
@@ -631,6 +661,7 @@ export async function runUp (workspaceRoot: string, options: UpOptions, packages
 
   if (options.install !== false) {
     reinstall(workspaceRoot, new Set(selected.map(entry => entry.ecosystem)))
+    refreshProjectLocks(changedManifests)
     if (selected.some(entry => entry.ecosystem === 'npm')) {
       completeLockfile(workspaceRoot)
     }

@@ -1,5 +1,7 @@
 import { pool, runCaptureAsync } from '../nx-workspace'
 import type { Ecosystem } from './manifest.repository'
+import { newestStableComposerVersion } from './composer-requirements.algorithm'
+import { newestGemVersion } from './gemfile-gems.algorithm'
 import { mavenMetadataUrl, newestMavenRelease } from './maven-metadata.algorithm'
 
 /**
@@ -278,6 +280,59 @@ export async function latestCargoVersions (
   return new Map(results.filter(entry => entry !== undefined))
 }
 
+/**
+ * Asks Packagist, through `composer show`, for the newest stable release of each package.
+ *
+ * @remarks
+ * `composer show --all --format=json <package>` per package, through the ecosystem's own tool as the others are, so a
+ * repository configured in the workspace is consulted. A development branch or pre-release is never offered.
+ *
+ * @param names - The `vendor/package` names to look up.
+ * @param cwd - The workspace root.
+ * @returns A promise of the newest stable version per package that answered.
+ * @throws Never - an unknown package, or no `composer`, is simply absent.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function latestComposerVersions (
+  names: readonly string[],
+  cwd: string,
+): Promise<LatestVersions> {
+  const results = await pool(names, LOOKUP_CONCURRENCY, async name => {
+    const result = await runCaptureAsync('composer', ['show', '--all', '--format=json', '--no-interaction', name], cwd)
+    const version = result.status === 0 ? newestStableComposerVersion(result.stdout) : undefined
+
+    return version === undefined ? undefined : ([name, version] as const)
+  })
+
+  return new Map(results.filter(entry => entry !== undefined))
+}
+
+/**
+ * Asks RubyGems, through `gem list --remote`, for the newest release of each gem.
+ *
+ * @remarks
+ * `gem list --remote --exact <gem>` per gem, so a configured source is consulted; pre-releases are not listed.
+ *
+ * @param names - The gem names to look up.
+ * @param cwd - The workspace root.
+ * @returns A promise of the newest version per gem that answered.
+ * @throws Never - an unknown gem, or no `gem`, is simply absent.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export async function latestGemVersions (
+  names: readonly string[],
+  cwd: string,
+): Promise<LatestVersions> {
+  const results = await pool(names, LOOKUP_CONCURRENCY, async name => {
+    const result = await runCaptureAsync('gem', ['list', '--remote', '--exact', name], cwd)
+    const version = result.status === 0 ? newestGemVersion(result.stdout, name) : undefined
+
+    return version === undefined ? undefined : ([name, version] as const)
+  })
+
+  return new Map(results.filter(entry => entry !== undefined))
+}
+
 /** The repositories asked for a Maven artifact's metadata, in order: the one most libraries are in, then Google's (AndroidX). */
 const MAVEN_REPOSITORIES = ['https://repo.maven.apache.org/maven2', 'https://dl.google.com/dl/android/maven2']
 
@@ -360,13 +415,11 @@ export async function latestVersions (
     case 'gradle': {
       return await latestMavenVersions(names)
     }
-    // A PHP project's dependencies are not read yet (#471), so there is nothing to ask Packagist.
     case 'composer': {
-      return new Map()
+      return await latestComposerVersions(names, cwd)
     }
-    // A Ruby project's gems are not read yet (#472), so there is nothing to ask RubyGems.
     case 'bundler': {
-      return new Map()
+      return await latestGemVersions(names, cwd)
     }
     case 'go': {
       return await latestGoVersions(cwd)
