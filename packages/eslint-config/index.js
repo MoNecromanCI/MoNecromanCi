@@ -1,3 +1,4 @@
+import astro from './configs/astro.js'
 import base from './configs/base.js'
 import css from './configs/css.js'
 import dependencyChecks from './configs/dependencyChecks.js'
@@ -7,6 +8,7 @@ import importGraph from './configs/importGraph.js'
 import jest from './configs/jest.js'
 import json from './configs/json.js'
 import markdown from './configs/markdown.js'
+import mdx from './configs/mdx.js'
 import react from './configs/react.js'
 import regexp from './configs/regexp.js'
 import standard from './configs/standard.js'
@@ -18,6 +20,7 @@ import browserAutomation from './configs/browserAutomation.js'
 import verticalSlices from './configs/verticalSlices.js'
 import yaml from './configs/yaml.js'
 
+export { default as astro } from './configs/astro.js'
 export { default as base } from './configs/base.js'
 export { default as css } from './configs/css.js'
 export { default as dependencyChecks } from './configs/dependencyChecks.js'
@@ -32,6 +35,7 @@ export { default as importGraph } from './configs/importGraph.js'
 export { default as jest } from './configs/jest.js'
 export { default as json } from './configs/json.js'
 export { default as markdown } from './configs/markdown.js'
+export { default as mdx } from './configs/mdx.js'
 export { default as react } from './configs/react.js'
 export { default as regexp } from './configs/regexp.js'
 export { default as standard } from './configs/standard.js'
@@ -128,6 +132,8 @@ export default function mnci (options = {}) {
     ...css,
     ...html,
     ...svelte,
+    ...astro,
+    ...mdx,
     ...jest,
     ...(workspaceRoot ? dependencyChecks(workspaceRoot) : []),
     ...(slices ? verticalSlices(slices === true ? undefined : slices) : []),

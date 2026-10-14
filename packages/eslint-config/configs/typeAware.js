@@ -94,6 +94,9 @@ export default [
   {
     name:            'mnci/type-aware',
     files:           TYPE_AWARE_FILES,
+    // The script and code blocks a processor lifts out of a document (`page.mdx/1_0.ts`) are files
+    // of no tsconfig, and the project service fails on each one ("was not found by the project service").
+    ignores:         ['**/*.mdx/**', '**/*.astro/**', '**/*.md/**'],
     plugins:         { '@typescript-eslint': tseslint.plugin },
     languageOptions: {
       parser:        tseslint.parser,
