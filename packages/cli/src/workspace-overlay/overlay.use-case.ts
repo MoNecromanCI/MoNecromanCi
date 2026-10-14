@@ -1186,6 +1186,8 @@ export function devcontainerJson (workspaceName: string): string {
       'ghcr.io/devcontainers/features/php:1':  { version: PHP_VERSION },
       'ghcr.io/devcontainers/features/ruby:1': { version: RUBY_VERSION },
     },
+    // Where the vcpkg that `postCreateCommand` clones lives; the project's CMake hook reads this and nothing else.
+    remoteEnv:         { VCPKG_ROOT: '${containerEnv:HOME}/vcpkg' },
     // `npm ci` first: every guard after it runs through the workspace's own
     // scripts and Nx, which do not exist until the install completes.
     postCreateCommand: [
@@ -1194,6 +1196,10 @@ export function devcontainerJson (workspaceName: string): string {
       // precisely the drift this file exists to remove.
       `npm install -g npm@${NPM_VERSION}`,
       'npm ci',
+      // The C++ toolchain: no devcontainer feature carries CMake, so the base image's package manager does, and vcpkg is the
+      // pinned tag, cloned once. Both are idempotent, so a rebuild repeats nothing.
+      'sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build cppcheck pkg-config zip unzip',
+      `([ -d "$HOME/vcpkg" ] || (git clone --depth 1 --branch ${VCPKG_VERSION} https://github.com/microsoft/vcpkg "$HOME/vcpkg" && "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics))`,
       // The same command the pipeline runs: the Python, Go and Flutter toolchains, each
       // skipped when the workspace has no project in that language.
       'npx mnci ci setup',
@@ -2705,6 +2711,15 @@ export const PHP_VERSION = '8.4'
  * installs nothing.
  */
 export const RUBY_VERSION = '3.4'
+
+/**
+ * The vcpkg release the devcontainer clones and `mnci ci setup` names when `VCPKG_ROOT` is missing.
+ *
+ * @remarks
+ * A tag of `microsoft/vcpkg`: a vcpkg checkout is its own port tree, so the tag also decides which versions of a port
+ * `mnci install` resolves. Hosted runners ship a vcpkg of their own (`VCPKG_INSTALLATION_ROOT`), so setup installs nothing.
+ */
+export const VCPKG_VERSION = '2026.07.29'
 
 /**
  * The Flutter SDK version the generated pipeline installs.
