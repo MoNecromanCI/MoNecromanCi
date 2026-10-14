@@ -42,7 +42,7 @@ export const PROJECT_KIND_CATALOG: readonly ProjectKindDescription[] = [
   { kind: 'angular-app', language: 'typescript', label: 'Angular app', description: 'An Angular app built with esbuild, zipped for deployment', flags: ['e2e', 'empty'], requiredFlags: [] },
   { kind: 'angular-internal-lib', language: 'typescript', label: 'Angular internal library', description: 'A private Angular library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
   { kind: 'vue-app', language: 'typescript', label: 'Vue app', description: 'A Vite Vue app with Vitest, zipped for deployment', flags: ['e2e', 'empty'], requiredFlags: [] },
-  { kind: 'svelte-app', language: 'typescript', label: 'Svelte app', description: 'A Vite Svelte app with Vitest, zipped for deployment', flags: ['empty'], requiredFlags: [] },
+  { kind: 'svelte-app', language: 'typescript', label: 'Svelte app', description: 'A Vite Svelte app with Vitest, zipped for deployment', flags: ['e2e', 'empty'], requiredFlags: [] },
   { kind: 'react-lib', language: 'typescript', label: 'React library', description: 'A publishable React component library', flags: ['scope', 'empty'], requiredFlags: [] },
   { kind: 'react-internal-lib', language: 'typescript', label: 'React internal library', description: 'A private React library for apps in this workspace', flags: ['empty'], requiredFlags: [] },
   { kind: 'node-app', language: 'typescript', label: 'Node app', description: 'A Node service, with Express, Fastify, Koa or Nest if you choose one', flags: ['framework', 'esm', 'empty'], requiredFlags: [] },

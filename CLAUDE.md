@@ -388,7 +388,7 @@ Nx plugin where none does:
   `svelte-app` (`project-scaffolding/svelte-app.use-case.ts`, #314) has no Nx generator (`@nxext/svelte` does not install here), so it
   is Vite's `svelte-ts` template via `create-vite@CREATE_VITE_VERSION`, wired like Go and C#: explicit `nx.targets`
   (`typecheck` is `svelte-check`), `apps/*` added to the root `workspaces`, test tooling installed into the app after a plain
-  `npm install` (the first `-w` for a new folder is a silent no-op). `.svelte` files are linted by `mnci/svelte` (`eslint-plugin-svelte`, loaded only when `svelte` resolves, because the plugin imports it at load).
+  `npm install` (the first `-w` for a new folder is a silent no-op). `.svelte` files are linted by `mnci/svelte` (`eslint-plugin-svelte`, loaded only when `svelte` resolves, because the plugin imports it at load). `--e2e` (no Nx generator exists, so `svelte-e2e-project.algorithm.ts` writes the project in the shape `@nx/react:app` does: a manifest with an implicit dependency, `playwright.config.mts` on `nxE2EPreset`, a tsconfig; `@nx/playwright` is installed and infers `e2e`, which depends on the app's `preview` target, written only with `--e2e`: `vite preview --port 4300 --strictPort` after `build`); measured: `<name>-e2e` lints and type-checks and has the inferred `e2e` target, one browser (chromium). The `e2e` target itself, which needs a browser, was not run.
   `bicep-iac` (`project-scaffolding/bicep.use-case.ts`, #314) is files written directly (no generator exists): `lint`/`build`/
   `package` are `az bicep` commands (measured with Bicep CLI 0.48), `bicepconfig.json` promotes the rules that catch real mistakes
   because `az bicep lint` exits 0 on warnings, and there is no `test` target. Terraform is not covered.

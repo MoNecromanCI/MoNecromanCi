@@ -1189,7 +1189,13 @@ blocks load only when `svelte` resolves from the config package, because the plu
 workspace with no Svelte project is untouched, and a `svelte` kept out of the root `node_modules` leaves the files
 unlinted.
 
-Not covered: `--e2e`, SvelteKit, and a Svelte library kind.
+`--e2e` writes a Playwright project, `<name>-e2e`, itself, because Nx has no Svelte generator: it is shaped like the one
+`@nx/react:app` writes (a manifest with an implicit dependency on the app, `playwright.config.mts` on `nxE2EPreset`, a
+tsconfig), `@nx/playwright` is installed so its plugin infers the `e2e` target, and the app gains a `preview` target (`vite
+preview --port 4300 --strictPort`, after `build`) that the project's web server starts. One browser (Chromium). Like the
+other kinds, its `:qa` is lint and typecheck: the `e2e` target needs a browser (`npx playwright install`).
+
+Not covered: SvelteKit, and a Svelte library kind.
 
 ## Bicep infrastructure (`mnci add bicep-iac`)
 
