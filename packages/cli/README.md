@@ -1219,7 +1219,10 @@ is no Nx plugin for Astro) and wires it in as Go and C# are:
 - `apps/*` is registered as an npm workspace, after which the site's dependencies (Astro, Starlight, `sharp`) are its own.
 - `@mnci/eslint-config` lets `src/content.config.ts` sit at the root of `src`, where Astro requires it.
 
-Not covered: `.astro` and `.mdx` files are not linted, deployment (its `base` setting in `astro.config.mjs` is yours when
+`.astro` files are linted by `mnci/astro` (`eslint-plugin-astro`'s recommended rules, frontmatter and scripts included) and
+`.mdx` files by `mnci/mdx` (`eslint-plugin-mdx`: the document, its JSX, and the code fences as files of their own).
+
+Not covered: deployment (its `base` setting in `astro.config.mjs` is yours when
 the site goes to GitHub Pages), and Docusaurus.
 
 ## A paired Playwright project (`mnci add react-app web --e2e`)

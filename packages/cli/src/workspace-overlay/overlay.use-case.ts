@@ -1653,6 +1653,9 @@ export const ESLINT_BLOCK_INVENTORY = `// WHAT IS IN HERE. Each line is one conf
 //   mnci/html                     @html-eslint/eslint-plugin
 //   mnci/svelte*                  .svelte components — eslint-plugin-svelte, only when
 //                                 svelte is installed (a svelte-app)
+//   mnci/astro*                   .astro components — eslint-plugin-astro
+//   mnci/mdx  mnci/mdx/code-blocks
+//                                 .mdx documents and their code fences — eslint-plugin-mdx
 //   mnci/tests                    *.spec/*.test relaxations — eslint-plugin-jest
 //                                 (Vitest's globals too; the two stacks share them)
 //   mnci/tests/mock-aware         specs in a project: eslint-plugin-jest's unbound-method,
