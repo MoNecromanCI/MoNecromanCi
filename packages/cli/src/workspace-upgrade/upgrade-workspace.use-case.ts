@@ -35,7 +35,7 @@ import {
 } from '../workspace-overlay'
 import { fileExists, readJson } from '../file-system'
 import { logger } from '../terminal'
-import { completeLockfile } from '../lockfile-completion'
+import { completeLockfile, updateMnciPackagesInLockfile } from '../lockfile-completion'
 import { writeMnciAgents } from '../mnci-agents'
 import { migrateNx } from './migrate-nx.use-case'
 
@@ -453,6 +453,9 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
   if (options.migrate === true) {
     migrateNx(workspaceRoot)
   }
+  // The new scripts and pipeline call the CLI and config this run is writing; a range across the major keeps an
+  // old locked one for ever, so move those two entries first.
+  updateMnciPackagesInLockfile(workspaceRoot)
   // The overlay and the installs above may have rewritten the lockfile with the local npm (#295).
   completeLockfile(workspaceRoot)
   logger.step(
