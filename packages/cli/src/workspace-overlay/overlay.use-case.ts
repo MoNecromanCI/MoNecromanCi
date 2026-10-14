@@ -1651,6 +1651,8 @@ export const ESLINT_BLOCK_INVENTORY = `// WHAT IS IN HERE. Each line is one conf
 //   mnci/css                      @eslint/css
 //   mnci/css-framework-assets     Tailwind 4 at-rules in a framework's resources/css
 //   mnci/html                     @html-eslint/eslint-plugin
+//   mnci/svelte*                  .svelte components — eslint-plugin-svelte, only when
+//                                 svelte is installed (a svelte-app)
 //   mnci/tests                    *.spec/*.test relaxations — eslint-plugin-jest
 //                                 (Vitest's globals too; the two stacks share them)
 //   mnci/tests/mock-aware         specs in a project: eslint-plugin-jest's unbound-method,
