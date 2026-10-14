@@ -42,6 +42,16 @@ describe('listProjects', () => {
     expect(listProjects(workspaceRoot)[0]).toMatchObject({ name: 'api', kind: 'go-app', targets: ['build', 'test'] })
   })
 
+  it('lists a project with no manifest by its type tag, with the ecosystem none', () => {
+    write('infra/readme.md', '')
+    write('apps/infra/project.json', JSON.stringify({ tags: ['type:bicep-iac'], targets: { lint: {}, build: {} } }))
+    write('apps/notes/project.json', JSON.stringify({ targets: {} }))
+
+    expect(listProjects(workspaceRoot)).toEqual([
+      { name: 'infra', dir: 'apps/infra', ecosystem: 'none', kind: 'bicep-iac', targets: ['lint', 'build'] },
+    ])
+  })
+
   it('has no kind and no targets for a project without a project.json', () => {
     write('packages/lib/package.json', '{"name":"lib"}')
 
