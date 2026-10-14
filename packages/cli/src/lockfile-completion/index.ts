@@ -7,3 +7,4 @@
  */
 
 export { completeLockfile } from './complete-lockfile.use-case'
+export { updateMnciPackagesInLockfile } from './update-mnci-packages.use-case'
