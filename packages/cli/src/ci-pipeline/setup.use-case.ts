@@ -2,6 +2,7 @@ import { existsSync, globSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { runCapture, runShell } from '../nx-workspace'
 import { detectCiHost, groupEnd, groupStart } from './ci-environment.client'
+import { checkCppToolchain } from './cpp-toolchain.use-case'
 import { installFlutterSdk, publishFlutterSdk, resolveDartDependencies } from './flutter-sdk.use-case'
 import { currentMachine, downloadGoModules, installGolangciLint, publishGoTools, type Machine } from './go-tools.use-case'
 import { prepareJvmToolchain } from './jvm-toolchain.use-case'
@@ -142,6 +143,7 @@ export async function runSetup (
     ['Resolve Dart dependencies (one pub get for the whole workspace)', () => resolveDartDependencies(workspaceRoot, processes, log)],
     ['Select the JDK and check Gradle, Maven and the Android SDK', () => prepareJvmToolchain(workspaceRoot, host, environment, processes, log)],
     ['Check PHP with Composer and Ruby with Bundler', () => checkScriptingToolchains(workspaceRoot, processes, log)],
+    ['Check CMake, a C++ compiler, cppcheck and vcpkg', () => checkCppToolchain(workspaceRoot, processes, log, environment)],
   ]
   for (const [title, work] of steps) {
     const status = await step(title, work)

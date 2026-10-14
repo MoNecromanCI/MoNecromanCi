@@ -783,8 +783,13 @@ in `vcpkg.json` by hand. Measured with vcpkg 2026-09-26 and fmt 12.2.0 on Window
 with `-Wall -Wextra -Wpedantic -Werror`, run, uninstall.
 
 Not covered yet (#473): Conan; a pinned vcpkg baseline and versions; `mnci sync` / `mnci up` reading `vcpkg.json` (a port's
-version comes from the registry baseline, not from the manifest); `clang-format` and `clang-tidy`; vcpkg and the compiler in
-`mnci ci setup` and the devcontainer; `dev`.
+version comes from the registry baseline, not from the manifest); `clang-format` and `clang-tidy`; `dev`.
+
+**The toolchain.** The devcontainer installs `build-essential`, CMake, Ninja, cppcheck and `pkg-config` from apt (no devcontainer
+feature carries CMake) and clones vcpkg at the pinned `VCPKG_VERSION` into `~/vcpkg`, with `VCPKG_ROOT` set. `mnci ci setup`
+installs nothing: it warns, and never fails, about a missing CMake (or one older than 3.20), compiler or cppcheck, and, when a
+project has a `vcpkg.json`, about a `VCPKG_ROOT` that names no checkout. The hosted images carry the tools. Not built against a
+Docker daemon.
 
 **`slice-check`** (`tools/slice-check.cjs`, what `lint` depends on) holds the layout: a file under `src/` is
 `<snake>_<role>.cpp` (a test `<snake>_<role>_test.cpp`, a header `.hpp`), the root of `src/` holds only `main.cpp`, a slice's

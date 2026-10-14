@@ -26,6 +26,7 @@ import {
   RUST_VERSION,
   JAVA_VERSION,
   PHP_VERSION,
+  VCPKG_VERSION,
   RUBY_VERSION,
   GRADLE_VERSION,
   MAVEN_VERSION,
@@ -1610,6 +1611,14 @@ describe('devcontainerJson', () => {
   it('pins the PHP and Ruby features to the minors the kinds were measured with, never latest (#471, #472)', () => {
     expect(parsed().features['ghcr.io/devcontainers/features/php:1']).toEqual({ version: PHP_VERSION })
     expect(parsed().features['ghcr.io/devcontainers/features/ruby:1']).toEqual({ version: RUBY_VERSION })
+  })
+
+  it('provisions the C++ toolchain from apt and a vcpkg clone at VCPKG_VERSION, with VCPKG_ROOT set (#473)', () => {
+    const json = parsed() as unknown as { postCreateCommand: string, remoteEnv: Record<string, string> }
+
+    expect(json.postCreateCommand).toContain('apt-get install -y --no-install-recommends build-essential cmake ninja-build cppcheck')
+    expect(json.postCreateCommand).toContain(`--branch ${VCPKG_VERSION} https://github.com/microsoft/vcpkg`)
+    expect(json.remoteEnv.VCPKG_ROOT).toBe('${containerEnv:HOME}/vcpkg')
   })
 
   it("pins the .NET feature to DOTNET_SDK_VERSION with the trailing '.x' stripped", () => {

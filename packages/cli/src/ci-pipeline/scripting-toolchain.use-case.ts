@@ -1,22 +1,6 @@
-import { globSync } from 'node:fs'
 import { PHP_VERSION, RUBY_VERSION } from '../workspace-overlay'
+import { hasProjectManifest } from './find-project-manifest.use-case'
 import type { CiProcesses } from './phase.contract'
-
-/** The folders a PHP or Ruby project lives in. */
-const PROJECT_ROOTS = ['apps', 'packages', 'libs']
-
-/**
- * Whether the workspace holds a project that has the given manifest.
- *
- * @param workspaceRoot - Absolute path to the workspace.
- * @param manifest - The file name that marks the project (`composer.json`, `Gemfile`).
- * @returns True when at least one project folder has it.
- * @throws Never - an unreadable folder holds none.
- * @typeParam None - this function has no generic type parameters.
- */
-function hasProject (workspaceRoot: string, manifest: string): boolean {
-  return PROJECT_ROOTS.some(root => globSync(`${root}/*/${manifest}`, { cwd: workspaceRoot }).length > 0)
-}
 
 /**
  * The `major.minor` of a version in a tool's own `--version` output.
@@ -84,8 +68,8 @@ export function checkScriptingToolchains (
   processes: CiProcesses,
   log: (message: string) => void,
 ): number {
-  const php = hasProject(workspaceRoot, 'composer.json')
-  const ruby = hasProject(workspaceRoot, 'Gemfile')
+  const php = hasProjectManifest(workspaceRoot, 'composer.json')
+  const ruby = hasProjectManifest(workspaceRoot, 'Gemfile')
   if (!php && !ruby) {
     log('No PHP or Ruby projects - skipping.')
 
