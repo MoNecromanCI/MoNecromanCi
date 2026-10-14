@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { runNx } from '../nx-workspace'
 import { fileExists, readJson, toJson, writeFileEnsured } from '../file-system'
 import { angularAppE2eSpec, angularAppEmptyFiles, angularAppExampleFiles } from './angular-app-example.algorithm'
-import { withNodeTypes } from './react-app-example.algorithm'
+import { finishPlaywrightProject } from './finish-playwright-project.use-case'
 import {
   addProjectJsonTargets,
   ensureAdmZip,
@@ -134,39 +134,8 @@ export function addAngularApp (workspaceRoot: string, name: string, stack: Works
     dev:      `nx run ${name}:serve`,
   })
   if (e2e) {
-    pairE2eProject(workspaceRoot, name, empty)
+    finishPlaywrightProject(workspaceRoot, name, angularAppE2eSpec(name, empty))
   }
-}
-
-/**
- * Finishes the Playwright project `@nx/angular:app` paired with an app.
- *
- * @remarks
- * Swaps Nx's sample test for one that checks what this app renders, gives the project's tsconfig the Node types its
- * Playwright config reads (#410), makes sure no per-project ESLint config survives, and registers the commands. Its
- * `:qa` is lint and typecheck: the `e2e` target needs a browser (`npx playwright install`), which CI's verify does not.
- *
- * @param workspaceRoot - Absolute path to the workspace.
- * @param name - The Angular app's project name.
- * @param empty - Whether the app is the bare variant.
- * @returns Nothing.
- * @throws Propagates any `fs` error.
- * @typeParam None - this function has no generic type parameters.
- */
-function pairE2eProject (workspaceRoot: string, name: string, empty: boolean): void {
-  const e2eName = `${name}-e2e`
-  const e2eRoot = join(workspaceRoot, 'apps', e2eName)
-  rmSync(join(e2eRoot, 'src/example.spec.ts'), { force: true })
-  writeFileEnsured(join(e2eRoot, 'src/greeting.e2e.spec.ts'), angularAppE2eSpec(name, empty))
-  const tsconfigPath = join(e2eRoot, 'tsconfig.json')
-  if (fileExists(tsconfigPath)) {
-    writeFileEnsured(tsconfigPath, withNodeTypes(readFileSync(tsconfigPath, 'utf8')))
-  }
-  removeGeneratedEslintConfig(workspaceRoot, `apps/${e2eName}`)
-  registerProjectCommands(workspaceRoot, e2eName, {
-    build: false,
-    qa:    `nx run ${e2eName}:lint && nx run ${e2eName}:typecheck`,
-  })
 }
 
 /**

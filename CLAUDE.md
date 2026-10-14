@@ -384,7 +384,7 @@ Nx plugin where none does:
   TypeScript-setup override, but installs `vue-tsc` 2, which cannot read TypeScript 6's `tsc.js`, so `vue-tsc@^3` is installed at
   the root (with a `@nx/vue` entry in `NX_PEER_OVERRIDES` so npm accepts it beside the `^2` peer); tsc output moves out of Vite's
   folder through `react-app-output` as for React apps; `.vue` files are `<name>.component.vue`. Measured on Nx 23.2; not covered:
-  `--e2e`, routing, a library kind.
+  `--e2e` pairs a Playwright project as for React (measured: lint and typecheck of `<name>-e2e`; its `e2e` target needs a browser); not covered: routing, a library kind.
   `svelte-app` (`project-scaffolding/svelte-app.use-case.ts`, #314) has no Nx generator (`@nxext/svelte` does not install here), so it
   is Vite's `svelte-ts` template via `create-vite@CREATE_VITE_VERSION`, wired like Go and C#: explicit `nx.targets`
   (`typecheck` is `svelte-check`), `apps/*` added to the root `workspaces`, test tooling installed into the app after a plain

@@ -123,4 +123,34 @@ describe('runAdd vue-app', () => {
     expect(scripts['web:start']).toBe('nx run web:serve')
     expect(scripts['web:dev']).toBe('nx run web:serve')
   })
+
+  it('--e2e asks the generator for Playwright and replaces its sample with a test of the greeting', async () => {
+    mockRunNx.mockImplementation((arguments_: string[]) => {
+      if (arguments_[0] !== 'g') return
+      writeGeneratedApp()
+      mkdirSync(join(workspaceRoot, 'apps/web-e2e/src'), { recursive: true })
+      writeFileSync(join(workspaceRoot, 'apps/web-e2e/src/example.spec.ts'), "expect(h1).toContain('Welcome')")
+    })
+
+    await runAdd('vue-app', 'web', { e2e: true })
+
+    expect(mockRunNx.mock.calls[1][0]).toContain('--e2eTestRunner=playwright')
+    expect(existsSync(join(workspaceRoot, 'apps/web-e2e/src/example.spec.ts'))).toBe(false)
+    expect(readFileSync(join(workspaceRoot, 'apps/web-e2e/src/greeting.e2e.spec.ts'), 'utf8')).toContain("getByText('Hello, web!')")
+    const { scripts } = JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
+    expect(scripts['web-e2e:qa']).toBe('nx run web-e2e:lint && nx run web-e2e:typecheck')
+    expect(scripts['web-e2e:start']).toBeUndefined()
+  })
+
+  it('--e2e with --empty checks that the app mounts, since there is no greeting', async () => {
+    mockRunNx.mockImplementation((arguments_: string[]) => {
+      if (arguments_[0] !== 'g') return
+      writeGeneratedApp()
+      mkdirSync(join(workspaceRoot, 'apps/web-e2e/src'), { recursive: true })
+    })
+
+    await runAdd('vue-app', 'web', { e2e: true, empty: true })
+
+    expect(readFileSync(join(workspaceRoot, 'apps/web-e2e/src/greeting.e2e.spec.ts'), 'utf8')).toContain("locator('#app')")
+  })
 })

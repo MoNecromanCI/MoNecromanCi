@@ -112,3 +112,40 @@ export function vueAppEmptyFiles (): Record<string, string> {
     ].join('\n'),
   }
 }
+
+/**
+ * The Playwright test of a Vue app: it opens the page and checks what the app renders.
+ *
+ * @remarks
+ * The worked example renders `Hello, <name>!` in an `<h1>`; the bare app renders an empty root component that Vue mounts
+ * into `#app`, so the test checks that element is there.
+ *
+ * @param name - The app's project name, which the greeting uses.
+ * @param empty - Whether the app is the bare variant.
+ * @returns The test file's text.
+ * @throws Never - pure.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function vueAppE2eSpec (name: string, empty = false): string {
+  if (empty) {
+    return [
+      "import { expect, test } from '@playwright/test'",
+      '',
+      "test('renders the app', async ({ page }) => {",
+      "  await page.goto('/')",
+      "  await expect(page.locator('#app')).toBeAttached()",
+      '})',
+      '',
+    ].join('\n')
+  }
+
+  return [
+    "import { expect, test } from '@playwright/test'",
+    '',
+    "test('shows the greeting', async ({ page }) => {",
+    "  await page.goto('/')",
+    `  await expect(page.getByText('Hello, ${name}!')).toBeVisible()`,
+    '})',
+    '',
+  ].join('\n')
+}
