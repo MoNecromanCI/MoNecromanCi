@@ -2622,8 +2622,13 @@ extension:
     is below.
   - **`VSCE_PAT`**, a Marketplace personal access token as a CI secret, in both
     providers. Creating one needs an Azure DevOps organization, which now needs an
-    Azure subscription, and global PATs are reported to retire on 2026-12-01. Azure
-    Pipelines has only this route for now.
+    Azure subscription, and global PATs are reported to retire on 2026-12-01.
+    It remains the fallback when no Entra ID route is configured.
+  - **Microsoft Entra ID, no secret (Azure Pipelines).** When the
+    `VSCE_SERVICE_CONNECTION` pipeline variable names a workload-identity service
+    connection, an `AzureCLI@2` step signs in before the release step
+    (`keepAzSessionActive`, so the session reaches it) and sets `VSCE_AUTH=entra`.
+    Setup is below.
 - **Debugging**: an `<name>: debug` launch entry (`extensionHost`) opens a second
   VS Code window with the extension loaded, after the `<name>: build (development)`
   task, which keeps source maps.
@@ -2662,6 +2667,17 @@ identity is a member of the publisher.
    --resource 499b84ac-1321-427f-aa17-267ca6975798 --query id -o tsv`. Add that ID
    under Members with the **Contributor** role, then confirm with
    `npx @vscode/vsce verify-pat --azure-credential <publisher>` in the same job.
+
+**Azure Pipelines.** Steps 1 and 2 are the same. Then, in Azure DevOps, create a
+service connection (Project settings → Service connections → Azure Resource
+Manager → *Workload identity federation (manual)*) for that app registration, copy
+the issuer and subject Azure DevOps shows into a federated credential of type *Other
+issuer*, and set the pipeline variable `VSCE_SERVICE_CONNECTION` to the connection's
+name. Add the identity as a publisher member (step 5, reading the profile ID from
+an `AzureCLI@2` run). The connection must be able to sign in, which Azure DevOps
+requires a subscription scope for; the identity needs no role on it. Without the
+variable the release step publishes with `VSCE_PAT`, as before. Not run against a
+real Azure Pipelines run (#315).
 
 Not built yet: integration tests through `@vscode/test-cli` (they download VS Code
 and need a display, so they would be gated like the Go and Flutter sections).
