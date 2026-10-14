@@ -985,8 +985,11 @@ and `sqlite3` must be enabled in `php.ini`). Larastan is added beside the app's 
   `.env.example` is committed. Not covered: the front-end assets (`npm`/Vite) the skeleton ships, a starter kit
   (Breeze, Jetstream), queues and a worker, Sail.
 
-Not covered yet (#471): `mnci sync` / `mnci up` reading a project's requirements; the PHP version in `mnci ci setup` and the
-devcontainer; `dev`; propagating a library's new version to a consumer's `^` range.
+The devcontainer has PHP (with Composer) at the pinned minor, and `mnci ci setup` names a runner whose PHP is another minor
+or that lacks Composer, as a warning: it installs nothing, since the hosted images carry their own.
+
+Not covered yet (#471): `mnci sync` / `mnci up` reading a project's requirements; `dev`; propagating a library's new version
+to a consumer's `^` range.
 
 **`slice-check`** (`tools/slice-check.cjs`, shared with Rust, C++ and Java, and what `lint` depends on) holds the layout: nothing
 sits at the root of `src/`, a slice folder is StudlyCase, a class is `<Name><Role>.php` (a test `<Name><Role>Test.php`), no
@@ -1019,8 +1022,11 @@ it writes a PHP or Java one. Apps live in `apps/`, publishable gems in `packages
 Measured with Ruby 3.4.11 (RubyInstaller, x64-mingw-ucrt), Bundler 2.6.9, RSpec 3.13 and RuboCop 1.92 on Windows: generate, link,
 lint, test, build, package, run, install and uninstall, `nx release`, `mnci doctor`.
 
+The devcontainer has Ruby (with Bundler) at the pinned minor, and `mnci ci setup` warns about another minor or a missing
+Bundler, as it does for PHP.
+
 Not covered yet (#472): publishing to RubyGems (`gem push` needs `GEM_HOST_API_KEY` passed to the release step by both
-providers); `mnci sync` / `mnci up` reading a project's gems; the Ruby version in `mnci ci setup` and the devcontainer; `dev`.
+providers); `mnci sync` / `mnci up` reading a project's gems; `dev`.
 
 ### Rails (`mnci add ruby-app <name> --template rails`, #489)
 

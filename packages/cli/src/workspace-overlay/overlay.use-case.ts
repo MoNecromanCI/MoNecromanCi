@@ -1122,6 +1122,9 @@ export function devcontainerJson (workspaceName: string): string {
         installMaven:  true,
         mavenVersion:  MAVEN_VERSION,
       },
+      // PHP brings Composer, Ruby brings Bundler with the interpreter. Pinned like the others, never `latest`.
+      'ghcr.io/devcontainers/features/php:1':  { version: PHP_VERSION },
+      'ghcr.io/devcontainers/features/ruby:1': { version: RUBY_VERSION },
     },
     // `npm ci` first: every guard after it runs through the workspace's own
     // scripts and Nx, which do not exist until the install completes.
@@ -2622,6 +2625,26 @@ export const GRADLE_VERSION = '9.8.1'
  * 3.10.0, the version `java-app`, `java-lib` and `java-internal-lib` were measured with on Windows.
  */
 export const MAVEN_VERSION = '3.10.0'
+
+/**
+ * The PHP minor the devcontainer provisions and `mnci ci setup` checks a runner against.
+ *
+ * @remarks
+ * 8.4, the line the PHP kinds were measured with (8.4.25, PHPUnit 12, PHPStan 2, PHP_CodeSniffer 4). The devcontainer's PHP
+ * feature resolves it to the newest patch and brings Composer. Hosted runners carry their own PHP, so setup names a
+ * different minor and installs nothing.
+ */
+export const PHP_VERSION = '8.4'
+
+/**
+ * The Ruby minor the devcontainer provisions and `mnci ci setup` checks a runner against.
+ *
+ * @remarks
+ * 3.4, the line the Ruby kinds were measured with (3.4.11, Bundler 2.6, RSpec 3.13, RuboCop 1.92). The devcontainer's Ruby
+ * feature resolves it to the newest patch. Hosted runners carry their own Ruby, so setup names a different minor and
+ * installs nothing.
+ */
+export const RUBY_VERSION = '3.4'
 
 /**
  * The Flutter SDK version the generated pipeline installs.

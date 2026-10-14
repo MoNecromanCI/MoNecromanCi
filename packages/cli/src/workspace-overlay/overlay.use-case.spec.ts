@@ -25,6 +25,8 @@ import {
   GO_VERSION,
   RUST_VERSION,
   JAVA_VERSION,
+  PHP_VERSION,
+  RUBY_VERSION,
   GRADLE_VERSION,
   MAVEN_VERSION,
   GOLANGCI_LINT_VERSION,
@@ -1534,7 +1536,14 @@ describe('devcontainerJson', () => {
       'ghcr.io/devcontainers/features/dotnet:2',
       'ghcr.io/devcontainers/features/rust:1',
       'ghcr.io/devcontainers/features/java:1',
+      'ghcr.io/devcontainers/features/php:1',
+      'ghcr.io/devcontainers/features/ruby:1',
     ])
+  })
+
+  it('pins the PHP and Ruby features to the minors the kinds were measured with, never latest (#471, #472)', () => {
+    expect(parsed().features['ghcr.io/devcontainers/features/php:1']).toEqual({ version: PHP_VERSION })
+    expect(parsed().features['ghcr.io/devcontainers/features/ruby:1']).toEqual({ version: RUBY_VERSION })
   })
 
   it("pins the .NET feature to DOTNET_SDK_VERSION with the trailing '.x' stripped", () => {

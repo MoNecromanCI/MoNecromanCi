@@ -6,6 +6,7 @@ import { installFlutterSdk, publishFlutterSdk, resolveDartDependencies } from '.
 import { currentMachine, downloadGoModules, installGolangciLint, publishGoTools, type Machine } from './go-tools.use-case'
 import { prepareJvmToolchain } from './jvm-toolchain.use-case'
 import type { CiDependencies, CiProcesses } from './phase.contract'
+import { checkScriptingToolchains } from './scripting-toolchain.use-case'
 
 /** The interpreter's name: the python.org Windows installer registers only `python`, every POSIX system `python3`. */
 function pythonCommand (machine: Machine): string {
@@ -140,6 +141,7 @@ export async function runSetup (
     }],
     ['Resolve Dart dependencies (one pub get for the whole workspace)', () => resolveDartDependencies(workspaceRoot, processes, log)],
     ['Select the JDK and check Gradle, Maven and the Android SDK', () => prepareJvmToolchain(workspaceRoot, host, environment, processes, log)],
+    ['Check PHP with Composer and Ruby with Bundler', () => checkScriptingToolchains(workspaceRoot, processes, log)],
   ]
   for (const [title, work] of steps) {
     const status = await step(title, work)
