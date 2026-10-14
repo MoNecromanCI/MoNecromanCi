@@ -388,7 +388,7 @@ Nx plugin where none does:
   `svelte-app` (`project-scaffolding/svelte-app.use-case.ts`, #314) has no Nx generator (`@nxext/svelte` does not install here), so it
   is Vite's `svelte-ts` template via `create-vite@CREATE_VITE_VERSION`, wired like Go and C#: explicit `nx.targets`
   (`typecheck` is `svelte-check`), `apps/*` added to the root `workspaces`, test tooling installed into the app after a plain
-  `npm install` (the first `-w` for a new folder is a silent no-op). `.svelte` files are not linted.
+  `npm install` (the first `-w` for a new folder is a silent no-op). `.svelte` files are linted by `mnci/svelte` (`eslint-plugin-svelte`, loaded only when `svelte` resolves, because the plugin imports it at load).
   `bicep-iac` (`project-scaffolding/bicep.use-case.ts`, #314) is files written directly (no generator exists): `lint`/`build`/
   `package` are `az bicep` commands (measured with Bicep CLI 0.48), `bicepconfig.json` promotes the rules that catch real mistakes
   because `az bicep lint` exits 0 on warnings, and there is no `test` target. Terraform is not covered.

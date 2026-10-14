@@ -81,6 +81,7 @@ as a comment, so it is readable without opening node_modules.
 | `mnci/markdown`                          | `@eslint/markdown` (GitHub-flavoured)                                                          |
 | `mnci/css`                               | `@eslint/css`                                                                                  |
 | `mnci/html`                              | `@html-eslint/eslint-plugin`, incl. its a11y rules                                             |
+| `mnci/svelte/*`, `mnci/svelte`           | `eslint-plugin-svelte` on `.svelte` files (recommended rules plus the compiler's a11y diagnostics) — only when `svelte` is installed, because the plugin imports it while loading |
 | `mnci/tests`                             | `*.spec`/`*.test` relaxations — `eslint-plugin-jest`, plus Vitest's `vi`/`vitest` globals      |
 | `mnci/tests/mock-aware`                  | specs inside a project: `jest/unbound-method` replaces the base rule, which false-positives on every `expect(mock.method)` |
 | `mnci/nx-dependency-checks`              | `@nx/eslint-plugin` on publishable packages' manifests — only when `workspaceRoot` is passed   |

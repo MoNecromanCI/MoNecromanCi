@@ -1179,8 +1179,13 @@ No Nx plugin for Svelte installs on this workspace (`@nxext/svelte` peers on Typ
   the root component; `--empty` leaves the root component. Components are named `<name>.component.svelte`. The app drops
   its own copy of `typescript`.
 
-Not covered: `.svelte` files are not linted (the ESLint configuration has no Svelte parser; `svelte-check` is their
-check), `--e2e`, SvelteKit, and a Svelte library kind.
+`.svelte` files are linted by `@mnci/eslint-config` (`mnci/svelte`: `eslint-plugin-svelte`'s recommended rules and the
+compiler's a11y diagnostics, with the script block parsed as TypeScript; `svelte-check` stays the type check). The
+blocks load only when `svelte` resolves from the config package, because the plugin imports it while loading: a
+workspace with no Svelte project is untouched, and a `svelte` kept out of the root `node_modules` leaves the files
+unlinted.
+
+Not covered: `--e2e`, SvelteKit, and a Svelte library kind.
 
 ## Bicep infrastructure (`mnci add bicep-iac`)
 

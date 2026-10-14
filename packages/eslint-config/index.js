@@ -10,6 +10,7 @@ import markdown from './configs/markdown.js'
 import react from './configs/react.js'
 import regexp from './configs/regexp.js'
 import standard from './configs/standard.js'
+import svelte from './configs/svelte.js'
 import toml from './configs/toml.js'
 import typeAware from './configs/typeAware.js'
 import typescript from './configs/typescript.js'
@@ -34,6 +35,7 @@ export { default as markdown } from './configs/markdown.js'
 export { default as react } from './configs/react.js'
 export { default as regexp } from './configs/regexp.js'
 export { default as standard } from './configs/standard.js'
+export { default as svelte } from './configs/svelte.js'
 export { default as toml } from './configs/toml.js'
 export { default as typeAware } from './configs/typeAware.js'
 export { default as typescript } from './configs/typescript.js'
@@ -125,6 +127,7 @@ export default function mnci (options = {}) {
     ...markdown,
     ...css,
     ...html,
+    ...svelte,
     ...jest,
     ...(workspaceRoot ? dependencyChecks(workspaceRoot) : []),
     ...(slices ? verticalSlices(slices === true ? undefined : slices) : []),
