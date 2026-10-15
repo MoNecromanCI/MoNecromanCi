@@ -57,7 +57,7 @@ describe('runAdd cpp-app', () => {
     await runAdd('cpp-app', 'hello', {})
 
     const { targets, tags } = JSON.parse(readFileSync(join(workspaceRoot, 'apps/hello/project.json'), 'utf8'))
-    expect(Object.keys(targets)).toEqual(['build', 'build-dev', 'test', 'slice-check', 'lint', 'start', 'package'])
+    expect(Object.keys(targets)).toEqual(['build', 'build-dev', 'test', 'slice-check', 'lint', 'start', 'dev', 'package'])
     expect(tags).toEqual(['type:cpp-app'])
     expect(targets.build.outputs).toEqual(['{workspaceRoot}/dist/cmake/hello'])
     expect(targets.build.options.commands[0]).toBe('cmake -S apps/hello -B dist/cmake/hello -DCMAKE_BUILD_TYPE=Release')
@@ -81,6 +81,7 @@ describe('runAdd cpp-app', () => {
     expect(scripts['hello:qa']).toBe('nx run hello:lint && nx run hello:test')
     expect(scripts['hello:start']).toBe('nx run hello:start')
     expect(scripts['hello:build:dev']).toBe('nx run hello:build-dev')
+    expect(scripts['hello:dev']).toBe('nx run hello:dev')
   })
 })
 

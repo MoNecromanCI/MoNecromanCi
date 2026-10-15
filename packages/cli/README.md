@@ -783,7 +783,7 @@ in `vcpkg.json` by hand. Measured with vcpkg 2026-09-26 and fmt 12.2.0 on Window
 with `-Wall -Wextra -Wpedantic -Werror`, run, uninstall.
 
 Not covered yet (#473): Conan; a pinned vcpkg baseline and versions; `mnci sync` / `mnci up` reading `vcpkg.json` (a port's
-version comes from the registry baseline, not from the manifest); `clang-format` and `clang-tidy`; `dev`.
+version comes from the registry baseline, not from the manifest); `clang-format` and `clang-tidy`; `dev` for a library, and for an app made before it existed (`mnci upgrade` does not add it).
 
 **The toolchain.** The devcontainer installs `build-essential`, CMake, Ninja, cppcheck and `pkg-config` from apt (no devcontainer
 feature carries CMake) and clones vcpkg at the pinned `VCPKG_VERSION` into `~/vcpkg`, with `VCPKG_ROOT` set. `mnci ci setup`

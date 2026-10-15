@@ -4174,6 +4174,12 @@ section('cpp', [], () => {
   const debugBuilt = tryRunCapture('npx nx run hello:build-dev', root)
   const debugExecutable = path.join(root, 'dist/cmake/hello-debug', process.platform === 'win32' ? 'hello.exe' : 'hello')
   enforce('cpp: build-dev puts the executable where the debug launch points', cppDebug !== undefined && debugBuilt.ok && existsSync(debugExecutable), debugBuilt.output.slice(-1200))
+  const hello = JSON.parse(readFileSync(path.join(root, 'apps/hello/project.json'), 'utf8'))
+  enforce(
+    'cpp: dev watches the project and its libraries and rebuilds the Debug tree',
+    hello.targets.dev?.continuous === true && hello.targets.dev.options.command.includes('--includeDependencies') && hello.targets.dev.options.command.endsWith('nx run hello:build-dev'),
+    JSON.stringify(hello.targets.dev),
+  )
   if (hasTool('gdb --version') && existsSync(debugExecutable)) {
     const symbols = tryRunCapture(`gdb -batch -ex "info line main" "${debugExecutable}"`, root)
     enforce('cpp: the debug executable carries symbols for main', symbols.ok && /starts at address/.test(symbols.output), symbols.output.slice(-600))
