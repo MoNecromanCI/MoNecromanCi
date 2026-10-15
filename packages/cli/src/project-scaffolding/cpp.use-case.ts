@@ -95,6 +95,13 @@ export function cppTargets (name: string, directory: string, app: boolean): Reco
       dependsOn: ['build'],
       options:   { command: withExecutable(name, build, "const r=require('node:child_process').spawnSync(exe,[],{stdio:'inherit'});process.exit(r.status??1)") },
     }
+    // CMake has no watcher and no tool of the toolchain restarts a program, so `dev` is Nx's own: it rebuilds the Debug tree
+    // (the one the debug launch points at) when the project or a library it links changes. Measured: an edit rebuilt it.
+    targets.dev = {
+      executor:   'nx:run-commands',
+      continuous: true,
+      options:    { command: `nx watch --projects=${name} --includeDependencies --initialRun -- nx run ${name}:build-dev` },
+    }
     targets.package = {
       executor:  'nx:run-commands',
       dependsOn: ['build'],
@@ -159,7 +166,7 @@ export function addCppProject (workspaceRoot: string, name: string, kind: CppKin
     wireCppLibRelease(workspaceRoot, directory, name)
   }
   registerProjectCommands(workspaceRoot, name, app
-    ? { build: true, start: `nx run ${name}:start`, buildDev: `nx run ${name}:build-dev`, debug: { language: 'cpp', program: `dist/cmake/${name}-debug/${name}` } }
+    ? { build: true, start: `nx run ${name}:start`, buildDev: `nx run ${name}:build-dev`, dev: `nx run ${name}:dev`, debug: { language: 'cpp', program: `dist/cmake/${name}-debug/${name}` } }
     : { build: kind === 'cpp-lib' })
 
   if (runCapture('cppcheck', ['--version'], workspaceRoot).status !== 0) {
