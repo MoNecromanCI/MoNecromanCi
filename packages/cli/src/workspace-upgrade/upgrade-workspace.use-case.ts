@@ -6,6 +6,7 @@ import { separateReactAppsOutput } from '../react-app-output'
 import { locateStrandedReleaseTags } from '../release-tag-lineage'
 import { runFormatter } from '../nx-workspace'
 import {
+  addCppDevTargets,
   addCsharpDevTargets,
   addGoPlatformTargets,
   addGoSliceChecks,
@@ -375,10 +376,10 @@ export function runUpgrade (workspaceRoot: string, options: UpgradeOptions): voi
       logger.detail(`updated ${path}`)
     }
   }
-  // Python and C# apps added before `dev` existed gain it (and `watchdog` for Python); a `dev` they have is kept.
-  const devApps = [...addPythonDevTargets(workspaceRoot), ...addCsharpDevTargets(workspaceRoot)]
+  // Python, C# and C++ apps added before `dev` existed gain it (and `watchdog` for Python); a `dev` they have is kept.
+  const devApps = [...addPythonDevTargets(workspaceRoot), ...addCsharpDevTargets(workspaceRoot), ...addCppDevTargets(workspaceRoot)]
   if (devApps.length > 0) {
-    logger.step('Adding the watch-and-restart target (dev) to Python and C# apps')
+    logger.step('Adding the watch-and-restart target (dev) to Python, C# and C++ apps')
     for (const path of devApps) {
       logger.detail(`updated ${path}`)
     }

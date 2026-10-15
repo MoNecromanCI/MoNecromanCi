@@ -1,5 +1,6 @@
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { writeFileEnsured } from '../file-system'
+import { fileExists, readJson, writeFileEnsured } from '../file-system'
 import { logger } from '../terminal'
 import { runCapture } from '../nx-workspace'
 import { nativeSliceCheckTarget, SLICE_CHECK_PATH, SLICE_CHECK_SCRIPT } from '../native-slice-check'
@@ -95,13 +96,7 @@ export function cppTargets (name: string, directory: string, app: boolean): Reco
       dependsOn: ['build'],
       options:   { command: withExecutable(name, build, "const r=require('node:child_process').spawnSync(exe,[],{stdio:'inherit'});process.exit(r.status??1)") },
     }
-    // CMake has no watcher and no tool of the toolchain restarts a program, so `dev` is Nx's own: it rebuilds the Debug tree
-    // (the one the debug launch points at) when the project or a library it links changes. Measured: an edit rebuilt it.
-    targets.dev = {
-      executor:   'nx:run-commands',
-      continuous: true,
-      options:    { command: `nx watch --projects=${name} --includeDependencies --initialRun -- nx run ${name}:build-dev` },
-    }
+    targets.dev = cppAppDevTarget(name)
     targets.package = {
       executor:  'nx:run-commands',
       dependsOn: ['build'],
@@ -117,6 +112,61 @@ export function cppTargets (name: string, directory: string, app: boolean): Reco
   }
 
   return targets
+}
+
+/**
+ * The `dev` target of a C++ app: Nx's own watcher rebuilding the Debug tree.
+ *
+ * @remarks
+ * CMake has no watcher and no tool of the toolchain restarts a program, so it rebuilds the tree the debug launch points at
+ * when the project or a library it links changes. Measured on a generated app: an edit rebuilt it.
+ *
+ * @param name - The project name.
+ * @returns The nx:run-commands target object.
+ * @throws Never - pure object construction.
+ * @typeParam None - this function has no generic type parameters.
+ */
+function cppAppDevTarget (name: string): Record<string, unknown> {
+  return {
+    executor:   'nx:run-commands',
+    continuous: true,
+    options:    { command: `nx watch --projects=${name} --includeDependencies --initialRun -- nx run ${name}:build-dev` },
+  }
+}
+
+/**
+ * Gives the C++ apps of an existing workspace the `dev` target.
+ *
+ * @remarks
+ * `mnci upgrade` brings an app made before `dev` existed up to date. An app is a folder under `apps/` with a `project.json`
+ * tagged `type:cpp-app`; a `dev` target the team already has is never touched. The root `<name>:dev` script is written by
+ * `mnci add` only.
+ *
+ * @param workspaceRoot - Absolute path to the workspace.
+ * @returns The workspace-relative `project.json` paths that changed.
+ * @throws Error when a `project.json` is unreadable JSON.
+ * @typeParam None - this function has no generic type parameters.
+ */
+export function addCppDevTargets (workspaceRoot: string): string[] {
+  const changed: string[] = []
+  const apps = join(workspaceRoot, 'apps')
+  if (!fileExists(apps)) {
+    return changed
+  }
+  for (const name of readdirSync(apps)) {
+    const projectJsonPath = join(apps, name, 'project.json')
+    if (!fileExists(projectJsonPath)) {
+      continue
+    }
+    const project = readJson<{ tags?: string[], targets?: Record<string, unknown> }>(projectJsonPath)
+    if (!(project.tags ?? []).includes('type:cpp-app') || project.targets?.dev !== undefined) {
+      continue
+    }
+    addProjectJsonTargets(projectJsonPath, { dev: cppAppDevTarget(name) })
+    changed.push(`apps/${name}/project.json`)
+  }
+
+  return changed
 }
 
 /**
