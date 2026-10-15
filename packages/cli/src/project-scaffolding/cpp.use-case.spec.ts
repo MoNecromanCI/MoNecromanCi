@@ -10,10 +10,11 @@ jest.mock('../terminal', () => ({
 }))
 jest.mock('@inquirer/prompts', () => ({ select: jest.fn(), input: jest.fn() }))
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runAdd } from './add-project.use-case'
+import { addCppDevTargets } from './cpp.use-case'
 import { cppCmakeLists } from './cpp-example.algorithm'
 
 let workspaceRoot: string
@@ -110,5 +111,32 @@ describe('runAdd cpp libraries', () => {
     expect(text).toContain('project(my-tool VERSION 0.1.0 LANGUAGES CXX)')
     expect(text).toContain('add_executable(my_tool src/main.cpp src/my_tool/greeting/greet_use_case.cpp)')
     expect(text).toContain('set_target_properties(my_tool PROPERTIES OUTPUT_NAME my-tool)')
+  })
+})
+
+const app = (name: string, tags: string[], targets: Record<string, unknown> = {}): void => {
+  mkdirSync(join(workspaceRoot, 'apps', name), { recursive: true })
+  writeFileSync(join(workspaceRoot, 'apps', name, 'project.json'), JSON.stringify({ name, tags, targets }))
+}
+const dev = (name: string): unknown => (JSON.parse(readFileSync(join(workspaceRoot, 'apps', name, 'project.json'), 'utf8')) as { targets: Record<string, unknown> }).targets.dev
+
+describe('addCppDevTargets', () => {
+  it('adds dev to a C++ app that predates it, but not to another kind or an app with its own', () => {
+    app('hello', ['type:cpp-app'])
+    app('mine', ['type:cpp-app'], { dev: { command: 'my own' } })
+    app('web', ['type:react-app'])
+
+    expect(addCppDevTargets(workspaceRoot)).toEqual(['apps/hello/project.json'])
+    expect(dev('hello')).toEqual({
+      executor:   'nx:run-commands',
+      continuous: true,
+      options:    { command: 'nx watch --projects=hello --includeDependencies --initialRun -- nx run hello:build-dev' },
+    })
+    expect(dev('mine')).toEqual({ command: 'my own' })
+    expect(dev('web')).toBeUndefined()
+  })
+
+  it('does nothing without an apps folder', () => {
+    expect(addCppDevTargets(workspaceRoot)).toEqual([])
   })
 })

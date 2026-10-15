@@ -13,6 +13,7 @@ export * from './project-kind-catalog.config'
 export { addGoPlatformTargets, addGoSliceChecks, GO_PLATFORMS } from './go.use-case'
 export { addPythonDevTargets } from './python.use-case'
 export { addCsharpDevTargets } from './csharp.use-case'
+export { addCppDevTargets } from './cpp.use-case'
 export { GO_RELEASE_SCRIPT_PATH, refreshGoReleaseScript } from './go-release.use-case'
 export {
   pinVscodeExtensionProjectNames,
